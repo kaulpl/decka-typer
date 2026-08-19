@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.1 — 2026-08-19
+
+- poprawiony mechanizm wykrywania aktualizacji z GitHub Releases,
+- updater zgłasza aktualizację WordPressowi wyłącznie wtedy, gdy nowsza wersja ma gotowy instalacyjny ZIP,
+- dodany przycisk „Sprawdź aktualizacje” na pulpicie Decka Typer,
+- po wykryciu nowszej wersji przycisk zmienia się w „Aktualizuj do wersji X.Y.Z” i uruchamia standardowy aktualizator WordPressa,
+- ręczne sprawdzenie czyści cache Decka Typer i transient `update_plugins`, a następnie wymusza ponowne sprawdzenie aktualizacji,
+- dodany czytelny status wersji bieżącej, najnowszego GitHub Release i błędów API,
+- skrócony cache informacji o Release do 15 minut oraz osobny krótki cache błędów,
+- workflow `Release plugin` może być uruchamiany również ręcznie,
+- workflow sprawdza, czy Release zawiera zarówno ZIP, jak i SHA-256,
+- jeżeli istniejący Release jest niekompletny, workflow odbudowuje paczkę z właściwego tagu i naprawia assety,
+- po publikacji workflow pobiera wydany ZIP i weryfikuje jego sumę SHA-256.
+
 ## 0.2.0 — 2026-08-19
 
 - uproszczenie typowania: użytkownik wskazuje wyłącznie zwycięzcę meczu,
