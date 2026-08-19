@@ -4,22 +4,29 @@ Nowoczesna wtyczka WordPress dla społeczności Decki Pelplin do typowania zwyci
 
 ## Wersja
 
-Aktualna wersja: **0.2.0**
+Aktualna wersja: **0.2.5**
 
 ## Najważniejsze funkcje
 
 - samodzielny frontend pod `/typer`, bez nagłówka i stopki motywu WordPress,
 - typowanie wyłącznie zwycięzcy meczu przez kliknięcie drużyny,
+- brak typowania dokładnego wyniku punktowego — w typie przechowywana jest tylko wybrana drużyna,
 - jeden nieedytowalny kupon na każdą kolejkę,
 - administrator otwiera kolejkę i określa termin zamknięcia typowania,
 - ranking sezonu i poszczególnych kolejek,
 - historia typów i statystyki użytkownika,
-- logowanie WordPress, Google i Facebook,
-- automatyczny import terminarza i wyników z `1lm.pzkosz.pl`,
-- ręczne mecze i wyniki chronione przed nadpisaniem przez synchronizację,
+- logowanie Google i Facebook,
+- automatyczny import terminarza i faktycznych wyników z `1lm.pzkosz.pl`,
+- ręczne mecze i faktyczne wyniki chronione przed nadpisaniem przez synchronizację,
 - pełne nazwy drużyn oraz wyróżnienie meczu Decki Pelplin,
 - panel administratora: Pulpit, Kolejki, Mecze, Typy, Ranking, Użytkownicy, Statystyki, Synchronizacja 1LM, Historia i Ustawienia,
 - aktualizacje wtyczki bezpośrednio z GitHub Releases.
+
+## Model typowania
+
+Użytkownik nie wpisuje wyniku punktowego meczu. Dla każdego spotkania wybiera wyłącznie jedną z dwóch drużyn jako zwycięzcę. Tabela `dt_predictions` przechowuje identyfikator wybranej drużyny, punkty i status rozliczenia. Faktyczny wynik spotkania jest przechowywany oddzielnie w tabeli meczów i służy wyłącznie do rozliczenia typu.
+
+Aktualizacja do `0.2.5` usuwa z `dt_predictions` stare kolumny służące niegdyś do typowania wyniku. Odwołania do tych pól pozostają wyłącznie w jednorazowej migracji bardzo starych instalacji, aby przed usunięciem kolumn zamienić dawne typy wynikowe na wybór zwycięzcy.
 
 ## Zasada kuponu
 
