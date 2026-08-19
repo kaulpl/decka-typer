@@ -40,8 +40,6 @@ class DT_Updater {
             'url'          => (string) ($release['html_url'] ?? self::UPDATE_URI),
             'package'      => $package,
             'requires_php' => '8.0',
-            'tested'       => '6.9',
-            'autoupdate'   => true,
         ];
     }
 
