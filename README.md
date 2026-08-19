@@ -26,7 +26,7 @@ Aktualna wersja: **0.2.5**
 
 Użytkownik nie wpisuje wyniku punktowego meczu. Dla każdego spotkania wybiera wyłącznie jedną z dwóch drużyn jako zwycięzcę. Tabela `dt_predictions` przechowuje identyfikator wybranej drużyny, punkty i status rozliczenia. Faktyczny wynik spotkania jest przechowywany oddzielnie w tabeli meczów i służy wyłącznie do rozliczenia typu.
 
-Aktualizacja do `0.2.5` usuwa z `dt_predictions` stare kolumny służące niegdyś do typowania wyniku. Odwołania do tych pól mogą wystąpić wyłącznie w jednorazowej migracji bardzo starych instalacji, aby zamienić dawne typy wynikowe na wybór zwycięzcy przed usunięciem kolumn.
+Aktualizacja do `0.2.5` usuwa z `dt_predictions` stare kolumny służące niegdyś do typowania wyniku. Odwołania do tych pól pozostają wyłącznie w jednorazowej migracji bardzo starych instalacji, aby przed usunięciem kolumn zamienić dawne typy wynikowe na wybór zwycięzcy.
 
 ## Zasada kuponu
 
