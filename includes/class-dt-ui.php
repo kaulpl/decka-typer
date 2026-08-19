@@ -4,6 +4,8 @@ if (!defined('ABSPATH')) exit;
 class DT_UI {
     public static function register(): void {
         add_action('admin_enqueue_scripts', [__CLASS__, 'admin_contrast'], 99);
+        add_action('wp_enqueue_scripts', [__CLASS__, 'frontend_cleanup'], 99);
+        add_filter('do_shortcode_tag', [__CLASS__, 'remove_wordpress_login_option'], 20, 4);
     }
 
     public static function admin_contrast(string $hook): void {
@@ -34,5 +36,16 @@ class DT_UI {
             }
         ';
         wp_add_inline_style('dt-admin', $css);
+    }
+
+    public static function frontend_cleanup(): void {
+        if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
+        wp_add_inline_style('dt-front', '.dt-login-divider,.dt-wp-login{display:none!important}');
+    }
+
+    public static function remove_wordpress_login_option(string $output, string $tag, array $attr, array $m): string {
+        if ($tag !== 'decka_typer' || is_user_logged_in()) return $output;
+        $output = preg_replace('~<div class="dt-login-divider">.*?</div>\s*<a class="dt-social-button dt-wp-login"[^>]*>.*?</a>~s', '', $output);
+        return is_string($output) ? $output : '';
     }
 }
