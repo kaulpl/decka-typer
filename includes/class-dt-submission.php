@@ -26,10 +26,6 @@ class DT_Submission {
         ], true);
     }
 
-    /**
-     * Load the transport bridge before the main Typer frontend script.
-     * It transparently reroutes only POST /submission to admin-ajax.php.
-     */
     public static function enqueue_bridge(): void {
         if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
 
@@ -47,14 +43,12 @@ class DT_Submission {
         ]);
     }
 
-    /** REST compatibility endpoint. */
     public static function save(WP_REST_Request $request): WP_REST_Response|WP_Error {
         $body = $request->get_json_params();
         if (!is_array($body)) $body = [];
         return self::save_payload($body, get_current_user_id());
     }
 
-    /** Primary frontend write transport. */
     public static function ajax_save(): void {
         if (!is_user_logged_in()) {
             wp_send_json_error(['message'=>'Sesja wygasła. Zaloguj się ponownie.'], 401);
@@ -73,7 +67,8 @@ class DT_Submission {
         $result = self::save_payload($body, get_current_user_id());
 
         if (is_wp_error($result)) {
-            $status = (int) ($result->get_error_data()['status'] ?? 500);
+            $errorData = $result->get_error_data();
+            $status = is_array($errorData) ? (int)($errorData['status'] ?? 500) : 500;
             if ($status < 400 || $status > 599) $status = 500;
             wp_send_json_error([
                 'code'=>$result->get_error_code(),
@@ -85,11 +80,6 @@ class DT_Submission {
         wp_send_json_success(is_array($data) ? $data : ['ok'=>true], 201);
     }
 
-    /**
-     * Validate and persist a complete immutable coupon.
-     *
-     * @return WP_REST_Response|WP_Error
-     */
     private static function save_payload(array $body, int $uid): WP_REST_Response|WP_Error {
         global $wpdb;
 
@@ -153,7 +143,6 @@ class DT_Submission {
             return new WP_Error('incomplete_coupon', 'Przed zapisem wytypuj zwycięzcę każdego meczu.', ['status'=>422]);
         }
 
-        // Re-check the close time immediately before the immutable write.
         $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM $roundTable WHERE id=%d", $roundId), ARRAY_A);
         if (!$round || !self::round_open($round)) {
             return new WP_Error('round_closed', 'Czas na typowanie właśnie się zakończył.', ['status'=>409]);
