@@ -7,152 +7,390 @@ class DT_REST {
     }
 
     public static function routes(): void {
-        register_rest_route('decka-typer/v1','/bootstrap',[
-            'methods'=>'GET','callback'=>[__CLASS__,'bootstrap'],'permission_callback'=>'__return_true'
+        register_rest_route('decka-typer/v1', '/bootstrap', [
+            'methods'=>'GET', 'callback'=>[__CLASS__,'bootstrap'], 'permission_callback'=>'__return_true',
         ]);
-        register_rest_route('decka-typer/v1','/round/(?P<id>\d+)',[
-            'methods'=>'GET','callback'=>[__CLASS__,'round'],'permission_callback'=>'__return_true'
+        register_rest_route('decka-typer/v1', '/round/(?P<id>\\d+)', [
+            'methods'=>'GET', 'callback'=>[__CLASS__,'round'], 'permission_callback'=>'__return_true',
         ]);
-        register_rest_route('decka-typer/v1','/prediction',[
-            'methods'=>'POST','callback'=>[__CLASS__,'save_prediction'],'permission_callback'=>static fn()=>is_user_logged_in(),
-            'args'=>[
-                'match_id'=>['required'=>true,'type'=>'integer'],
-                'home_score'=>['required'=>true,'type'=>'integer','minimum'=>0,'maximum'=>250],
-                'away_score'=>['required'=>true,'type'=>'integer','minimum'=>0,'maximum'=>250],
-            ]
+        register_rest_route('decka-typer/v1', '/submission', [
+            'methods'=>'POST', 'callback'=>[__CLASS__,'save_submission'],
+            'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
-        register_rest_route('decka-typer/v1','/ranking',[
-            'methods'=>'GET','callback'=>[__CLASS__,'ranking'],'permission_callback'=>'__return_true'
+        register_rest_route('decka-typer/v1', '/ranking', [
+            'methods'=>'GET', 'callback'=>[__CLASS__,'ranking'], 'permission_callback'=>'__return_true',
         ]);
-        register_rest_route('decka-typer/v1','/me',[
-            'methods'=>'GET','callback'=>[__CLASS__,'me'],'permission_callback'=>static fn()=>is_user_logged_in()
+        register_rest_route('decka-typer/v1', '/me', [
+            'methods'=>'GET', 'callback'=>[__CLASS__,'me'], 'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
     }
 
     public static function bootstrap(WP_REST_Request $request): WP_REST_Response {
-        global $wpdb;
-        $s=DT_DB::settings();
-        $now=current_time('mysql');
-        $rounds=$wpdb->get_results($wpdb->prepare("SELECT r.*,
-            SUM(CASE WHEN m.status='finished' THEN 1 ELSE 0 END) finished_count, COUNT(m.id) match_count,
-            MIN(m.starts_at) first_match, MAX(m.starts_at) last_match,
-            MIN(CASE WHEN m.status!='finished' AND m.starts_at >= %s THEN m.starts_at END) next_match
-            FROM ".DT_DB::table('rounds')." r LEFT JOIN ".DT_DB::table('matches')." m ON m.round_id=r.id
-            WHERE r.season=%s GROUP BY r.id ORDER BY r.round_no ASC",$now,$s['season']),ARRAY_A);
-        foreach($rounds as &$r){$r['id']=(int)$r['id'];$r['round_no']=(int)$r['round_no'];$r['finished_count']=(int)$r['finished_count'];$r['match_count']=(int)$r['match_count'];}
-        $current=self::pick_current_round($rounds);
-        $roundData=$current ? self::round_payload((int)$current['id']) : null;
-        $ranking=DT_Scoring::ranking($s['season'],10);
-        $me=null;
-        if (is_user_logged_in()) $me=self::me_payload(get_current_user_id(),$s['season']);
+        $settings = DT_DB::settings();
+        $rounds = self::visible_rounds((string) $settings['season']);
+        $current = self::pick_current_round($rounds);
+        $roundData = $current ? self::round_payload((int) $current['id'], true) : null;
+        $me = is_user_logged_in() ? self::me_payload(get_current_user_id(), (string) $settings['season']) : null;
+
         return new WP_REST_Response([
-            'version'=>DT_VERSION,'season'=>$s['season'],'rounds'=>$rounds,'current_round'=>$roundData,
-            'ranking'=>$ranking,'me'=>$me,'server_time'=>current_time('mysql'),'scoring'=>[
-                'exact'=>(float)$s['points_exact'],'margin'=>(float)$s['points_margin'],'winner'=>(float)$s['points_winner']
-            ]
+            'version'=>DT_VERSION,
+            'season'=>$settings['season'],
+            'league_name'=>$settings['league_name'],
+            'timezone'=>wp_timezone_string() ?: 'Europe/Warsaw',
+            'rounds'=>$rounds,
+            'current_round'=>$roundData,
+            'ranking'=>DT_Scoring::ranking((string) $settings['season'], 10),
+            'me'=>$me,
+            'server_time'=>current_time('mysql'),
+            'scoring'=>['winner'=>(float) $settings['points_winner']],
         ]);
     }
 
     public static function round(WP_REST_Request $request): WP_REST_Response|WP_Error {
-        $id=(int)$request['id'];
-        $payload=self::round_payload($id);
-        return $payload ? new WP_REST_Response($payload) : new WP_Error('not_found','Nie znaleziono kolejki.',['status'=>404]);
+        $id = (int) $request['id'];
+        $payload = self::round_payload($id, true);
+        return $payload
+            ? new WP_REST_Response($payload)
+            : new WP_Error('not_found', 'Nie znaleziono dostępnej kolejki.', ['status'=>404]);
     }
 
-    private static function round_payload(int $roundId): ?array {
+    public static function save_submission(WP_REST_Request $request): WP_REST_Response|WP_Error {
         global $wpdb;
-        $round=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".DT_DB::table('rounds')." WHERE id=%d",$roundId),ARRAY_A);
-        if(!$round) return null;
-        $matches=$wpdb->get_results($wpdb->prepare("SELECT m.*, h.name home_name,h.short_name home_short,h.logo_url home_logo,
-            a.name away_name,a.short_name away_short,a.logo_url away_logo
-            FROM ".DT_DB::table('matches')." m
-            JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id
-            JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id
-            WHERE m.round_id=%d ORDER BY m.starts_at ASC,m.id ASC",$roundId),ARRAY_A);
-        $predMap=[];
-        if(is_user_logged_in() && $matches){
-            $ids=array_map(static fn($m)=>(int)$m['id'],$matches);
-            $place=implode(',',array_fill(0,count($ids),'%d'));
-            $q=$wpdb->prepare("SELECT * FROM ".DT_DB::table('predictions')." WHERE user_id=%d AND match_id IN ($place)",array_merge([get_current_user_id()],$ids));
-            foreach($wpdb->get_results($q,ARRAY_A) as $p)$predMap[(int)$p['match_id']]=$p;
-        }
-        foreach($matches as &$m){
-            $m['id']=(int)$m['id']; $m['round_id']=(int)$m['round_id'];
-            $m['score_home']=$m['score_home']===null?null:(int)$m['score_home'];
-            $m['score_away']=$m['score_away']===null?null:(int)$m['score_away'];
-            $m['start_time_known']=(bool)$m['start_time_known']; $m['manual_lock']=(bool)$m['manual_lock']; $m['featured']=(bool)$m['featured'];
-            $m['locked']=self::match_locked($m);
-            $p=$predMap[$m['id']]??null;
-            $m['prediction']=$p?['home_score'=>(int)$p['home_score'],'away_score'=>(int)$p['away_score'],'points'=>(float)$p['points'],'scoring_code'=>$p['scoring_code']]:null;
-            unset($m['source_hash']);
-        }
-        $round['id']=(int)$round['id'];$round['round_no']=(int)$round['round_no'];$round['matches']=$matches;
-        return $round;
-    }
+        $uid = get_current_user_id();
+        $body = $request->get_json_params();
+        $roundId = max(0, (int) ($body['round_id'] ?? 0));
+        $picks = is_array($body['picks'] ?? null) ? $body['picks'] : [];
+        if (!$roundId) return new WP_Error('invalid_round', 'Nie wybrano kolejki.', ['status'=>422]);
 
-    public static function save_prediction(WP_REST_Request $request): WP_REST_Response|WP_Error {
-        global $wpdb;
-        $matchId=(int)$request['match_id'];$home=(int)$request['home_score'];$away=(int)$request['away_score'];
-        if($home===$away) return new WP_Error('draw_not_allowed','W koszykówce typ końcowego wyniku nie może być remisowy.',['status'=>422]);
-        $match=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".DT_DB::table('matches')." WHERE id=%d",$matchId),ARRAY_A);
-        if(!$match) return new WP_Error('not_found','Nie znaleziono meczu.',['status'=>404]);
-        if(self::match_locked($match)) return new WP_Error('locked','Typowanie tego meczu jest już zamknięte.',['status'=>409]);
-        $uid=get_current_user_id();$now=current_time('mysql');
-        $existing=$wpdb->get_var($wpdb->prepare("SELECT id FROM ".DT_DB::table('predictions')." WHERE user_id=%d AND match_id=%d",$uid,$matchId));
-        $data=['home_score'=>$home,'away_score'=>$away,'updated_at'=>$now];
-        if($existing){$wpdb->update(DT_DB::table('predictions'),$data,['id'=>(int)$existing],['%d','%d','%s'],['%d']);}
-        else{$data+=['user_id'=>$uid,'match_id'=>$matchId,'submitted_at'=>$now];$wpdb->insert(DT_DB::table('predictions'),$data,['%d','%d','%d','%d','%s','%s']);}
-        DT_Logger::log('prediction_saved','Zapisano typ.', ['match_id'=>$matchId], 'info',$uid);
-        return new WP_REST_Response(['ok'=>true,'match_id'=>$matchId,'home_score'=>$home,'away_score'=>$away,'saved_at'=>$now]);
+        $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . DT_DB::table('rounds') . " WHERE id=%d", $roundId), ARRAY_A);
+        if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
+        if (!self::round_accepts_picks($round)) {
+            return new WP_Error('round_closed', 'Typowanie tej kolejki jest zamknięte.', ['status'=>409]);
+        }
+
+        $subTable = DT_DB::table('round_submissions');
+        $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $subTable WHERE user_id=%d AND round_id=%d", $uid, $roundId));
+        if ($existing) {
+            return new WP_Error('already_submitted', 'Ten kupon został już zapisany i nie można go edytować.', ['status'=>409]);
+        }
+
+        $matches = $wpdb->get_results($wpdb->prepare(
+            "SELECT id,home_team_id,away_team_id FROM " . DT_DB::table('matches') . " WHERE round_id=%d ORDER BY id",
+            $roundId
+        ), ARRAY_A);
+        if (!$matches) return new WP_Error('empty_round', 'Ta kolejka nie ma meczów.', ['status'=>422]);
+
+        $matchMap = [];
+        foreach ($matches as $m) $matchMap[(int) $m['id']] = [(int) $m['home_team_id'], (int) $m['away_team_id']];
+        $clean = [];
+        foreach ($picks as $pick) {
+            if (!is_array($pick)) continue;
+            $matchId = (int) ($pick['match_id'] ?? 0);
+            $teamId = (int) ($pick['team_id'] ?? 0);
+            if (!$matchId || !$teamId || !isset($matchMap[$matchId])) {
+                return new WP_Error('invalid_pick', 'Jeden z typów jest nieprawidłowy.', ['status'=>422]);
+            }
+            if (!in_array($teamId, $matchMap[$matchId], true)) {
+                return new WP_Error('invalid_team', 'Wybrana drużyna nie gra w tym meczu.', ['status'=>422]);
+            }
+            $clean[$matchId] = $teamId;
+        }
+        if (count($clean) !== count($matches)) {
+            return new WP_Error('incomplete_coupon', 'Przed zapisem wytypuj zwycięzcę każdego meczu.', ['status'=>422]);
+        }
+
+        // Re-check the close time immediately before the immutable write.
+        $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . DT_DB::table('rounds') . " WHERE id=%d", $roundId), ARRAY_A);
+        if (!$round || !self::round_accepts_picks($round)) {
+            return new WP_Error('round_closed', 'Czas na typowanie właśnie się zakończył.', ['status'=>409]);
+        }
+
+        $now = current_time('mysql');
+        $predTable = DT_DB::table('predictions');
+        $wpdb->query('START TRANSACTION');
+        try {
+            $inserted = $wpdb->insert($subTable, [
+                'user_id'=>$uid,
+                'round_id'=>$roundId,
+                'prediction_count'=>count($clean),
+                'submitted_at'=>$now,
+            ], ['%d','%d','%d','%s']);
+            if (!$inserted) throw new RuntimeException('Kupon został już zapisany lub nie można utworzyć zgłoszenia.');
+
+            foreach ($clean as $matchId=>$teamId) {
+                // A partial legacy 0.1.x pick may already exist. It may be finalized once as part of the
+                // complete 0.2.0 coupon; after round_submissions is created there is no update route anymore.
+                $predictionId = $wpdb->get_var($wpdb->prepare(
+                    "SELECT id FROM $predTable WHERE user_id=%d AND match_id=%d",
+                    $uid, $matchId
+                ));
+                if ($predictionId) {
+                    $ok = $wpdb->update($predTable, [
+                        'selected_team_id'=>$teamId,
+                        'home_score'=>null,
+                        'away_score'=>null,
+                        'points'=>0,
+                        'scoring_code'=>null,
+                        'updated_at'=>$now,
+                    ], ['id'=>(int) $predictionId], ['%d','%d','%d','%f','%s','%s'], ['%d']);
+                    if ($ok === false) throw new RuntimeException('Nie udało się zaktualizować starego typu.');
+                } else {
+                    $ok = $wpdb->insert($predTable, [
+                        'user_id'=>$uid,
+                        'match_id'=>$matchId,
+                        'selected_team_id'=>$teamId,
+                        'home_score'=>null,
+                        'away_score'=>null,
+                        'points'=>0,
+                        'scoring_code'=>null,
+                        'submitted_at'=>$now,
+                        'updated_at'=>$now,
+                    ], ['%d','%d','%d','%d','%d','%f','%s','%s','%s']);
+                    if (!$ok) throw new RuntimeException('Nie udało się zapisać wszystkich typów.');
+                }
+            }
+            $wpdb->query('COMMIT');
+        } catch (Throwable $e) {
+            $wpdb->query('ROLLBACK');
+            DT_Logger::log('submission_error', $e->getMessage(), ['round_id'=>$roundId], 'error', $uid);
+            return new WP_Error('save_failed', 'Nie udało się zapisać kuponu. Odśwież stronę i spróbuj ponownie.', ['status'=>409]);
+        }
+
+        DT_Logger::log('round_submitted', 'Zapisano nieedytowalny kupon kolejki.', [
+            'round_id'=>$roundId, 'prediction_count'=>count($clean),
+        ], 'notice', $uid);
+        return new WP_REST_Response(['ok'=>true, 'round_id'=>$roundId, 'submitted_at'=>$now]);
     }
 
     public static function ranking(WP_REST_Request $request): WP_REST_Response {
-        $s=DT_DB::settings();$roundId=max(0,(int)$request->get_param('round_id'));
-        return new WP_REST_Response(['season'=>$s['season'],'round_id'=>$roundId,'ranking'=>DT_Scoring::ranking($s['season'],100,$roundId)]);
+        $settings = DT_DB::settings();
+        $roundId = max(0, (int) $request->get_param('round_id'));
+        return new WP_REST_Response([
+            'season'=>$settings['season'],
+            'round_id'=>$roundId,
+            'ranking'=>DT_Scoring::ranking((string) $settings['season'], 100, $roundId),
+        ]);
     }
 
     public static function me(WP_REST_Request $request): WP_REST_Response {
-        $s=DT_DB::settings();return new WP_REST_Response(self::me_payload(get_current_user_id(),$s['season']));
+        $settings = DT_DB::settings();
+        return new WP_REST_Response(self::me_payload(get_current_user_id(), (string) $settings['season']));
     }
 
-    private static function me_payload(int $uid,string $season): array {
+    private static function visible_rounds(string $season): array {
         global $wpdb;
-        $u=get_userdata($uid);
-        $row=$wpdb->get_row($wpdb->prepare("SELECT COUNT(p.id) predictions,COALESCE(SUM(p.points),0) points,
-            SUM(CASE WHEN p.scoring_code='exact' THEN 1 ELSE 0 END) exact_hits
-            FROM ".DT_DB::table('predictions')." p JOIN ".DT_DB::table('matches')." m ON m.id=p.match_id
-            JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id WHERE p.user_id=%d AND r.season=%s",$uid,$season),ARRAY_A);
-        $adj=(float)$wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(points),0) FROM ".DT_DB::table('point_adjustments')." WHERE user_id=%d AND season=%s",$uid,$season));
-        $ranking=DT_Scoring::ranking($season,500);$rank=null;
-        foreach($ranking as $r)if((int)$r['user_id']===$uid){$rank=(int)$r['rank'];break;}
-        $history=$wpdb->get_results($wpdb->prepare("SELECT r.round_no,m.starts_at,h.name home_name,a.name away_name,p.home_score,p.away_score,p.points,m.score_home,m.score_away
-            FROM ".DT_DB::table('predictions')." p JOIN ".DT_DB::table('matches')." m ON m.id=p.match_id
-            JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id
-            JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id WHERE p.user_id=%d AND r.season=%s
-            ORDER BY m.starts_at DESC,p.id DESC LIMIT 100",$uid,$season),ARRAY_A);
-        foreach($history as &$h){$h['round_no']=(int)$h['round_no'];$h['home_score']=(int)$h['home_score'];$h['away_score']=(int)$h['away_score'];$h['points']=(float)$h['points'];$h['result_known']=$h['score_home']!==null&&$h['score_away']!==null;unset($h['score_home'],$h['score_away']);}
-        return ['user_id'=>$uid,'display_name'=>$u?$u->display_name:'Kibic','avatar'=>get_avatar_url($uid,['size'=>96]),
-            'predictions'=>(int)($row['predictions']??0),'points'=>(float)($row['points']??0)+$adj,'exact_hits'=>(int)($row['exact_hits']??0),'rank'=>$rank,'history'=>$history];
+        $now = current_time('mysql');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT r.*,
+                COUNT(m.id) match_count,
+                SUM(CASE WHEN m.status='finished' THEN 1 ELSE 0 END) finished_count,
+                MIN(m.starts_at) first_match,
+                MAX(m.starts_at) last_match
+             FROM " . DT_DB::table('rounds') . " r
+             LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
+             WHERE r.season=%s
+             GROUP BY r.id
+             ORDER BY r.round_no ASC",
+            $season
+        ), ARRAY_A);
+
+        $submissionMap = [];
+        if (is_user_logged_in()) {
+            $subs = $wpdb->get_results($wpdb->prepare(
+                "SELECT round_id,submitted_at,prediction_count FROM " . DT_DB::table('round_submissions') . " WHERE user_id=%d",
+                get_current_user_id()
+            ), ARRAY_A);
+            foreach ($subs as $sub) $submissionMap[(int) $sub['round_id']] = $sub;
+        }
+
+        $visible = [];
+        foreach ($rows as $row) {
+            $firstMatch = (string) ($row['first_match'] ?? '');
+            $pastStarted = $firstMatch !== '' && $firstMatch <= $now;
+            $id = (int) $row['id'];
+            $sub = $submissionMap[$id] ?? null;
+            $explicitOpen = (string) $row['status'] === 'open';
+            // Future drafts/closed rounds stay hidden. A round becomes visible when the admin opens it,
+            // when its first game has started, or to a user who has already submitted that coupon.
+            if (!$explicitOpen && !$pastStarted && !$sub) continue;
+            $isOpen = self::round_accepts_picks($row);
+            $row['id'] = $id;
+            $row['round_no'] = (int) $row['round_no'];
+            $row['match_count'] = (int) $row['match_count'];
+            $row['finished_count'] = (int) $row['finished_count'];
+            $row['is_open'] = $isOpen;
+            $row['display_status'] = $isOpen ? 'open' : 'closed';
+            $row['submitted'] = (bool) $sub;
+            $row['closes_at_iso'] = self::iso_datetime($row['closes_at'] ?? null);
+            $row['first_match_iso'] = self::iso_datetime($row['first_match'] ?? null);
+            $row['last_match_iso'] = self::iso_datetime($row['last_match'] ?? null);
+            $visible[] = $row;
+        }
+        return $visible;
     }
 
-    private static function match_locked(array $m): bool {
-        if(($m['status']??'')==='finished') return true;
-        if(empty($m['starts_at'])) return true;
-        $tz=wp_timezone();
-        try{$start=new DateTimeImmutable($m['starts_at'],$tz);}catch(Throwable $e){return true;}
-        return (new DateTimeImmutable('now',$tz)) >= $start;
+    private static function round_payload(int $roundId, bool $visibleOnly = false): ?array {
+        global $wpdb;
+        $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . DT_DB::table('rounds') . " WHERE id=%d", $roundId), ARRAY_A);
+        if (!$round) return null;
+
+        $matches = $wpdb->get_results($wpdb->prepare(
+            "SELECT m.*, h.name home_name,h.logo_url home_logo,
+                    a.name away_name,a.logo_url away_logo
+             FROM " . DT_DB::table('matches') . " m
+             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
+             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
+             WHERE m.round_id=%d ORDER BY COALESCE(m.starts_at,'9999-12-31 23:59:59') ASC,m.id ASC",
+            $roundId
+        ), ARRAY_A);
+        $now = current_time('mysql');
+        $firstMatch = '';
+        foreach ($matches as $m) {
+            if (!empty($m['starts_at']) && ($firstMatch === '' || $m['starts_at'] < $firstMatch)) $firstMatch = $m['starts_at'];
+        }
+        $pastStarted = $firstMatch !== '' && $firstMatch <= $now;
+
+        $predMap = [];
+        $submission = null;
+        if (is_user_logged_in()) {
+            $submission = $wpdb->get_row($wpdb->prepare(
+                "SELECT submitted_at,prediction_count FROM " . DT_DB::table('round_submissions') . " WHERE user_id=%d AND round_id=%d",
+                get_current_user_id(), $roundId
+            ), ARRAY_A);
+            if ($matches) {
+                $ids = array_map(static fn($m)=>(int) $m['id'], $matches);
+                $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+                $query = $wpdb->prepare(
+                    "SELECT * FROM " . DT_DB::table('predictions') . " WHERE user_id=%d AND match_id IN ($placeholders)",
+                    array_merge([get_current_user_id()], $ids)
+                );
+                foreach ($wpdb->get_results($query, ARRAY_A) as $prediction) {
+                    $predMap[(int) $prediction['match_id']] = $prediction;
+                }
+            }
+        }
+
+        if ($visibleOnly && (string) $round['status'] !== 'open' && !$pastStarted && !$submission) return null;
+
+        $isOpen = self::round_accepts_picks($round);
+        foreach ($matches as &$match) {
+            $match['id'] = (int) $match['id'];
+            $match['round_id'] = (int) $match['round_id'];
+            $match['home_team_id'] = (int) $match['home_team_id'];
+            $match['away_team_id'] = (int) $match['away_team_id'];
+            $match['score_home'] = $match['score_home'] === null ? null : (int) $match['score_home'];
+            $match['score_away'] = $match['score_away'] === null ? null : (int) $match['score_away'];
+            $match['start_time_known'] = (bool) $match['start_time_known'];
+            $match['manual_lock'] = (bool) $match['manual_lock'];
+            $match['featured'] = (bool) $match['featured'];
+            $match['starts_at_iso'] = self::iso_datetime($match['starts_at'] ?? null);
+            $prediction = $predMap[$match['id']] ?? null;
+            $match['prediction'] = $prediction ? [
+                'selected_team_id'=>(int) $prediction['selected_team_id'],
+                'points'=>(float) $prediction['points'],
+                'scoring_code'=>$prediction['scoring_code'],
+            ] : null;
+            unset($match['source_hash']);
+        }
+        unset($match);
+
+        $round['id'] = (int) $round['id'];
+        $round['round_no'] = (int) $round['round_no'];
+        $round['matches'] = $matches;
+        $round['is_open'] = $isOpen;
+        $round['display_status'] = $isOpen ? 'open' : 'closed';
+        $round['closes_at_iso'] = self::iso_datetime($round['closes_at'] ?? null);
+        $round['submission'] = $submission ? [
+            'submitted'=>true,
+            'submitted_at'=>$submission['submitted_at'],
+            'submitted_at_iso'=>self::iso_datetime($submission['submitted_at']),
+            'prediction_count'=>(int) $submission['prediction_count'],
+        ] : ['submitted'=>false];
+        $round['can_submit'] = is_user_logged_in() && $isOpen && !$submission;
+        return $round;
+    }
+
+    private static function me_payload(int $uid, string $season): array {
+        global $wpdb;
+        $user = get_userdata($uid);
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT COUNT(p.id) predictions,COALESCE(SUM(p.points),0) points,
+                    SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) winner_hits
+             FROM " . DT_DB::table('predictions') . " p
+             JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
+             JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+             WHERE p.user_id=%d AND r.season=%s AND p.selected_team_id IS NOT NULL",
+            $uid, $season
+        ), ARRAY_A);
+        $submissions = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " s
+             JOIN " . DT_DB::table('rounds') . " r ON r.id=s.round_id
+             WHERE s.user_id=%d AND r.season=%s",
+            $uid, $season
+        ));
+        $adjustment = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(points),0) FROM " . DT_DB::table('point_adjustments') . " WHERE user_id=%d AND season=%s",
+            $uid, $season
+        ));
+        $ranking = DT_Scoring::ranking($season, 500);
+        $rank = null;
+        foreach ($ranking as $item) if ((int) $item['user_id'] === $uid) { $rank = (int) $item['rank']; break; }
+
+        $history = $wpdb->get_results($wpdb->prepare(
+            "SELECT r.round_no,m.starts_at,h.name home_name,a.name away_name,
+                    p.selected_team_id,p.points,p.scoring_code,
+                    h.id home_team_id,a.id away_team_id,m.score_home,m.score_away
+             FROM " . DT_DB::table('predictions') . " p
+             JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
+             JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
+             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
+             WHERE p.user_id=%d AND r.season=%s AND p.selected_team_id IS NOT NULL
+             ORDER BY r.round_no DESC,m.starts_at DESC,p.id DESC LIMIT 160",
+            $uid, $season
+        ), ARRAY_A);
+        foreach ($history as &$item) {
+            $selected = (int) $item['selected_team_id'];
+            $item['round_no'] = (int) $item['round_no'];
+            $item['selected_team_id'] = $selected;
+            $item['selected_team_name'] = $selected === (int) $item['home_team_id'] ? $item['home_name'] : $item['away_name'];
+            $item['points'] = (float) $item['points'];
+            $item['result_known'] = $item['score_home'] !== null && $item['score_away'] !== null;
+            $item['starts_at_iso'] = self::iso_datetime($item['starts_at'] ?? null);
+            unset($item['home_team_id'], $item['away_team_id'], $item['score_home'], $item['score_away']);
+        }
+        unset($item);
+
+        return [
+            'user_id'=>$uid,
+            'display_name'=>$user ? $user->display_name : 'Kibic',
+            'avatar'=>get_avatar_url($uid, ['size'=>96]),
+            'predictions'=>(int) ($row['predictions'] ?? 0),
+            'submissions'=>$submissions,
+            'points'=>(float) ($row['points'] ?? 0) + $adjustment,
+            'winner_hits'=>(int) ($row['winner_hits'] ?? 0),
+            'rank'=>$rank,
+            'history'=>$history,
+        ];
+    }
+
+    public static function round_accepts_picks(array $round): bool {
+        if (($round['status'] ?? '') !== 'open') return false;
+        if (empty($round['closes_at'])) return false;
+        return (string) $round['closes_at'] > current_time('mysql');
     }
 
     private static function pick_current_round(array $rounds): ?array {
-        if(!$rounds)return null;
-        $future=array_values(array_filter($rounds,static fn($r)=>!empty($r['next_match'])));
-        if($future){
-            usort($future,static fn($a,$b)=>strcmp((string)$a['next_match'],(string)$b['next_match']));
-            return $future[0];
-        }
-        foreach($rounds as $r){
-            if($r['match_count']>0 && $r['finished_count']<$r['match_count']) return $r;
-        }
+        if (!$rounds) return null;
+        foreach ($rounds as $round) if (!empty($round['is_open'])) return $round;
         return end($rounds) ?: null;
+    }
+
+    private static function iso_datetime(?string $value): ?string {
+        if (!$value) return null;
+        $tz = wp_timezone();
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, $tz);
+        if (!$date) $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $value, $tz);
+        return $date ? $date->format(DateTimeInterface::ATOM) : null;
     }
 }

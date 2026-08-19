@@ -11,6 +11,7 @@ class DT_DB {
         global $wpdb;
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         $charset = $wpdb->get_charset_collate();
+        $oldVersion = (string) get_option('dt_db_version', '0.0.0');
 
         $sql = [];
         $sql[] = "CREATE TABLE " . self::table('teams') . " (
@@ -43,7 +44,8 @@ class DT_DB {
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY season_round (season, round_no),
-            KEY status (status)
+            KEY status (status),
+            KEY closes_at (closes_at)
         ) $charset;";
 
         $sql[] = "CREATE TABLE " . self::table('matches') . " (
@@ -75,8 +77,9 @@ class DT_DB {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id BIGINT UNSIGNED NOT NULL,
             match_id BIGINT UNSIGNED NOT NULL,
-            home_score SMALLINT NOT NULL,
-            away_score SMALLINT NOT NULL,
+            selected_team_id BIGINT UNSIGNED NULL,
+            home_score SMALLINT NULL,
+            away_score SMALLINT NULL,
             points DECIMAL(8,2) NOT NULL DEFAULT 0,
             scoring_code VARCHAR(40) NULL,
             submitted_at DATETIME NOT NULL,
@@ -84,7 +87,20 @@ class DT_DB {
             PRIMARY KEY (id),
             UNIQUE KEY user_match (user_id, match_id),
             KEY match_id (match_id),
+            KEY selected_team_id (selected_team_id),
             KEY points (points)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE " . self::table('round_submissions') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            round_id BIGINT UNSIGNED NOT NULL,
+            prediction_count INT NOT NULL DEFAULT 0,
+            submitted_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY user_round (user_id, round_id),
+            KEY round_id (round_id),
+            KEY submitted_at (submitted_at)
         ) $charset;";
 
         $sql[] = "CREATE TABLE " . self::table('social_accounts') . " (
@@ -128,12 +144,64 @@ class DT_DB {
 
         foreach ($sql as $statement) dbDelta($statement);
 
-        add_option('dt_settings', self::defaults());
+        if (version_compare($oldVersion, '0.2.0', '<')) {
+            self::migrate_to_020();
+        }
+
+        $existing = (array) get_option('dt_settings', []);
+        $settings = wp_parse_args($existing, self::defaults());
+        foreach (['apple_client_id','apple_team_id','apple_key_id','apple_private_key','points_exact','points_margin'] as $deprecated) {
+            unset($settings[$deprecated]);
+        }
+        update_option('dt_settings', $settings);
         update_option('dt_db_version', DT_VERSION);
 
         self::ensure_page();
         self::ensure_cron();
         flush_rewrite_rules();
+    }
+
+    private static function migrate_to_020(): void {
+        global $wpdb;
+        $pred = self::table('predictions');
+        $mat = self::table('matches');
+        $rnd = self::table('rounds');
+        $sub = self::table('round_submissions');
+
+        // Convert any legacy score predictions to a winner selection.
+        $wpdb->query("UPDATE $pred p JOIN $mat m ON m.id=p.match_id
+            SET p.selected_team_id = CASE
+                WHEN p.home_score > p.away_score THEN m.home_team_id
+                WHEN p.away_score > p.home_score THEN m.away_team_id
+                ELSE NULL END
+            WHERE p.selected_team_id IS NULL AND p.home_score IS NOT NULL AND p.away_score IS NOT NULL");
+
+        // Recalculate already finished legacy games under the new winner-only scoring rules.
+        if (class_exists('DT_Scoring')) {
+            $finished = $wpdb->get_col("SELECT id FROM $mat WHERE score_home IS NOT NULL AND score_away IS NOT NULL");
+            foreach ($finished as $matchId) DT_Scoring::recalc_match((int) $matchId);
+        }
+
+        // Legacy imported rounds were marked as published. In 0.2.0 future rounds must be explicitly opened by an administrator.
+        $wpdb->query("UPDATE $rnd SET status='draft', opens_at=NULL, closes_at=NULL WHERE status='published'");
+
+        // Lock only complete legacy coupons. Partial 0.1.x picks stay available once so the user can complete
+        // the whole coupon in the new 0.2.0 flow; the first new submission then becomes immutable.
+        $wpdb->query("INSERT IGNORE INTO $sub (user_id, round_id, prediction_count, submitted_at)
+            SELECT p.user_id, m.round_id, COUNT(*), MIN(p.submitted_at)
+            FROM $pred p JOIN $mat m ON m.id=p.match_id
+            WHERE p.selected_team_id IS NOT NULL
+            GROUP BY p.user_id, m.round_id
+            HAVING COUNT(*) = (SELECT COUNT(*) FROM $mat mm WHERE mm.round_id=m.round_id)");
+    }
+
+    public static function close_expired_rounds(): void {
+        global $wpdb;
+        $now = current_time('mysql');
+        $wpdb->query($wpdb->prepare(
+            "UPDATE " . self::table('rounds') . " SET status='closed', updated_at=%s WHERE status='open' AND closes_at IS NOT NULL AND closes_at<=%s",
+            $now, $now
+        ));
     }
 
     public static function deactivate(): void {
@@ -145,12 +213,11 @@ class DT_DB {
     public static function defaults(): array {
         return [
             'season' => '2026/2027',
+            'league_name' => 'PEKAO S.A. 1 LIGA',
             'source_url' => 'https://1lm.pzkosz.pl/terminarz-i-wyniki.html',
             'sync_enabled' => 1,
             'sync_interval' => 'hourly',
             'unknown_time_lock' => '00:00',
-            'points_exact' => 5,
-            'points_margin' => 3,
             'points_winner' => 1,
             'perfect_round_bonus' => 0,
             'show_community_picks_after_lock' => 1,
@@ -161,10 +228,6 @@ class DT_DB {
             'google_client_secret' => '',
             'facebook_app_id' => '',
             'facebook_app_secret' => '',
-            'apple_client_id' => '',
-            'apple_team_id' => '',
-            'apple_key_id' => '',
-            'apple_private_key' => '',
             'typer_page_id' => 0,
         ];
     }
