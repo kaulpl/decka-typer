@@ -2,12 +2,20 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * Hardened immutable round submission endpoint.
- * Registered after DT_REST and intentionally overrides only POST /submission.
+ * Immutable round submission service.
+ *
+ * 0.2.4 uses authenticated admin-ajax.php as the primary frontend transport.
+ * The REST route stays available as a compatibility fallback, while both
+ * transports use exactly the same validation and database write service.
  */
 class DT_Submission {
+    private const AJAX_ACTION = 'dt_save_submission';
+    private const AJAX_NONCE = 'dt_save_submission_nonce';
+
     public static function register(): void {
         add_action('rest_api_init', [__CLASS__, 'route'], 20);
+        add_action('wp_ajax_' . self::AJAX_ACTION, [__CLASS__, 'ajax_save']);
+        add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_bridge'], 8);
     }
 
     public static function route(): void {
@@ -18,14 +26,65 @@ class DT_Submission {
         ], true);
     }
 
+    public static function enqueue_bridge(): void {
+        if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
+
+        wp_enqueue_script(
+            'dt-submission-ajax',
+            DT_URL . 'assets/js/submission-ajax.js',
+            [],
+            DT_VERSION,
+            true
+        );
+        wp_localize_script('dt-submission-ajax', 'DeckaTyperSubmission', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'action' => self::AJAX_ACTION,
+            'nonce' => wp_create_nonce(self::AJAX_NONCE),
+        ]);
+    }
+
     public static function save(WP_REST_Request $request): WP_REST_Response|WP_Error {
-        global $wpdb;
-
-        $uid = get_current_user_id();
-        if (!$uid) return new WP_Error('not_logged_in', 'Zaloguj się ponownie i spróbuj jeszcze raz.', ['status'=>401]);
-
         $body = $request->get_json_params();
         if (!is_array($body)) $body = [];
+        return self::save_payload($body, get_current_user_id());
+    }
+
+    public static function ajax_save(): void {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message'=>'Sesja wygasła. Zaloguj się ponownie.'], 401);
+        }
+
+        if (!check_ajax_referer(self::AJAX_NONCE, 'nonce', false)) {
+            wp_send_json_error(['message'=>'Sesja bezpieczeństwa wygasła. Odśwież stronę i spróbuj ponownie.'], 403);
+        }
+
+        $payloadRaw = isset($_POST['payload']) ? wp_unslash((string) $_POST['payload']) : '';
+        $body = json_decode($payloadRaw, true);
+        if (!is_array($body)) {
+            wp_send_json_error(['message'=>'Nieprawidłowe dane kuponu. Odśwież stronę i spróbuj ponownie.'], 422);
+        }
+
+        $result = self::save_payload($body, get_current_user_id());
+
+        if (is_wp_error($result)) {
+            $errorData = $result->get_error_data();
+            $status = is_array($errorData) ? (int)($errorData['status'] ?? 500) : 500;
+            if ($status < 400 || $status > 599) $status = 500;
+            wp_send_json_error([
+                'code'=>$result->get_error_code(),
+                'message'=>$result->get_error_message(),
+            ], $status);
+        }
+
+        $data = $result instanceof WP_REST_Response ? $result->get_data() : $result;
+        wp_send_json_success(is_array($data) ? $data : ['ok'=>true], 201);
+    }
+
+    private static function save_payload(array $body, int $uid): WP_REST_Response|WP_Error {
+        global $wpdb;
+
+        if (!$uid) return new WP_Error('not_logged_in', 'Zaloguj się ponownie i spróbuj jeszcze raz.', ['status'=>401]);
+
         $roundId = max(0, (int)($body['round_id'] ?? 0));
         $picks = isset($body['picks']) && is_array($body['picks']) ? $body['picks'] : [];
         if (!$roundId) return new WP_Error('invalid_round', 'Nie wybrano kolejki.', ['status'=>422]);
@@ -39,7 +98,7 @@ class DT_Submission {
             $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table)));
             if ((string)$exists !== (string)$table) {
                 DT_Logger::log('submission_schema_missing', 'Brak wymaganej tabeli podczas zapisu kuponu.', ['table'=>$table], 'error', $uid);
-                return new WP_Error('schema_missing', 'Wtyczka wymaga aktualizacji bazy danych. Wejdź ponownie do panelu Decka Typer i spróbuj jeszcze raz.', ['status'=>500]);
+                return new WP_Error('schema_missing', 'Wtyczka wymaga aktualizacji bazy danych. Otwórz panel Decka Typer i odśwież stronę.', ['status'=>500]);
             }
         }
 
@@ -47,7 +106,11 @@ class DT_Submission {
         if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
         if (!self::round_open($round)) return new WP_Error('round_closed', 'Typowanie tej kolejki jest zamknięte.', ['status'=>409]);
 
-        $already = $wpdb->get_var($wpdb->prepare("SELECT id FROM $subTable WHERE user_id=%d AND round_id=%d LIMIT 1", $uid, $roundId));
+        $already = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $subTable WHERE user_id=%d AND round_id=%d LIMIT 1",
+            $uid,
+            $roundId
+        ));
         if ($already) return new WP_Error('already_submitted', 'Ten kupon został już zapisany i nie można go edytować.', ['status'=>409]);
 
         $matches = $wpdb->get_results($wpdb->prepare(
@@ -66,6 +129,7 @@ class DT_Submission {
             if (!is_array($pick)) continue;
             $matchId = (int)($pick['match_id'] ?? 0);
             $teamId = (int)($pick['team_id'] ?? 0);
+
             if (!$matchId || !$teamId || !isset($matchMap[$matchId])) {
                 return new WP_Error('invalid_pick', 'Jeden z typów jest nieprawidłowy.', ['status'=>422]);
             }
@@ -79,7 +143,6 @@ class DT_Submission {
             return new WP_Error('incomplete_coupon', 'Przed zapisem wytypuj zwycięzcę każdego meczu.', ['status'=>422]);
         }
 
-        // Last server-side lock check immediately before the immutable transaction.
         $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM $roundTable WHERE id=%d", $roundId), ARRAY_A);
         if (!$round || !self::round_open($round)) {
             return new WP_Error('round_closed', 'Czas na typowanie właśnie się zakończył.', ['status'=>409]);
@@ -87,23 +150,26 @@ class DT_Submission {
 
         $now = current_time('mysql');
         $wpdb->last_error = '';
+        $transactionStarted = false;
 
         try {
             if ($wpdb->query('START TRANSACTION') === false) {
                 throw new RuntimeException($wpdb->last_error ?: 'Nie można rozpocząć transakcji zapisu.');
             }
+            $transactionStarted = true;
 
             $sql = $wpdb->prepare(
                 "INSERT INTO $subTable (user_id,round_id,prediction_count,submitted_at) VALUES (%d,%d,%d,%s)",
-                $uid, $roundId, count($clean), $now
+                $uid,
+                $roundId,
+                count($clean),
+                $now
             );
             if ($wpdb->query($sql) !== 1) {
                 throw new RuntimeException($wpdb->last_error ?: 'Nie można utworzyć kuponu.');
             }
 
             foreach ($clean as $matchId => $teamId) {
-                // ON DUPLICATE KEY is used only for legacy partial 0.1.x picks.
-                // Once round_submissions exists, this endpoint cannot be used again by that user/round.
                 $sql = $wpdb->prepare(
                     "INSERT INTO $predTable
                         (user_id,match_id,selected_team_id,home_score,away_score,points,scoring_code,submitted_at,updated_at)
@@ -115,7 +181,11 @@ class DT_Submission {
                         points=0,
                         scoring_code=NULL,
                         updated_at=VALUES(updated_at)",
-                    $uid, $matchId, $teamId, $now, $now
+                    $uid,
+                    $matchId,
+                    $teamId,
+                    $now,
+                    $now
                 );
                 if ($wpdb->query($sql) === false) {
                     throw new RuntimeException($wpdb->last_error ?: 'Nie udało się zapisać typu dla meczu ' . $matchId . '.');
@@ -125,18 +195,21 @@ class DT_Submission {
             if ($wpdb->query('COMMIT') === false) {
                 throw new RuntimeException($wpdb->last_error ?: 'Nie udało się zatwierdzić kuponu.');
             }
+            $transactionStarted = false;
         } catch (Throwable $e) {
-            $wpdb->query('ROLLBACK');
+            if ($transactionStarted) $wpdb->query('ROLLBACK');
             DT_Logger::log('submission_error', $e->getMessage(), [
                 'round_id'=>$roundId,
                 'db_error'=>$wpdb->last_error,
+                'transport'=>wp_doing_ajax() ? 'ajax' : 'rest',
             ], 'error', $uid);
-            return new WP_Error('save_failed', 'Nie udało się zapisać kuponu. Szczegóły błędu zapisano w Historii Typera.', ['status'=>500]);
+            return new WP_Error('save_failed', 'Nie udało się zapisać kuponu. Szczegóły zapisano w Historii Typera.', ['status'=>500]);
         }
 
         DT_Logger::log('round_submitted', 'Zapisano nieedytowalny kupon kolejki.', [
             'round_id'=>$roundId,
             'prediction_count'=>count($clean),
+            'transport'=>wp_doing_ajax() ? 'ajax' : 'rest',
         ], 'notice', $uid);
 
         return new WP_REST_Response([
