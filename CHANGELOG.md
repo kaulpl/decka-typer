@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.4 — 2026-08-19
+
+- zapis kuponu na `/typer` został przeniesiony z POST REST do uwierzytelnionego `admin-ajax.php`, aby wyeliminować odpowiedzi HTML/fatal błędnie interpretowane przez frontend jako „Błąd odpowiedzi serwera”,
+- dodany osobny nonce dla zapisu kuponu AJAX,
+- REST POST `/submission` pozostaje jako kompatybilny fallback, ale standardowy frontend korzysta z AJAX,
+- oba transporty korzystają z tej samej walidacji i jednej transakcji zapisu, więc nadal obowiązuje jeden nieedytowalny kupon na kolejkę,
+- dodany transport bridge, który przechwytuje wyłącznie zapis `/submission` i nie zmienia pozostałych odczytów REST,
+- jeśli hosting zwróci niepoprawną odpowiedź zamiast JSON, użytkownik dostaje teraz jednoznaczny komunikat diagnostyczny zamiast ogólnego „Błąd odpowiedzi serwera”,
+- błędy zapisu nadal trafiają do Historii Typera wraz z informacją, czy zapis szedł przez AJAX czy REST.
+
 ## 0.2.3 — 2026-08-19
 
 - naprawiony zapis nieedytowalnego kuponu kolejki przez osobny, utwardzony endpoint REST,
