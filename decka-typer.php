@@ -7,6 +7,7 @@
  * Text Domain: decka-typer
  * Requires at least: 6.5
  * Requires PHP: 8.0
+ * Update URI: https://github.com/kaulpl/decka-typer
  */
 
 if (!defined('ABSPATH')) exit;
@@ -24,6 +25,7 @@ require_once DT_DIR . 'includes/class-dt-oauth.php';
 require_once DT_DIR . 'includes/class-dt-rest.php';
 require_once DT_DIR . 'includes/class-dt-admin.php';
 require_once DT_DIR . 'includes/class-dt-frontend.php';
+require_once DT_DIR . 'includes/class-dt-updater.php';
 require_once DT_DIR . 'includes/class-dt-plugin.php';
 
 register_activation_hook(__FILE__, ['DT_DB', 'activate']);
