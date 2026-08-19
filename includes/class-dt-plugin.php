@@ -11,6 +11,7 @@ class DT_Plugin {
         DT_REST::register();
         DT_Admin::register();
         DT_Frontend::register();
+        DT_Updater::register();
         add_filter('plugin_action_links_'.plugin_basename(DT_FILE),[$this,'links']);
     }
     public function links(array $links):array{array_unshift($links,'<a href="'.esc_url(admin_url('admin.php?page=decka-typer')).'">Pulpit Typera</a>');return $links;}
