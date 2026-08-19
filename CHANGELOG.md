@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3 — 2026-08-19
+
+- naprawiony zapis nieedytowalnego kuponu kolejki przez osobny, utwardzony endpoint REST,
+- zapis korzysta z jednoznacznych zapytań SQL w transakcji i zapisuje szczegóły błędu do Historii Typera zamiast zwracać nieczytelną odpowiedź serwera,
+- dodana kontrola obecności wymaganych tabel bazy danych przed zapisem kuponu,
+- fizycznie dołączono do paczki wtyczki 16 lokalnych logotypów drużyn 1LM,
+- lokalne logotypy są ponownie przypisywane do drużyn po aktualizacji do 0.2.3 i są dostępne również bez wizyty w panelu administratora,
+- z ekranu logowania `/typer` usunięto opcję „Zaloguj kontem strony” oraz separator prowadzący do logowania WordPress,
+- usunięto techniczne pliki pomocnicze pozostawione po wcześniejszym procesie publikacji.
+
 ## 0.2.2 — 2026-08-19
 
 - mechanizm sprawdzania aktualizacji nie korzysta już z limitowanego endpointu GitHub REST API, dzięki czemu eliminuje komunikaty HTTP 403 wynikające z limitu anonimowych zapytań,
