@@ -1,0 +1,43 @@
+name: Validate plugin
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: PHP and JavaScript syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
+          coverage: none
+
+      - name: PHP syntax
+        shell: bash
+        run: find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+
+      - name: JavaScript syntax
+        shell: bash
+        run: find . -type f -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
+
+      - name: Version consistency
+        shell: bash
+        run: |
+          VERSION="$(tr -d '\r\n ' < VERSION)"
+          grep -F "Version: ${VERSION}" decka-typer.php
+          grep -F "define('DT_VERSION', '${VERSION}')" decka-typer.php
