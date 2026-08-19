@@ -5,7 +5,7 @@ on:
     branches:
       - 'agent/**'
     paths:
-      - '.dev/plugin-payload.zip'
+      - '.dev/APPLY'
 
 permissions:
   contents: write
@@ -17,12 +17,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
+      - name: Rebuild and verify payload
+        shell: bash
+        run: |
+          cat .dev/payload.part.* | tr -d '\r\n' | base64 --decode > /tmp/decka-v020.zip
+          unzip -t /tmp/decka-v020.zip
       - name: Apply payload
         shell: bash
         run: |
-          unzip -o .dev/plugin-payload.zip -d .
-          rm -f .dev/plugin-payload.zip
-          rmdir .dev 2>/dev/null || true
+          unzip -o /tmp/decka-v020.zip -d .
+          rm -rf .dev
       - name: Commit sources
         shell: bash
         run: |
