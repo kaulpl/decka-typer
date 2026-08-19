@@ -73,13 +73,13 @@ class DT_DB {
             KEY manual_lock (manual_lock)
         ) $charset;";
 
+        // A user predicts only the winner. The actual match result belongs to dt_matches,
+        // never to dt_predictions.
         $sql[] = "CREATE TABLE " . self::table('predictions') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id BIGINT UNSIGNED NOT NULL,
             match_id BIGINT UNSIGNED NOT NULL,
-            selected_team_id BIGINT UNSIGNED NULL,
-            home_score SMALLINT NULL,
-            away_score SMALLINT NULL,
+            selected_team_id BIGINT UNSIGNED NOT NULL,
             points DECIMAL(8,2) NOT NULL DEFAULT 0,
             scoring_code VARCHAR(40) NULL,
             submitted_at DATETIME NOT NULL,
@@ -147,6 +147,9 @@ class DT_DB {
         if (version_compare($oldVersion, '0.2.0', '<')) {
             self::migrate_to_020();
         }
+        if (version_compare($oldVersion, '0.2.5', '<')) {
+            self::migrate_to_025();
+        }
 
         $existing = (array) get_option('dt_settings', []);
         $settings = wp_parse_args($existing, self::defaults());
@@ -161,6 +164,12 @@ class DT_DB {
         flush_rewrite_rules();
     }
 
+    private static function column_exists(string $table, string $column): bool {
+        global $wpdb;
+        $result = $wpdb->get_var($wpdb->prepare("SHOW COLUMNS FROM `$table` LIKE %s", $column));
+        return !empty($result);
+    }
+
     private static function migrate_to_020(): void {
         global $wpdb;
         $pred = self::table('predictions');
@@ -168,31 +177,46 @@ class DT_DB {
         $rnd = self::table('rounds');
         $sub = self::table('round_submissions');
 
-        // Convert any legacy score predictions to a winner selection.
-        $wpdb->query("UPDATE $pred p JOIN $mat m ON m.id=p.match_id
-            SET p.selected_team_id = CASE
-                WHEN p.home_score > p.away_score THEN m.home_team_id
-                WHEN p.away_score > p.home_score THEN m.away_team_id
-                ELSE NULL END
-            WHERE p.selected_team_id IS NULL AND p.home_score IS NOT NULL AND p.away_score IS NOT NULL");
+        // Convert old score predictions once, but only on databases that still have
+        // the legacy score columns. New installations never create those columns.
+        if (self::column_exists($pred, 'home_score') && self::column_exists($pred, 'away_score')) {
+            $wpdb->query("UPDATE $pred p JOIN $mat m ON m.id=p.match_id
+                SET p.selected_team_id = CASE
+                    WHEN p.home_score > p.away_score THEN m.home_team_id
+                    WHEN p.away_score > p.home_score THEN m.away_team_id
+                    ELSE NULL END
+                WHERE p.selected_team_id IS NULL AND p.home_score IS NOT NULL AND p.away_score IS NOT NULL");
+        }
 
-        // Recalculate already finished legacy games under the new winner-only scoring rules.
         if (class_exists('DT_Scoring')) {
             $finished = $wpdb->get_col("SELECT id FROM $mat WHERE score_home IS NOT NULL AND score_away IS NOT NULL");
             foreach ($finished as $matchId) DT_Scoring::recalc_match((int) $matchId);
         }
 
-        // Legacy imported rounds were marked as published. In 0.2.0 future rounds must be explicitly opened by an administrator.
         $wpdb->query("UPDATE $rnd SET status='draft', opens_at=NULL, closes_at=NULL WHERE status='published'");
-
-        // Lock only complete legacy coupons. Partial 0.1.x picks stay available once so the user can complete
-        // the whole coupon in the new 0.2.0 flow; the first new submission then becomes immutable.
         $wpdb->query("INSERT IGNORE INTO $sub (user_id, round_id, prediction_count, submitted_at)
             SELECT p.user_id, m.round_id, COUNT(*), MIN(p.submitted_at)
             FROM $pred p JOIN $mat m ON m.id=p.match_id
             WHERE p.selected_team_id IS NOT NULL
             GROUP BY p.user_id, m.round_id
             HAVING COUNT(*) = (SELECT COUNT(*) FROM $mat mm WHERE mm.round_id=m.round_id)");
+    }
+
+    private static function migrate_to_025(): void {
+        global $wpdb;
+        $pred = self::table('predictions');
+
+        // Winner-only model: remove legacy prediction score columns completely.
+        // The real basketball score remains in dt_matches.score_home/score_away.
+        foreach (['home_score', 'away_score'] as $column) {
+            if (self::column_exists($pred, $column)) {
+                $wpdb->query("ALTER TABLE `$pred` DROP COLUMN `$column`");
+            }
+        }
+
+        // Winner selection is the only valid prediction from 0.2.5 onward.
+        $wpdb->query("DELETE FROM `$pred` WHERE selected_team_id IS NULL");
+        $wpdb->query("ALTER TABLE `$pred` MODIFY selected_team_id BIGINT UNSIGNED NOT NULL");
     }
 
     public static function close_expired_rounds(): void {
