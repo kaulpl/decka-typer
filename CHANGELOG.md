@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.6 — 2026-08-19
+
+- zakładka „Moje typy” została przebudowana na rozwijalną listę kuponów — jeden kupon odpowiada jednej kolejce,
+- w nagłówku każdego kuponu wyświetlana jest nazwa ligi pobierana z ustawień oraz numer kolejki,
+- nagłówek kuponu pokazuje liczbę rozliczonych/trafionych spotkań i sumę punktów,
+- po rozliczeniu meczu trafiony typ jest wyróżniany na zielono, a nietrafiony na czerwono,
+- przy każdym meczu mocniej wyróżniono blok „TWÓJ TYP” z nazwą wybranej drużyny,
+- ostatnia kolumna pokazuje `+X pkt` dla trafionego typu, `0` dla nietrafionego i `—` dla meczu oczekującego na wynik,
+- najnowszy kupon jest domyślnie rozwinięty, starsze można rozwijać i zwijać,
+- widok jest responsywny również na telefonach.
+
 ## 0.2.5 — 2026-08-19
 
 - usunięto z modelu typów użytkownika stare pola `home_score` i `away_score`; użytkownik zapisuje wyłącznie identyfikator wybranej drużyny,
