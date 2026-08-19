@@ -1,108 +1,54 @@
-# Decka Typer 0.1.0
+# Decka Typer
 
-Nowoczesna wtyczka WordPress do typowania wyników 1 Ligi Mężczyzn przez społeczność Decki Pelplin.
+Nowoczesna wtyczka WordPress dla społeczności Decki Pelplin do typowania spotkań Pekao S.A. 1 Ligi.
+
+## Wersja
+
+Aktualna wersja: **0.1.0**
 
 ## Najważniejsze funkcje
 
-- automatyczne utworzenie strony `/typer` z aplikacją dla kibiców,
-- synchronizacja terminarza i wyników z `https://1lm.pzkosz.pl/terminarz-i-wyniki.html`,
-- automatyczna synchronizacja przez WP-Cron co godzinę,
-- ręczna edycja terminu i wyniku meczu,
-- ręcznie poprawiony mecz może być chroniony przed kolejnymi synchronizacjami,
-- typowanie każdego meczu do momentu jego rozpoczęcia,
-- automatyczne naliczanie punktów po pojawieniu się wyniku,
-- ranking sezonu i kolejki,
-- historia typów użytkownika,
-- ręczne korekty punktów administratora z historią zmian,
-- logowanie Google, Facebook i Apple ID,
-- standardowe logowanie WordPress jako rozwiązanie zapasowe,
-- responsywny interfejs desktop/mobile,
-- nowoczesny panel administratora: karty, statusy, modale, toasty, badge i szybkie akcje.
+- frontend Typera pod `/typer`,
+- typowanie wyniku każdego meczu do chwili jego rozpoczęcia,
+- ranking sezonu i poszczególnych kolejek,
+- historia typów i statystyki użytkownika,
+- logowanie WordPress, Google, Facebook i Apple ID,
+- automatyczny import terminarza i wyników z `1lm.pzkosz.pl`,
+- ręczne mecze i wyniki chronione przed nadpisaniem przez synchronizację,
+- panel administratora: Pulpit, Kolejki, Mecze, Typy, Ranking, Użytkownicy, Statystyki, Synchronizacja 1LM, Historia i Ustawienia,
+- aktualizacje wtyczki bezpośrednio z GitHub Releases.
 
-## Moduły administratora
+## Aktualizacje WordPress
 
-1. Pulpit
-2. Kolejki
-3. Mecze
-4. Typy
-5. Ranking
-6. Użytkownicy
-7. Statystyki
-8. Synchronizacja 1LM
-9. Historia
-10. Ustawienia
+Wtyczka korzysta z nagłówka `Update URI` oraz publicznych GitHub Releases repozytorium `kaulpl/decka-typer`.
 
-## Instalacja
+Każde stabilne wydanie zawiera asset:
 
-1. W WordPressie wybierz **Wtyczki → Dodaj nową → Wyślij wtyczkę na serwer**.
-2. Wgraj ZIP `decka-typer-0.1.0.zip`.
-3. Aktywuj wtyczkę.
-4. Wtyczka utworzy (jeśli jeszcze nie istnieje) stronę `Typer` pod adresem `/typer`.
-5. Wejdź w **Decka Typer → Synchronizacja 1LM** i uruchom pierwszy import.
-6. Skonfiguruj zasady punktacji i dostawców logowania w **Decka Typer → Ustawienia**.
+`decka-typer-X.Y.Z.zip`
 
-## Domyślna punktacja
+Po opublikowaniu nowszego Release WordPress może wykryć nową wersję i zainstalować ją standardowym mechanizmem aktualizacji wtyczek. Użytkownik może również skorzystać ze standardowego przełącznika automatycznych aktualizacji WordPressa.
 
-- dokładny wynik: 5 pkt,
-- poprawny zwycięzca i dokładna różnica punktów: 3 pkt,
-- poprawny zwycięzca: 1 pkt,
-- błędny zwycięzca: 0 pkt,
-- bonus za perfekcyjną kolejkę: 0 pkt domyślnie (można włączyć w ustawieniach).
+## Proces wydania
 
-## Zasada ręcznej edycji
+1. Rozwój odbywa się na gałęzi `agent/vX.Y.Z-*`.
+2. Pull request trafia do `main`.
+3. GitHub Actions sprawdza składnię PHP/JS oraz zgodność `VERSION`.
+4. Po stabilnym merge do `main` workflow `Release plugin` ponownie waliduje kod.
+5. Workflow buduje prawidłowy pakiet WordPress z katalogiem `decka-typer/`.
+6. Automatycznie powstaje tag `vX.Y.Z`, GitHub Release, ZIP oraz plik SHA-256.
 
-Mecz zaimportowany z 1LM może zostać poprawiony przez administratora. Podczas zapisu formularz domyślnie włącza flagę **Chroń przed synchronizacją 1LM**. Dopóki flaga pozostaje aktywna, synchronizacja rozpoznaje rekord, ale go nie modyfikuje.
+## Zasady wersjonowania
 
-## Logowanie społecznościowe
+- `main` — tylko stabilne wydania,
+- poprawki: `0.1.1`, `0.1.2`, ...,
+- nowe funkcje: `0.2.0`, `0.3.0`, ...,
+- numer wersji musi być identyczny w `VERSION`, nagłówku `decka-typer.php` i `DT_VERSION`,
+- zmiany opisujemy w `CHANGELOG.md`.
 
-### Google
+## Pierwsza instalacja
 
-Utwórz OAuth Client typu Web Application i dodaj Redirect URI wyświetlany w panelu **Decka Typer → Ustawienia → Google**. Następnie wpisz Client ID i Client Secret.
+Pierwszą wersję należy zainstalować z ZIP-a opublikowanego w GitHub Release. Kolejne stabilne wersje będą wykrywane przez mechanizm aktualizacji WordPressa.
 
-### Facebook
+## Uwaga dotycząca OAuth
 
-Utwórz aplikację Meta z Facebook Login i dodaj `Valid OAuth Redirect URI` wyświetlany w ustawieniach wtyczki. Wtyczka używa Graph API v26.0.
-
-### Apple ID
-
-W Apple Developer skonfiguruj Sign in with Apple dla strony internetowej. Potrzebne są:
-
-- Services ID (Client ID),
-- Team ID,
-- Key ID,
-- prywatny klucz `.p8`,
-- Return URL wyświetlany w ustawieniach wtyczki.
-
-Apple ID wymaga HTTPS.
-
-## Wymagania
-
-- WordPress 6.5+,
-- PHP 8.0+,
-- HTTPS dla logowań społecznościowych,
-- działające wychodzące połączenia HTTPS z serwera WordPress do PZKosz oraz dostawców OAuth.
-
-Parser synchronizacji ma dwa tryby: DOM (preferowany) oraz zapasowy parser HTML dla serwerów bez rozszerzenia PHP DOM.
-
-## Dane i bezpieczeństwo
-
-- typy zapisują się w dedykowanych tabelach WordPress,
-- operacje administratora zabezpieczone są capability checks i nonce,
-- zapis typów przez REST API wymaga zalogowanej sesji WordPress i REST nonce,
-- OAuth wykorzystuje losowy `state` przechowywany krótkotrwale,
-- Apple ID token jest sprawdzany względem kluczy publicznych Apple,
-- klucze OAuth są przechowywane w opcji WordPress i powinny być dostępne wyłącznie administratorom.
-
-## Tabele bazy danych
-
-Wtyczka tworzy tabele z prefiksem WordPress:
-
-- `dt_teams`
-- `dt_rounds`
-- `dt_matches`
-- `dt_predictions`
-- `dt_social_accounts`
-- `dt_point_adjustments`
-- `dt_logs`
-
-Dane nie są usuwane po zwykłej dezaktywacji wtyczki.
+Google, Facebook i Apple wymagają osobnych danych aplikacji OAuth skonfigurowanych w panelu administratora Decka Typer. Sekrety nie są przechowywane w repozytorium.
