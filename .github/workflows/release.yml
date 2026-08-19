@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -45,22 +48,59 @@ jobs:
         shell: bash
         run: find . -type f -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
 
-      - name: Stop if this version already exists
-        id: existing
+      - name: Inspect existing tag and release
+        id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release $TAG already exists; nothing to publish."
+          ZIP="decka-typer-${VERSION}.zip"
+          SHA="${ZIP}.sha256"
+          git fetch --tags --force
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
+            ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+            if grep -Fxq "$ZIP" <<<"$ASSETS" && grep -Fxq "$SHA" <<<"$ASSETS"; then
+              echo "needs_package=false" >> "$GITHUB_OUTPUT"
+              echo "Release $TAG already contains $ZIP and $SHA."
+            else
+              echo "needs_package=true" >> "$GITHUB_OUTPUT"
+              echo "Release $TAG is incomplete and will be repaired."
+            fi
+          else
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+            echo "needs_package=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout tagged source for release repair
+        if: steps.inspect.outputs.needs_package == 'true' && steps.inspect.outputs.tag_exists == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: git checkout --detach "$TAG"
+
+      - name: Revalidate tagged source
+        if: steps.inspect.outputs.needs_package == 'true' && steps.inspect.outputs.tag_exists == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          grep -F "Version: ${VERSION}" decka-typer.php
+          grep -F "define('DT_VERSION', '${VERSION}')" decka-typer.php
+          find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+          find . -type f -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
+
       - name: Build WordPress package
-        if: steps.existing.outputs.exists != 'true'
+        if: steps.inspect.outputs.needs_package == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         shell: bash
@@ -78,18 +118,48 @@ jobs:
           sha256sum "decka-typer-${VERSION}.zip" > "decka-typer-${VERSION}.zip.sha256"
           unzip -l "decka-typer-${VERSION}.zip" | head -40
 
-      - name: Create GitHub Release and tag
-        if: steps.existing.outputs.exists != 'true'
+      - name: Create or repair GitHub Release
+        if: steps.inspect.outputs.needs_package == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_EXISTS: ${{ steps.inspect.outputs.release_exists }}
+          TAG_EXISTS: ${{ steps.inspect.outputs.tag_exists }}
+        shell: bash
+        run: |
+          ZIP="decka-typer-${VERSION}.zip"
+          SHA="${ZIP}.sha256"
+          if [[ "$RELEASE_EXISTS" == "true" ]]; then
+            gh release upload "$TAG" "$ZIP" "$SHA" --clobber --repo "$GITHUB_REPOSITORY"
+          elif [[ "$TAG_EXISTS" == "true" ]]; then
+            gh release create "$TAG" "$ZIP" "$SHA" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Decka Typer ${VERSION}" \
+              --generate-notes
+          else
+            gh release create "$TAG" "$ZIP" "$SHA" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Decka Typer ${VERSION}" \
+              --generate-notes
+          fi
+
+      - name: Verify published update package
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
-          gh release create "$TAG" \
-            "decka-typer-${VERSION}.zip" \
-            "decka-typer-${VERSION}.zip.sha256" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Decka Typer ${VERSION}" \
-            --generate-notes
+          ZIP="decka-typer-${VERSION}.zip"
+          SHA="${ZIP}.sha256"
+          ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          grep -Fxq "$ZIP" <<<"$ASSETS"
+          grep -Fxq "$SHA" <<<"$ASSETS"
+          rm -rf verify-release
+          mkdir verify-release
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ZIP" --pattern "$SHA" --dir verify-release
+          (cd verify-release && sha256sum -c "$SHA")
+          echo "Release $TAG verified: installable ZIP and SHA256 are present and valid."
