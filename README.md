@@ -4,7 +4,7 @@ Nowoczesna wtyczka WordPress dla społeczności Decki Pelplin do typowania zwyci
 
 ## Wersja
 
-Aktualna wersja: **0.2.5**
+Aktualna wersja: **0.2.6**
 
 ## Najważniejsze funkcje
 
@@ -14,7 +14,7 @@ Aktualna wersja: **0.2.5**
 - jeden nieedytowalny kupon na każdą kolejkę,
 - administrator otwiera kolejkę i określa termin zamknięcia typowania,
 - ranking sezonu i poszczególnych kolejek,
-- historia typów i statystyki użytkownika,
+- historia „Moje typy” pogrupowana w rozwijane kupony według kolejek, z oznaczeniem trafień, nietrafień i punktów,
 - logowanie Google i Facebook,
 - automatyczny import terminarza i faktycznych wyników z `1lm.pzkosz.pl`,
 - ręczne mecze i faktyczne wyniki chronione przed nadpisaniem przez synchronizację,
