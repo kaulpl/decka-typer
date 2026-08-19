@@ -2,7 +2,10 @@
 
 ## 0.2.5 — 2026-08-19
 
-- zapis kuponu AJAX wysyła teraz prosty, kompaktowy payload `round_id` + `match_id:team_id` zamiast osadzonego JSON-a w formularzu,
+- usunięto z modelu typów użytkownika stare pola `home_score` i `away_score`; użytkownik zapisuje wyłącznie identyfikator wybranej drużyny,
+- dodana migracja bazy usuwa legacy kolumny `home_score` / `away_score` z tabeli `dt_predictions` i pozostawia faktyczny wynik wyłącznie w tabeli meczów,
+- naprawiony błąd zapisu `Column 'home_score' cannot be null` występujący na bazach utworzonych przez starsze wersje wtyczki,
+- zapis kuponu AJAX wysyła prosty, kompaktowy payload `round_id` + `match_id:team_id` zamiast osadzonego JSON-a w formularzu,
 - cały handler zapisu jest objęty ochroną `try/catch(Throwable)` oraz awaryjną obsługą błędów krytycznych PHP,
 - w przypadku błędu krytycznego odpowiedź jest czyszczona i zwracana jako JSON z krótkim identyfikatorem `DT-XXXXXXXX`, zamiast surowej strony HTTP 500,
 - usunięto jawne sterowanie transakcją SQL z zapisu AJAX; typy są zapisywane najpierw, a blokada nieedytowalnego kuponu powstaje dopiero po poprawnym zapisaniu wszystkich meczów,
