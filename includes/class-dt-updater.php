@@ -12,11 +12,10 @@ class DT_Updater {
         add_filter('update_plugins_github.com', [__CLASS__, 'check_update'], 10, 4);
         add_action('upgrader_process_complete', [__CLASS__, 'clear_cache_after_upgrade'], 10, 2);
         add_action('admin_post_dt_check_updates', [__CLASS__, 'handle_manual_check']);
+        add_action('admin_notices', [__CLASS__, 'dashboard_update_panel']);
     }
 
-    /**
-     * Feed WordPress' native plugin updater with the latest stable GitHub Release.
-     */
+    /** Feed WordPress' native plugin updater with the latest stable GitHub Release. */
     public static function check_update($update, array $plugin_data, string $plugin_file, array $locales) {
         if ($plugin_file !== plugin_basename(DT_FILE)) return $update;
 
@@ -36,9 +35,7 @@ class DT_Updater {
         ];
     }
 
-    /**
-     * Public updater state used by the Decka Typer dashboard.
-     */
+    /** Public updater state used by the Decka Typer dashboard. */
     public static function status(bool $force = false): array {
         $fetched = self::latest_release($force);
         $release = $fetched['release'];
@@ -93,28 +90,36 @@ class DT_Updater {
         );
     }
 
+    /** Render the update control only on Decka Typer's main dashboard. */
+    public static function dashboard_update_panel(): void {
+        if (!is_admin() || !current_user_can('update_plugins')) return;
+        if (sanitize_key($_GET['page'] ?? '') !== 'decka-typer') return;
+
+        echo '<div class="wrap dt-admin dt-update-dashboard" style="margin-top:14px;margin-bottom:0">';
+        self::dashboard_card();
+        echo '</div>';
+    }
+
     public static function dashboard_card(): void {
         if (!current_user_can('update_plugins')) return;
         $status = self::status(false);
 
-        echo '<section class="dt-card dt-update-card">';
-        echo '<span class="dt-eyebrow">AKTUALIZACJE</span><h2>Decka Typer</h2>';
-        echo '<div class="dt-health">';
-        echo '<div><span>Zainstalowana wersja</span><strong>' . esc_html($status['current_version']) . '</strong></div>';
-        echo '<div><span>Najnowszy GitHub Release</span><strong>' . esc_html($status['latest_version']) . '</strong></div>';
-        if (!empty($status['checked_at'])) echo '<div><span>Ostatnie sprawdzenie</span><strong>' . esc_html(self::format_checked_at($status['checked_at'])) . '</strong></div>';
+        echo '<section class="dt-card dt-update-card" style="border-left:4px solid var(--dt-blue);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center">';
+        echo '<div><span class="dt-eyebrow">AKTUALIZACJE</span><h2 style="margin-bottom:8px">Decka Typer ' . esc_html($status['current_version']) . '</h2>';
+
+        if (!empty($status['update_available'])) {
+            echo '<div class="dt-update-state is-update" style="display:flex;align-items:center;gap:9px;color:#117452"><span class="dashicons dashicons-update-alt"></span><div><strong>Dostępna wersja ' . esc_html($status['latest_version']) . '</strong><div class="dt-muted">GitHub Release zawiera gotową paczkę instalacyjną.</div></div></div>';
+        } elseif (!empty($status['error'])) {
+            echo '<div class="dt-update-state is-error" style="display:flex;align-items:center;gap:9px;color:#b72f46"><span class="dashicons dashicons-warning"></span><div><strong>Nie udało się potwierdzić aktualizacji</strong><div class="dt-muted">' . esc_html($status['error']) . '</div></div></div>';
+        } else {
+            echo '<div class="dt-update-state is-current" style="display:flex;align-items:center;gap:9px;color:#117452"><span class="dashicons dashicons-yes-alt"></span><div><strong>Masz aktualną wersję</strong><div class="dt-muted">Najnowszy GitHub Release: ' . esc_html($status['latest_version']) . (!empty($status['checked_at']) ? ' · sprawdzono ' . esc_html(self::format_checked_at($status['checked_at'])) : '') . '</div></div></div>';
+        }
         echo '</div>';
 
         if (!empty($status['update_available'])) {
-            echo '<div class="dt-update-state is-update"><span class="dashicons dashicons-update-alt"></span><div><strong>Dostępna jest nowa wersja ' . esc_html($status['latest_version']) . '</strong><small>Paczka instalacyjna GitHub Release jest gotowa.</small></div></div>';
-            echo '<a class="button button-primary dt-button dt-update-button" href="' . esc_url(self::update_url($status['latest_version'])) . '"><span class="dashicons dashicons-update"></span> Aktualizuj do wersji ' . esc_html($status['latest_version']) . '</a>';
+            echo '<a class="button button-primary dt-button" href="' . esc_url(self::update_url($status['latest_version'])) . '"><span class="dashicons dashicons-update"></span> Aktualizuj do wersji ' . esc_html($status['latest_version']) . '</a>';
         } else {
-            if (!empty($status['error'])) {
-                echo '<div class="dt-update-state is-error"><span class="dashicons dashicons-warning"></span><div><strong>Nie udało się potwierdzić aktualizacji</strong><small>' . esc_html($status['error']) . '</small></div></div>';
-            } else {
-                echo '<div class="dt-update-state is-current"><span class="dashicons dashicons-yes-alt"></span><div><strong>Masz aktualną wersję</strong><small>Możesz wymusić ponowne sprawdzenie GitHub Releases.</small></div></div>';
-            }
-            echo '<a class="button dt-button dt-update-check" href="' . esc_url(self::check_url()) . '"><span class="dashicons dashicons-search"></span> Sprawdź aktualizacje</a>';
+            echo '<a class="button dt-button" href="' . esc_url(self::check_url()) . '"><span class="dashicons dashicons-search"></span> Sprawdź aktualizacje</a>';
         }
         echo '</section>';
     }
@@ -125,8 +130,6 @@ class DT_Updater {
 
         self::clear_all_update_caches();
 
-        // Force WordPress to rebuild the update_plugins transient. This invokes
-        // update_plugins_github.com and stores Decka Typer in the native update list.
         if (!function_exists('wp_update_plugins')) require_once ABSPATH . WPINC . '/update.php';
         wp_update_plugins();
 
@@ -150,9 +153,7 @@ class DT_Updater {
         exit;
     }
 
-    /**
-     * @return array{release:?array,checked_at:?string,error:?string}
-     */
+    /** @return array{release:?array,checked_at:?string,error:?string} */
     private static function latest_release(bool $force = false): array {
         if ($force) delete_site_transient(self::CACHE_KEY);
 
