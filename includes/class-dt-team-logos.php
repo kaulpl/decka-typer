@@ -2,11 +2,11 @@
 if (!defined('ABSPATH')) exit;
 
 class DT_Team_Logos {
-    private const ASSET_VERSION = '0.2.2';
+    private const ASSET_VERSION = '0.2.3';
 
     public static function register(): void {
         add_filter('rest_request_after_callbacks', [__CLASS__, 'decorate_rest_response'], 10, 3);
-        add_action('admin_init', [__CLASS__, 'maybe_apply_to_database']);
+        add_action('init', [__CLASS__, 'maybe_apply_to_database']);
     }
 
     public static function decorate_rest_response($response, $handler, WP_REST_Request $request) {
@@ -31,7 +31,9 @@ class DT_Team_Logos {
             $logo = self::url_for((string)$data['name']);
             if ($logo) $data['logo_url'] = $logo;
         }
-        foreach ($data as $key=>$value) if (is_array($value)) $data[$key] = self::decorate_payload($value);
+        foreach ($data as $key=>$value) {
+            if (is_array($value)) $data[$key] = self::decorate_payload($value);
+        }
         return $data;
     }
 
@@ -41,11 +43,14 @@ class DT_Team_Logos {
         $table = DT_DB::table('teams');
         $rows = $wpdb->get_results("SELECT id,name FROM $table");
         if (!is_array($rows)) return;
+        $applied = 0;
         foreach ($rows as $team) {
             $url = self::url_for((string)$team->name);
-            if ($url) $wpdb->update($table,['logo_url'=>$url],['id'=>(int)$team->id],['%s'],['%d']);
+            if (!$url) continue;
+            if ($wpdb->update($table,['logo_url'=>$url],['id'=>(int)$team->id],['%s'],['%d']) !== false) $applied++;
         }
         update_option('dt_team_logos_version',self::ASSET_VERSION,false);
+        if ($applied) DT_Logger::log('team_logos_applied','Zastosowano lokalne logotypy 1LM.',['teams'=>$applied]);
     }
 
     public static function url_for(string $teamName): ?string {
