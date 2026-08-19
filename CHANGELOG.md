@@ -8,7 +8,7 @@
 - zapis kuponu AJAX wysyła prosty, kompaktowy payload `round_id` + `match_id:team_id` zamiast osadzonego JSON-a w formularzu,
 - cały handler zapisu jest objęty ochroną `try/catch(Throwable)` oraz awaryjną obsługą błędów krytycznych PHP,
 - w przypadku błędu krytycznego odpowiedź jest czyszczona i zwracana jako JSON z krótkim identyfikatorem `DT-XXXXXXXX`, zamiast surowej strony HTTP 500,
-- usunięto jawne sterowanie transakcją SQL z zapisu AJAX; typy są zapisywane najpierw, a blokada nieedytowalnego kuponu powstaje dopiero po poprawnym zapisaniu wszystkich meczów,
+- typy są zapisywane najpierw, a blokada nieedytowalnego kuponu powstaje dopiero po poprawnym zapisaniu wszystkich meczów,
 - częściowy zapis po przerwanym żądaniu pozostaje możliwy do ponowienia i nie blokuje kolejki użytkownikowi,
 - błędy zapisu typu lub blokady kuponu trafiają do Historii Typera, ale sam mechanizm logowania nie może już przerwać odpowiedzi,
 - frontend pokazuje również krótki fragment niepoprawnej odpowiedzi serwera, jeśli hosting mimo zabezpieczeń zwróci HTML zamiast JSON.
