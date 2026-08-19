@@ -10,4 +10,7 @@
 - punktacja i rankingi,
 - logowanie Google/Facebook/Apple ID,
 - statystyki, historia i korekty punktów,
-- responsywny nowoczesny interfejs.
+- responsywny nowoczesny interfejs,
+- własny mechanizm aktualizacji WordPress z GitHub Releases,
+- `Update URI` dla repozytorium `kaulpl/decka-typer`,
+- automatyczne tworzenie tagu, GitHub Release, instalacyjnego ZIP i sumy SHA-256 po stabilnym merge do `main`.
