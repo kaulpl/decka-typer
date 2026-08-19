@@ -1,18 +1,22 @@
 # Changelog
 
+## 0.2.2 — 2026-08-19
+
+- mechanizm sprawdzania aktualizacji nie korzysta już z limitowanego endpointu GitHub REST API, dzięki czemu eliminuje komunikaty HTTP 403 wynikające z limitu anonimowych zapytań,
+- najnowsza wersja jest sprawdzana przez lekki plik `VERSION` z `raw.githubusercontent.com`, a paczka aktualizacji pobierana jest bezpośrednio z GitHub Release,
+- ręczne „Sprawdź aktualizacje” czyści również stary cache updatera z wersji 0.2.1,
+- poprawiony kontrast niebieskich przycisków w panelu Decka Typer — biały tekst, ikony i stany hover/focus,
+- dodany lokalny pakiet 16 logotypów klubów 1LM przesłanych przez administratora,
+- logotypy są parowane po znormalizowanej nazwie klubu, odpornej na większość zmian sponsorskich w nazwach,
+- lokalne logotypy zastępują adresy obrazów z zewnętrznego źródła zarówno w REST API Typera, jak i w bazie drużyn.
+
 ## 0.2.1 — 2026-08-19
 
 - poprawiony mechanizm wykrywania aktualizacji z GitHub Releases,
-- updater zgłasza aktualizację WordPressowi wyłącznie wtedy, gdy nowsza wersja ma gotowy instalacyjny ZIP,
-- dodany przycisk „Sprawdź aktualizacje” na pulpicie Decka Typer,
-- po wykryciu nowszej wersji przycisk zmienia się w „Aktualizuj do wersji X.Y.Z” i uruchamia standardowy aktualizator WordPressa,
-- ręczne sprawdzenie czyści cache Decka Typer i transient `update_plugins`, a następnie wymusza ponowne sprawdzenie aktualizacji,
-- dodany czytelny status wersji bieżącej, najnowszego GitHub Release i błędów API,
-- skrócony cache informacji o Release do 15 minut oraz osobny krótki cache błędów,
-- workflow `Release plugin` może być uruchamiany również ręcznie,
-- workflow sprawdza, czy Release zawiera zarówno ZIP, jak i SHA-256,
-- jeżeli istniejący Release jest niekompletny, workflow odbudowuje paczkę z właściwego tagu i naprawia assety,
-- po publikacji workflow pobiera wydany ZIP i weryfikuje jego sumę SHA-256.
+- dodany panel aktualizacji na Pulpicie Decka Typer,
+- przycisk „Sprawdź aktualizacje” wymusza ponowne sprawdzenie GitHub i WordPress,
+- po wykryciu nowszej wersji przycisk zmienia się w „Aktualizuj do wersji X.Y.Z”,
+- workflow GitHub Release potrafi naprawić istniejący, niekompletny Release i zweryfikować ZIP oraz SHA-256.
 
 ## 0.2.0 — 2026-08-19
 
