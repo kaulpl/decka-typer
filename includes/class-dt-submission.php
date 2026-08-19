@@ -2,12 +2,7 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * Immutable round submission service.
- *
- * 0.2.5 keeps admin-ajax.php as the primary write transport, but deliberately
- * uses a compact form payload and a conservative database write path for
- * maximum hosting compatibility. Fatal PHP errors are converted to JSON with
- * a short request identifier so the frontend never gets an anonymous HTML 500.
+ * Immutable winner-only round submission service.
  */
 class DT_Submission {
     private const AJAX_ACTION = 'dt_save_submission';
@@ -29,14 +24,7 @@ class DT_Submission {
 
     public static function enqueue_bridge(): void {
         if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
-
-        wp_enqueue_script(
-            'dt-submission-ajax',
-            DT_URL . 'assets/js/submission-ajax.js',
-            [],
-            DT_VERSION,
-            true
-        );
+        wp_enqueue_script('dt-submission-ajax', DT_URL . 'assets/js/submission-ajax.js', [], DT_VERSION, true);
         wp_localize_script('dt-submission-ajax', 'DeckaTyperSubmission', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'action' => self::AJAX_ACTION,
@@ -44,14 +32,12 @@ class DT_Submission {
         ]);
     }
 
-    /** REST compatibility fallback. */
     public static function save(WP_REST_Request $request): WP_REST_Response|WP_Error {
         $body = $request->get_json_params();
         if (!is_array($body)) $body = [];
         return self::save_payload($body, get_current_user_id(), 'rest');
     }
 
-    /** Primary frontend transport. */
     public static function ajax_save(): void {
         $requestId = 'DT-' . strtoupper(substr(str_replace('-', '', wp_generate_uuid4()), 0, 8));
         $finished = false;
@@ -62,23 +48,18 @@ class DT_Submission {
             if ($finished) return;
             $error = error_get_last();
             if (!$error || !in_array((int)$error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) return;
-
-            while (ob_get_level() > $initialBufferLevel) {
-                @ob_end_clean();
-            }
-
+            while (ob_get_level() > $initialBufferLevel) @ob_end_clean();
             if (!headers_sent()) {
                 status_header(500);
                 nocache_headers();
                 header('Content-Type: application/json; charset=' . get_option('blog_charset'));
             }
-
             echo wp_json_encode([
-                'success' => false,
-                'data' => [
-                    'code' => 'fatal_error',
-                    'request_id' => $requestId,
-                    'message' => 'Wystąpił błąd PHP podczas zapisu kuponu. Identyfikator: ' . $requestId . '.',
+                'success'=>false,
+                'data'=>[
+                    'code'=>'fatal_error',
+                    'request_id'=>$requestId,
+                    'message'=>'Wystąpił błąd PHP podczas zapisu kuponu. Identyfikator: ' . $requestId . '.',
                 ],
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         });
@@ -87,20 +68,17 @@ class DT_Submission {
             self::ajax_save_inner($requestId, $finished, $initialBufferLevel);
         } catch (Throwable $e) {
             self::safe_log('submission_fatal_caught', $e->getMessage(), [
-                'request_id' => $requestId,
-                'type' => get_class($e),
-                'file' => basename($e->getFile()),
-                'line' => $e->getLine(),
+                'request_id'=>$requestId,
+                'type'=>get_class($e),
+                'file'=>basename($e->getFile()),
+                'line'=>$e->getLine(),
             ], get_current_user_id());
-
-            while (ob_get_level() > $initialBufferLevel) {
-                @ob_end_clean();
-            }
+            while (ob_get_level() > $initialBufferLevel) @ob_end_clean();
             $finished = true;
             wp_send_json_error([
-                'code' => 'submission_exception',
-                'request_id' => $requestId,
-                'message' => 'Nie udało się zapisać kuponu. Identyfikator błędu: ' . $requestId . '.',
+                'code'=>'submission_exception',
+                'request_id'=>$requestId,
+                'message'=>'Nie udało się zapisać kuponu. Identyfikator błędu: ' . $requestId . '.',
             ], 500);
         }
     }
@@ -109,7 +87,6 @@ class DT_Submission {
         if (!is_user_logged_in()) {
             self::ajax_error('not_logged_in', 'Sesja wygasła. Zaloguj się ponownie.', 401, $requestId, $finished, $initialBufferLevel);
         }
-
         if (!check_ajax_referer(self::AJAX_NONCE, 'nonce', false)) {
             self::ajax_error('bad_nonce', 'Sesja bezpieczeństwa wygasła. Odśwież stronę i spróbuj ponownie.', 403, $requestId, $finished, $initialBufferLevel);
         }
@@ -117,48 +94,28 @@ class DT_Submission {
         $roundId = isset($_POST['round_id']) ? absint($_POST['round_id']) : 0;
         $compact = isset($_POST['picks']) ? sanitize_text_field(wp_unslash((string)$_POST['picks'])) : '';
         $picks = self::parse_compact_picks($compact);
-
         if (!$roundId || !$picks) {
             self::ajax_error('invalid_payload', 'Nieprawidłowe dane kuponu. Odśwież stronę i spróbuj ponownie.', 422, $requestId, $finished, $initialBufferLevel);
         }
 
-        $result = self::save_payload([
-            'round_id' => $roundId,
-            'picks' => $picks,
-        ], get_current_user_id(), 'ajax');
-
+        $result = self::save_payload(['round_id'=>$roundId, 'picks'=>$picks], get_current_user_id(), 'ajax');
         if (is_wp_error($result)) {
             $errorData = $result->get_error_data();
             $status = is_array($errorData) ? (int)($errorData['status'] ?? 500) : 500;
             if ($status < 400 || $status > 599) $status = 500;
-            self::ajax_error(
-                $result->get_error_code(),
-                $result->get_error_message(),
-                $status,
-                $requestId,
-                $finished,
-                $initialBufferLevel
-            );
+            self::ajax_error($result->get_error_code(), $result->get_error_message(), $status, $requestId, $finished, $initialBufferLevel);
         }
 
         $data = $result instanceof WP_REST_Response ? $result->get_data() : $result;
-        while (ob_get_level() > $initialBufferLevel) {
-            @ob_end_clean();
-        }
+        while (ob_get_level() > $initialBufferLevel) @ob_end_clean();
         $finished = true;
         wp_send_json_success(is_array($data) ? $data : ['ok'=>true], 200);
     }
 
     private static function ajax_error(string $code, string $message, int $status, string $requestId, bool &$finished, int $initialBufferLevel): void {
-        while (ob_get_level() > $initialBufferLevel) {
-            @ob_end_clean();
-        }
+        while (ob_get_level() > $initialBufferLevel) @ob_end_clean();
         $finished = true;
-        wp_send_json_error([
-            'code' => $code,
-            'request_id' => $requestId,
-            'message' => $message,
-        ], $status);
+        wp_send_json_error(['code'=>$code, 'request_id'=>$requestId, 'message'=>$message], $status);
     }
 
     private static function parse_compact_picks(string $compact): array {
@@ -176,7 +133,6 @@ class DT_Submission {
 
     private static function save_payload(array $body, int $uid, string $transport): WP_REST_Response|WP_Error {
         global $wpdb;
-
         if (!$uid) return new WP_Error('not_logged_in', 'Zaloguj się ponownie i spróbuj jeszcze raz.', ['status'=>401]);
 
         $roundId = max(0, (int)($body['round_id'] ?? 0));
@@ -192,16 +148,11 @@ class DT_Submission {
         if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
         if (!self::round_open($round)) return new WP_Error('round_closed', 'Typowanie tej kolejki jest zamknięte.', ['status'=>409]);
 
-        $already = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM $subTable WHERE user_id=%d AND round_id=%d LIMIT 1",
-            $uid,
-            $roundId
-        ));
+        $already = $wpdb->get_var($wpdb->prepare("SELECT id FROM $subTable WHERE user_id=%d AND round_id=%d LIMIT 1", $uid, $roundId));
         if ($already) return new WP_Error('already_submitted', 'Ten kupon został już zapisany i nie można go edytować.', ['status'=>409]);
 
         $matches = $wpdb->get_results($wpdb->prepare(
-            "SELECT id,home_team_id,away_team_id FROM $matchTable WHERE round_id=%d ORDER BY id",
-            $roundId
+            "SELECT id,home_team_id,away_team_id FROM $matchTable WHERE round_id=%d ORDER BY id", $roundId
         ), ARRAY_A);
         if (!$matches) return new WP_Error('empty_round', 'Ta kolejka nie ma meczów.', ['status'=>422]);
 
@@ -215,7 +166,6 @@ class DT_Submission {
             if (!is_array($pick)) continue;
             $matchId = (int)($pick['match_id'] ?? 0);
             $teamId = (int)($pick['team_id'] ?? 0);
-
             if (!$matchId || !$teamId || !isset($matchMap[$matchId])) {
                 return new WP_Error('invalid_pick', 'Jeden z typów jest nieprawidłowy.', ['status'=>422]);
             }
@@ -224,7 +174,6 @@ class DT_Submission {
             }
             $clean[$matchId] = $teamId;
         }
-
         if (count($clean) !== count($matches)) {
             return new WP_Error('incomplete_coupon', 'Przed zapisem wytypuj zwycięzcę każdego meczu.', ['status'=>422]);
         }
@@ -236,32 +185,21 @@ class DT_Submission {
 
         $now = current_time('mysql');
 
-        /*
-         * Intentionally no explicit transaction here. Some shared hosts/proxies
-         * react badly to transaction control on admin-ajax.php. We write picks
-         * first and create the immutable round lock only after every pick has
-         * succeeded. A partial interrupted write is therefore retryable.
-         */
+        // Winner-only persistence. No predicted score fields exist in this model.
         foreach ($clean as $matchId => $teamId) {
             $sql = $wpdb->prepare(
                 "INSERT INTO $predTable
-                    (user_id,match_id,selected_team_id,home_score,away_score,points,scoring_code,submitted_at,updated_at)
-                 VALUES (%d,%d,%d,NULL,NULL,0,NULL,%s,%s)
+                    (user_id,match_id,selected_team_id,points,scoring_code,submitted_at,updated_at)
+                 VALUES (%d,%d,%d,0,NULL,%s,%s)
                  ON DUPLICATE KEY UPDATE
                     selected_team_id=VALUES(selected_team_id),
-                    home_score=NULL,
-                    away_score=NULL,
                     points=0,
                     scoring_code=NULL,
                     updated_at=VALUES(updated_at)",
-                $uid,
-                $matchId,
-                $teamId,
-                $now,
-                $now
+                $uid, $matchId, $teamId, $now, $now
             );
             if ($wpdb->query($sql) === false) {
-                self::safe_log('submission_db_error', 'Nie udało się zapisać typu meczu.', [
+                self::safe_log('submission_db_error', 'Nie udało się zapisać typu zwycięzcy.', [
                     'round_id'=>$roundId,
                     'match_id'=>$matchId,
                     'db_error'=>$wpdb->last_error,
@@ -273,16 +211,11 @@ class DT_Submission {
 
         $lockSql = $wpdb->prepare(
             "INSERT INTO $subTable (user_id,round_id,prediction_count,submitted_at) VALUES (%d,%d,%d,%s)",
-            $uid,
-            $roundId,
-            count($clean),
-            $now
+            $uid, $roundId, count($clean), $now
         );
         if ($wpdb->query($lockSql) !== 1) {
             $duplicate = stripos((string)$wpdb->last_error, 'duplicate') !== false;
-            if ($duplicate) {
-                return new WP_Error('already_submitted', 'Ten kupon został już zapisany i nie można go edytować.', ['status'=>409]);
-            }
+            if ($duplicate) return new WP_Error('already_submitted', 'Ten kupon został już zapisany i nie można go edytować.', ['status'=>409]);
             self::safe_log('submission_lock_error', 'Nie udało się utworzyć blokady kuponu.', [
                 'round_id'=>$roundId,
                 'db_error'=>$wpdb->last_error,
@@ -309,7 +242,6 @@ class DT_Submission {
         try {
             if (class_exists('DT_Logger')) DT_Logger::log($event, $message, $context, $level, $uid ?: null);
         } catch (Throwable $ignored) {
-            // Logging must never break the save response.
         }
     }
 
