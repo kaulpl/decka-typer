@@ -1,0 +1,95 @@
+name: Release plugin
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Validate, package and release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
+          coverage: none
+
+      - name: Read and validate version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(tr -d '\r\n ' < VERSION)"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid VERSION: $VERSION" >&2
+            exit 1
+          fi
+          grep -F "Version: ${VERSION}" decka-typer.php
+          grep -F "define('DT_VERSION', '${VERSION}')" decka-typer.php
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: PHP syntax
+        shell: bash
+        run: find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+
+      - name: JavaScript syntax
+        shell: bash
+        run: find . -type f -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
+
+      - name: Stop if this version already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG already exists; nothing to publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build WordPress package
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          rm -rf build
+          mkdir -p build/decka-typer
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.gitignore' \
+            --exclude='build' \
+            --exclude='*.zip' \
+            ./ build/decka-typer/
+          (cd build && zip -qr "../decka-typer-${VERSION}.zip" decka-typer)
+          sha256sum "decka-typer-${VERSION}.zip" > "decka-typer-${VERSION}.zip.sha256"
+          unzip -l "decka-typer-${VERSION}.zip" | head -40
+
+      - name: Create GitHub Release and tag
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          gh release create "$TAG" \
+            "decka-typer-${VERSION}.zip" \
+            "decka-typer-${VERSION}.zip.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Decka Typer ${VERSION}" \
+            --generate-notes
