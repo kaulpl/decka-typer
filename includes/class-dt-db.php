@@ -73,13 +73,14 @@ class DT_DB {
             KEY manual_lock (manual_lock)
         ) $charset;";
 
-        // A user predicts only the winner. The actual match result belongs to dt_matches,
-        // never to dt_predictions.
+        // User prediction = selected winner only. Real match scores live in dt_matches.
+        // Keep selected_team_id nullable in dbDelta so upgrades from legacy rows are safe;
+        // migrate_to_025 removes incomplete legacy rows and makes the column NOT NULL.
         $sql[] = "CREATE TABLE " . self::table('predictions') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id BIGINT UNSIGNED NOT NULL,
             match_id BIGINT UNSIGNED NOT NULL,
-            selected_team_id BIGINT UNSIGNED NOT NULL,
+            selected_team_id BIGINT UNSIGNED NULL,
             points DECIMAL(8,2) NOT NULL DEFAULT 0,
             scoring_code VARCHAR(40) NULL,
             submitted_at DATETIME NOT NULL,
@@ -144,18 +145,12 @@ class DT_DB {
 
         foreach ($sql as $statement) dbDelta($statement);
 
-        if (version_compare($oldVersion, '0.2.0', '<')) {
-            self::migrate_to_020();
-        }
-        if (version_compare($oldVersion, '0.2.5', '<')) {
-            self::migrate_to_025();
-        }
+        if (version_compare($oldVersion, '0.2.0', '<')) self::migrate_to_020();
+        if (version_compare($oldVersion, '0.2.5', '<')) self::migrate_to_025();
 
         $existing = (array) get_option('dt_settings', []);
         $settings = wp_parse_args($existing, self::defaults());
-        foreach (['apple_client_id','apple_team_id','apple_key_id','apple_private_key','points_exact','points_margin'] as $deprecated) {
-            unset($settings[$deprecated]);
-        }
+        foreach (['apple_client_id','apple_team_id','apple_key_id','apple_private_key','points_exact','points_margin'] as $deprecated) unset($settings[$deprecated]);
         update_option('dt_settings', $settings);
         update_option('dt_db_version', DT_VERSION);
 
@@ -177,8 +172,7 @@ class DT_DB {
         $rnd = self::table('rounds');
         $sub = self::table('round_submissions');
 
-        // Convert old score predictions once, but only on databases that still have
-        // the legacy score columns. New installations never create those columns.
+        // One-time conversion for installations that genuinely came from the old score-prediction model.
         if (self::column_exists($pred, 'home_score') && self::column_exists($pred, 'away_score')) {
             $wpdb->query("UPDATE $pred p JOIN $mat m ON m.id=p.match_id
                 SET p.selected_team_id = CASE
@@ -206,15 +200,12 @@ class DT_DB {
         global $wpdb;
         $pred = self::table('predictions');
 
-        // Winner-only model: remove legacy prediction score columns completely.
-        // The real basketball score remains in dt_matches.score_home/score_away.
+        // Winner-only model: legacy predicted-score columns are removed permanently.
+        // Actual basketball results remain only in dt_matches.score_home / score_away.
         foreach (['home_score', 'away_score'] as $column) {
-            if (self::column_exists($pred, $column)) {
-                $wpdb->query("ALTER TABLE `$pred` DROP COLUMN `$column`");
-            }
+            if (self::column_exists($pred, $column)) $wpdb->query("ALTER TABLE `$pred` DROP COLUMN `$column`");
         }
 
-        // Winner selection is the only valid prediction from 0.2.5 onward.
         $wpdb->query("DELETE FROM `$pred` WHERE selected_team_id IS NULL");
         $wpdb->query("ALTER TABLE `$pred` MODIFY selected_team_id BIGINT UNSIGNED NOT NULL");
     }
@@ -284,8 +275,6 @@ class DT_DB {
     }
 
     public static function ensure_cron(): void {
-        if (!wp_next_scheduled('dt_sync_schedule')) {
-            wp_schedule_event(time() + 300, 'hourly', 'dt_sync_schedule');
-        }
+        if (!wp_next_scheduled('dt_sync_schedule')) wp_schedule_event(time() + 300, 'hourly', 'dt_sync_schedule');
     }
 }
