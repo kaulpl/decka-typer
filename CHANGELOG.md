@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3 — 2026-08-20
+
+- rozstrzygnięty mecz nie koloruje już osobno kafla zwycięskiej drużyny na zielono ani przegranej na czerwono,
+- kolor zielony/czerwony pozostaje wyłącznie na zewnętrznej ramce całego meczu i oznacza trafiony albo nietrafiony typ użytkownika,
+- kafel przegranej drużyny jest delikatnie wyszarzony, natomiast kafel zwycięzcy pozostaje neutralny,
+- pod drużynami wyświetlane są osobne oznaczenia `ZWYCIĘZCA` i `PRZEGRANY`,
+- oznaczenie `TWÓJ TYP` pozostaje niezależne od wyniku; przy poprawnym wyborze zwycięzcy pod tą samą drużyną widoczne są jednocześnie `TWÓJ TYP` i `ZWYCIĘZCA`,
+- bez zmian w bazie, punktacji i mechanizmie zapisu kuponów.
+
 ## 0.3.2 — 2026-08-20
 
 - w rozstrzygniętym meczu faktyczny zwycięzca jest zawsze wyróżniany zielonym kaflem, niezależnie od typu użytkownika,
