@@ -2,9 +2,9 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * Mobile authentication for the native iOS client.
- * Uses the existing Google/Facebook identities and issues a signed bearer token
- * that authenticates the normal Decka Typer REST endpoints.
+ * Native iOS authentication bridge.
+ * OAuth happens in ASWebAuthenticationSession, the app receives a signed bearer
+ * token, then exchanges it for a one-time WordPress web session inside WKWebView.
  */
 class DT_Mobile_Auth {
     private const TOKEN_VERSION = 'v1';
@@ -27,28 +27,30 @@ class DT_Mobile_Auth {
             'methods'=>'GET', 'callback'=>[__CLASS__, 'session'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
-        register_rest_route('decka-typer/v1', '/mobile/logout', [
-            'methods'=>'POST', 'callback'=>[__CLASS__, 'logout'],
+        register_rest_route('decka-typer/v1', '/mobile/web-session', [
+            'methods'=>'POST', 'callback'=>[__CLASS__, 'web_session'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
-        register_rest_route('decka-typer/v1', '/mobile/league', [
-            'methods'=>'GET', 'callback'=>[__CLASS__, 'league'],
+        register_rest_route('decka-typer/v1', '/mobile/web-login', [
+            'methods'=>'GET', 'callback'=>[__CLASS__, 'web_login'], 'permission_callback'=>'__return_true',
+        ]);
+        register_rest_route('decka-typer/v1', '/mobile/logout', [
+            'methods'=>'POST', 'callback'=>[__CLASS__, 'logout'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
     }
 
     public static function determine_current_user($userId): int {
-        $userId = (int) $userId;
+        $userId = (int)$userId;
         if ($userId > 0) return $userId;
         $token = self::request_token();
         if (!$token) return 0;
         $payload = self::verify_token($token);
-        if (!$payload) return 0;
-        return (int) $payload['uid'];
+        return $payload ? (int)$payload['uid'] : 0;
     }
 
     public static function start(WP_REST_Request $request) {
-        $provider = sanitize_key((string) $request['provider']);
+        $provider = sanitize_key((string)$request['provider']);
         if (!in_array($provider, ['google','facebook'], true) || !DT_OAuth::configured($provider)) {
             return new WP_Error('provider_not_configured', 'Ten sposób logowania nie jest skonfigurowany.', ['status'=>400]);
         }
@@ -86,10 +88,10 @@ class DT_Mobile_Auth {
     }
 
     public static function callback(WP_REST_Request $request) {
-        $provider = sanitize_key((string) $request['provider']);
-        $state = sanitize_text_field((string) $request->get_param('state'));
-        $code = sanitize_text_field((string) $request->get_param('code'));
-        $error = sanitize_text_field((string) $request->get_param('error'));
+        $provider = sanitize_key((string)$request['provider']);
+        $state = sanitize_text_field((string)$request->get_param('state'));
+        $code = sanitize_text_field((string)$request->get_param('code'));
+        $error = sanitize_text_field((string)$request->get_param('error'));
         if ($error) self::redirect_to_app(['error'=>$error]);
         if (!$state || !$code || !in_array($provider, ['google','facebook'], true)) {
             self::redirect_to_app(['error'=>'invalid_response']);
@@ -106,9 +108,9 @@ class DT_Mobile_Auth {
             $identity = $provider === 'google'
                 ? self::google_identity($code, self::provider_callback_url('google'))
                 : self::facebook_identity($code, self::provider_callback_url('facebook'));
-            $uid = DT_OAuth::login_from_identity($provider, $identity);
+            $uid = self::login_identity($provider, $identity);
             $token = self::issue_token($uid);
-            DT_Logger::log('mobile_login', 'Logowanie w aplikacji iOS.', ['provider'=>$provider], 'info', $uid);
+            try { DT_Logger::log('mobile_login', 'Logowanie w aplikacji iOS.', ['provider'=>$provider], 'info', $uid); } catch (Throwable $ignored) {}
             self::redirect_to_app(['token'=>$token]);
         } catch (Throwable $e) {
             try { DT_Logger::log('mobile_oauth_error', $e->getMessage(), ['provider'=>$provider], 'error'); } catch (Throwable $ignored) {}
@@ -128,21 +130,44 @@ class DT_Mobile_Auth {
         ]);
     }
 
+    public static function web_session(WP_REST_Request $request): WP_REST_Response {
+        $uid = get_current_user_id();
+        $code = wp_generate_password(48, false, false);
+        set_transient('dt_mobile_web_' . hash('sha256', $code), [
+            'uid'=>$uid,
+            'created'=>time(),
+        ], 2 * MINUTE_IN_SECONDS);
+        return new WP_REST_Response([
+            'ok'=>true,
+            'url'=>add_query_arg('code', rawurlencode($code), rest_url('decka-typer/v1/mobile/web-login')),
+        ]);
+    }
+
+    public static function web_login(WP_REST_Request $request) {
+        $code = sanitize_text_field((string)$request->get_param('code'));
+        if (!$code) return new WP_Error('invalid_code', 'Brak kodu sesji.', ['status'=>400]);
+        $key = 'dt_mobile_web_' . hash('sha256', $code);
+        $saved = get_transient($key);
+        delete_transient($key);
+        $uid = (int)($saved['uid'] ?? 0);
+        if (!$uid || !get_userdata($uid)) return new WP_Error('expired_code', 'Kod sesji wygasł.', ['status'=>401]);
+
+        wp_set_current_user($uid);
+        wp_set_auth_cookie($uid, true, is_ssl());
+        wp_safe_redirect(self::typer_url());
+        exit;
+    }
+
     public static function logout(WP_REST_Request $request): WP_REST_Response {
         $uid = get_current_user_id();
-        $version = max(1, (int) get_user_meta($uid, 'dt_mobile_session_version', true));
+        $version = max(1, (int)get_user_meta($uid, 'dt_mobile_session_version', true));
         update_user_meta($uid, 'dt_mobile_session_version', $version + 1);
         return new WP_REST_Response(['ok'=>true]);
     }
 
-    public static function league(WP_REST_Request $request): WP_REST_Response {
-        $data = class_exists('DT_League_UI') ? DT_League_UI::mobile_data() : ['teams'=>[]];
-        return new WP_REST_Response($data);
-    }
-
     private static function google_identity(string $code, string $redirectUri): array {
         $settings = DT_DB::settings();
-        $response = wp_remote_post('https://oauth2.googleapis.com/token', [
+        $token = self::json_response(wp_remote_post('https://oauth2.googleapis.com/token', [
             'timeout'=>20,
             'body'=>[
                 'code'=>$code,
@@ -151,8 +176,7 @@ class DT_Mobile_Auth {
                 'redirect_uri'=>$redirectUri,
                 'grant_type'=>'authorization_code',
             ],
-        ]);
-        $token = self::json_response($response, 'Google token');
+        ]), 'Google token');
         if (empty($token['access_token'])) throw new RuntimeException('Google nie zwrócił tokenu.');
         $user = self::json_response(wp_remote_get('https://openidconnect.googleapis.com/v1/userinfo', [
             'timeout'=>20,
@@ -191,9 +215,53 @@ class DT_Mobile_Auth {
         ];
     }
 
+    private static function login_identity(string $provider, array $identity): int {
+        global $wpdb;
+        $table = DT_DB::table('social_accounts');
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table WHERE provider=%s AND provider_user_id=%s",
+            $provider, $identity['sub']
+        ));
+        $now = current_time('mysql');
+        if ($row) {
+            $wpdb->update($table, ['last_login_at'=>$now, 'email'=>$identity['email']], ['id'=>(int)$row->id]);
+            return (int)$row->user_id;
+        }
+
+        $user = get_user_by('email', $identity['email']);
+        if (!$user) {
+            $base = sanitize_user(strstr($identity['email'], '@', true) ?: 'kibic', true);
+            if (!$base) $base = 'kibic';
+            $login = $base;
+            $n = 1;
+            while (username_exists($login)) $login = $base . (++$n);
+            $uid = wp_create_user($login, wp_generate_password(32, true, true), $identity['email']);
+            if (is_wp_error($uid)) throw new RuntimeException($uid->get_error_message());
+            wp_update_user([
+                'ID'=>$uid,
+                'display_name'=>$identity['name'] ?: $login,
+                'nickname'=>$identity['name'] ?: $login,
+            ]);
+            $user = get_user_by('id', $uid);
+        }
+        $inserted = $wpdb->insert($table, [
+            'user_id'=>$user->ID,
+            'provider'=>$provider,
+            'provider_user_id'=>$identity['sub'],
+            'email'=>$identity['email'],
+            'created_at'=>$now,
+            'last_login_at'=>$now,
+        ]);
+        if ($inserted === false) throw new RuntimeException('Nie udało się połączyć konta społecznościowego.');
+        return (int)$user->ID;
+    }
+
     private static function issue_token(int $uid): string {
-        $sessionVersion = max(1, (int) get_user_meta($uid, 'dt_mobile_session_version', true));
-        if (!$sessionVersion) $sessionVersion = 1;
+        $sessionVersion = (int)get_user_meta($uid, 'dt_mobile_session_version', true);
+        if ($sessionVersion < 1) {
+            $sessionVersion = 1;
+            update_user_meta($uid, 'dt_mobile_session_version', $sessionVersion);
+        }
         $payload = [
             'uid'=>$uid,
             'iat'=>time(),
@@ -201,7 +269,7 @@ class DT_Mobile_Auth {
             'sv'=>$sessionVersion,
             'nonce'=>wp_generate_password(16, false, false),
         ];
-        $encoded = self::b64url_encode(wp_json_encode($payload));
+        $encoded = self::b64url_encode((string)wp_json_encode($payload));
         $body = self::TOKEN_VERSION . '.' . $encoded;
         $signature = self::b64url_encode(hash_hmac('sha256', $body, wp_salt('auth'), true));
         return $body . '.' . $signature;
@@ -214,20 +282,20 @@ class DT_Mobile_Auth {
         $body = $version . '.' . $encoded;
         $expected = self::b64url_encode(hash_hmac('sha256', $body, wp_salt('auth'), true));
         if (!hash_equals($expected, $signature)) return null;
-        $json = self::b64url_decode($encoded);
-        $payload = json_decode($json, true);
+        $payload = json_decode(self::b64url_decode($encoded), true);
         if (!is_array($payload) || empty($payload['uid']) || empty($payload['exp']) || (int)$payload['exp'] < time()) return null;
         $uid = (int)$payload['uid'];
         if (!get_userdata($uid)) return null;
-        $sessionVersion = max(1, (int) get_user_meta($uid, 'dt_mobile_session_version', true));
+        $sessionVersion = (int)get_user_meta($uid, 'dt_mobile_session_version', true);
+        if ($sessionVersion < 1) $sessionVersion = 1;
         if ((int)($payload['sv'] ?? 0) !== $sessionVersion) return null;
         return $payload;
     }
 
     private static function request_token(): string {
         $header = '';
-        if (!empty($_SERVER['HTTP_AUTHORIZATION'])) $header = (string) $_SERVER['HTTP_AUTHORIZATION'];
-        elseif (!empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) $header = (string) $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+        if (!empty($_SERVER['HTTP_AUTHORIZATION'])) $header = (string)$_SERVER['HTTP_AUTHORIZATION'];
+        elseif (!empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) $header = (string)$_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
         if (preg_match('/^Bearer\s+(.+)$/i', trim($header), $m)) return trim($m[1]);
         if (!empty($_SERVER['HTTP_X_DECKA_TYPER_TOKEN'])) return trim((string)$_SERVER['HTTP_X_DECKA_TYPER_TOKEN']);
         return '';
@@ -235,6 +303,12 @@ class DT_Mobile_Auth {
 
     private static function provider_callback_url(string $provider): string {
         return rest_url('decka-typer/v1/mobile/auth/' . sanitize_key($provider) . '/callback');
+    }
+
+    private static function typer_url(): string {
+        $settings = DT_DB::settings();
+        $url = !empty($settings['typer_page_id']) ? get_permalink((int)$settings['typer_page_id']) : home_url('/typer/');
+        return $url ?: home_url('/typer/');
     }
 
     private static function redirect_to_app(array $params): void {
@@ -245,7 +319,7 @@ class DT_Mobile_Auth {
 
     private static function json_response($response, string $label): array {
         if (is_wp_error($response)) throw new RuntimeException($label . ': ' . $response->get_error_message());
-        $code = (int) wp_remote_retrieve_response_code($response);
+        $code = (int)wp_remote_retrieve_response_code($response);
         $json = json_decode(wp_remote_retrieve_body($response), true);
         if ($code < 200 || $code >= 300 || !is_array($json)) {
             $detail = is_array($json) ? ($json['error_description'] ?? $json['error']['message'] ?? $json['error'] ?? '') : '';
@@ -261,6 +335,7 @@ class DT_Mobile_Auth {
     private static function b64url_decode(string $value): string {
         $padding = strlen($value) % 4;
         if ($padding) $value .= str_repeat('=', 4 - $padding);
-        return (string) base64_decode(strtr($value, '-_', '+/'), true);
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+        return is_string($decoded) ? $decoded : '';
     }
 }
