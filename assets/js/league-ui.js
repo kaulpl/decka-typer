@@ -5,7 +5,7 @@
 
   const q=(s,c=root)=>c.querySelector(s);
   const qa=(s,c=root)=>[...c.querySelectorAll(s)];
-  const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
+  const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt',"'":'&#039;','"':'&quot;'}[m]));
 
   // Unsaved picks are intentionally ephemeral. Changing round or reloading simply
   // discards them without browser/native confirmation dialogs.
@@ -16,6 +16,8 @@
   let activeTeams=cfg.teams||{};
   let activeRoundId=0;
   let contextSequence=0;
+  const contextCache=new Map();
+  const contextRequests=new Map();
 
   const currentRoundId=()=>Number(q('#dt-round-select')?.value||0);
   const teamData=id=>activeTeams?.[String(id)]||cfg.teams?.[String(id)]||{position:null,form:[null,null,null,null,null]};
@@ -55,24 +57,64 @@
     }
   };
 
-  const loadRoundContext=async()=>{
-    const roundId=currentRoundId();
+  const fetchContext=roundId=>{
+    roundId=Number(roundId||0);
+    if(!roundId||!cfg.contextUrl)return Promise.resolve(null);
+    if(contextCache.has(roundId))return Promise.resolve(contextCache.get(roundId));
+    if(contextRequests.has(roundId))return contextRequests.get(roundId);
+
+    const promise=(async()=>{
+      const url=new URL(cfg.contextUrl,window.location.origin);
+      url.searchParams.set('round_id',String(roundId));
+      const response=await fetch(url.toString(),{
+        credentials:'same-origin',
+        cache:'no-store',
+        headers:{Accept:'application/json'}
+      });
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      const data=await response.json();
+      contextCache.set(roundId,data);
+      return data;
+    })().finally(()=>contextRequests.delete(roundId));
+
+    contextRequests.set(roundId,promise);
+    return promise;
+  };
+
+  const optionRoundIds=()=>qa('#dt-round-select option').map(o=>Number(o.value||0)).filter(Boolean);
+
+  const prefetchNeighbors=roundId=>{
+    const ids=optionRoundIds();
+    const index=ids.indexOf(Number(roundId));
+    if(index<0)return;
+    [ids[index-1],ids[index+1]].filter(Boolean).forEach(id=>{
+      if(!contextCache.has(id)&&!contextRequests.has(id)){
+        // Low-priority warm-up: the next arrow click should be instant.
+        setTimeout(()=>fetchContext(id).catch(()=>{}),40);
+      }
+    });
+  };
+
+  const applyContext=(roundId,data)=>{
+    if(!data||currentRoundId()!==Number(roundId))return;
+    activeRoundId=Number(roundId);
+    activeTeams=data.teams||cfg.teams||{};
+    decorateMatches();
+    prefetchNeighbors(roundId);
+  };
+
+  const loadRoundContext=async roundId=>{
+    roundId=Number(roundId||currentRoundId());
     if(!roundId||!cfg.contextUrl)return;
-    if(activeRoundId===roundId)return;
+    if(activeRoundId===roundId&&contextCache.has(roundId))return;
 
     const seq=++contextSequence;
     try{
-      const url=new URL(cfg.contextUrl,window.location.origin);
-      url.searchParams.set('round_id',String(roundId));
-      const response=await fetch(url.toString(),{credentials:'same-origin',headers:{Accept:'application/json'}});
-      if(!response.ok)throw new Error(`HTTP ${response.status}`);
-      const data=await response.json();
-      if(seq!==contextSequence||currentRoundId()!==roundId)return;
-      activeRoundId=roundId;
-      activeTeams=data.teams||cfg.teams||{};
-      decorateMatches();
+      const data=await fetchContext(roundId);
+      if(seq!==contextSequence&&currentRoundId()!==roundId)return;
+      applyContext(roundId,data);
     }catch(_){
-      if(seq!==contextSequence)return;
+      if(currentRoundId()!==roundId)return;
       activeRoundId=roundId;
       activeTeams=cfg.teams||{};
       decorateMatches();
@@ -177,7 +219,8 @@
     requestAnimationFrame(()=>{
       matchScheduled=false;
       decorateMatches();
-      loadRoundContext();
+      const id=currentRoundId();
+      if(id&&activeRoundId!==id)loadRoundContext(id);
     });
   };
 
@@ -195,12 +238,23 @@
   const rankBox=q('#dt-ranking');
   if(rankBox)new MutationObserver(scheduleRankEnhance).observe(rankBox,{childList:true,subtree:true});
 
-  q('#dt-round-select')?.addEventListener('change',()=>{
+  q('#dt-round-select')?.addEventListener('change',event=>{
+    const targetId=Number(event.target.value||0);
     activeRoundId=0;
     contextSequence++;
-    activeTeams=cfg.teams||{};
-    setTimeout(scheduleMatchDecorate,0);
+    // Start league context immediately, in parallel with frontend.js round request.
+    loadRoundContext(targetId);
   });
+
+  const warmArrowTarget=direction=>{
+    const select=q('#dt-round-select');
+    if(!select)return;
+    const index=select.selectedIndex+direction;
+    const option=select.options[index];
+    if(option)fetchContext(Number(option.value||0)).catch(()=>{});
+  };
+  q('#dt-prev-round')?.addEventListener('click',()=>warmArrowTarget(-1));
+  q('#dt-next-round')?.addEventListener('click',()=>warmArrowTarget(1));
 
   decorateMatches();
   enhanceRanking();
