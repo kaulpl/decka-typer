@@ -57,6 +57,7 @@ class DT_Brand {
         if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
 
         wp_enqueue_style('tk-brand', DT_URL . 'assets/css/brand.css', ['dt-front'], DT_VERSION);
+        wp_enqueue_style('tk-header', DT_URL . 'assets/css/header.css', ['tk-brand'], DT_VERSION);
         wp_enqueue_script('tk-brand', DT_URL . 'assets/js/brand.js', ['dt-front'], DT_VERSION, true);
         wp_localize_script('tk-brand', 'TypujKoszaBrand', [
             'name' => self::NAME,
@@ -79,8 +80,8 @@ class DT_Brand {
 
     public static function head_meta(): void {
         if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
-        echo '<meta name="theme-color" content="' . esc_attr(self::NAVY) . '">\n';
-        echo '<link rel="icon" type="image/png" href="' . esc_url(self::mark_url()) . '">\n';
+        echo '<meta name="theme-color" content="' . esc_attr(self::NAVY) . '">' . "\n";
+        echo '<link rel="icon" type="image/png" href="' . esc_url(self::mark_url()) . '">' . "\n";
     }
 
     public static function document_title(string $title): string {
