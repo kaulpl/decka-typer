@@ -10,8 +10,9 @@ class DT_Canonical {
     public const HOST = 'typujkosza.pl';
 
     public static function register(): void {
+        // OAuth callback on the public homepage must run before any canonical redirect.
+        add_action('template_redirect', [__CLASS__, 'maybe_handle_web_oauth_callback'], -10);
         add_action('template_redirect', [__CLASS__, 'redirect_public_frontend'], 0);
-        add_action('admin_init', [__CLASS__, 'maybe_handle_web_oauth_callback'], 0);
         add_filter('wp_redirect', [__CLASS__, 'rewrite_public_redirect'], 99, 2);
         add_filter('rest_url', [__CLASS__, 'rewrite_auth_rest_url'], 99, 4);
         add_action('wp_head', [__CLASS__, 'canonical_link'], 4);
@@ -21,8 +22,12 @@ class DT_Canonical {
         return $query ? add_query_arg($query, self::URL) : self::URL;
     }
 
+    /**
+     * Web OAuth uses the public homepage itself as the callback.
+     * It is the simplest possible URI and avoids REST/admin rewrite differences.
+     */
     public static function web_oauth_callback_url(): string {
-        return rtrim(self::URL, '/') . '/wp-admin/admin-post.php';
+        return self::URL;
     }
 
     /**
@@ -73,13 +78,10 @@ class DT_Canonical {
     }
 
     /**
-     * Google and Facebook WWW OAuth use one clean callback without query
-     * parameters. The provider is recovered from the short-lived state
-     * transient created at the beginning of the login flow.
-     *
-     * Keeping the redirect URI free of action/provider query parameters makes
-     * the value copied to Google Cloud unambiguous and avoids mismatch caused
-     * by a different query string representation.
+     * Existing OAuth code asks WordPress for the legacy REST callback URL.
+     * Rewrite web callbacks to the canonical homepage so the value displayed in
+     * settings, sent to Google/Facebook and used during token exchange is identical.
+     * Mobile OAuth endpoints remain unchanged apart from the canonical host.
      */
     public static function rewrite_auth_rest_url(string $url, string $path, ?int $blogId, string $scheme): string {
         $cleanPath = ltrim($path, '/');
@@ -98,19 +100,18 @@ class DT_Canonical {
     }
 
     /**
-     * admin-post.php normally dispatches by the `action` parameter. The web
-     * OAuth callback intentionally has no query parameters registered in
-     * Google/Facebook, so intercept the returned state/code during admin_init,
-     * recover the provider and hand the request to the existing OAuth service.
+     * Google/Facebook return to https://typujkosza.pl/ with state + code/error.
+     * The provider is recovered from the short-lived transient created by
+     * DT_OAuth::start(), so no provider/action needs to be present in redirect_uri.
      */
     public static function maybe_handle_web_oauth_callback(): void {
-        if (!class_exists('DT_OAuth')) return;
+        if (is_admin() || wp_doing_ajax() || !class_exists('DT_OAuth')) return;
 
         $path = isset($_SERVER['REQUEST_URI'])
             ? (string) wp_parse_url(wp_unslash($_SERVER['REQUEST_URI']), PHP_URL_PATH)
-            : '';
-        if (untrailingslashit($path) !== '/wp-admin/admin-post.php') return;
-        if (!empty($_REQUEST['action'])) return;
+            : '/';
+        $normalizedPath = untrailingslashit('/' . ltrim($path ?: '/', '/'));
+        if (!in_array($normalizedPath, ['', '/'], true)) return;
 
         $state = isset($_REQUEST['state']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['state'])) : '';
         $code = isset($_REQUEST['code']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['code'])) : '';
