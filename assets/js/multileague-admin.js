@@ -1,5 +1,6 @@
 (()=>{
   const cfg=window.TypujKoszaMultiLeagueAdmin||{};
+  const roundCfg=window.TypujKoszaRoundContext||{};
   const q=s=>document.querySelector(s);
   document.addEventListener('DOMContentLoaded',()=>{
     q('[data-ml-open-add]')?.addEventListener('click',()=>q('#tk-ml-add-round')?.showModal());
@@ -7,6 +8,17 @@
     const league=q('#tk-ml-league'),group=q('#tk-ml-group');
     const syncGroup=()=>{if(!league||!group)return;const two=league.value==='2lm';group.disabled=!two;if(!two)group.value='';};
     league?.addEventListener('change',syncGroup);syncGroup();
+
+    const relabelRounds=()=>{
+      const map=roundCfg.rounds||{};
+      document.querySelectorAll('select').forEach(select=>{
+        [...select.options].forEach(option=>{
+          const id=String(option.value||'');
+          if(map[id])option.textContent=map[id];
+        });
+      });
+    };
+    relabelRounds();
 
     const params=new URLSearchParams(location.search);
     if(params.get('page')==='decka-typer'){
