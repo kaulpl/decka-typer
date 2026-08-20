@@ -6,14 +6,56 @@ class DT_Frontend {
         add_shortcode('decka_typer', [__CLASS__, 'shortcode']);
         add_filter('body_class', [__CLASS__, 'body_class']);
         add_filter('template_include', [__CLASS__, 'template_include'], 99);
+        add_action('template_redirect', [__CLASS__, 'redirect_legacy_typer'], 1);
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_assets']);
         add_filter('show_admin_bar', [__CLASS__, 'hide_admin_bar']);
+        add_filter('wp_redirect', [__CLASS__, 'normalize_legacy_redirect'], 10, 2);
     }
 
+    /**
+     * Decka Typer is the standalone front page of the WordPress installation.
+     * The old typer_page_id setting is intentionally ignored.
+     */
     public static function is_typer_page(): bool {
+        return is_front_page();
+    }
+
+    public static function frontend_url(): string {
+        return home_url('/');
+    }
+
+    public static function redirect_legacy_typer(): void {
+        if (is_admin() || self::is_typer_page()) return;
+
+        $requestPath = isset($_SERVER['REQUEST_URI'])
+            ? untrailingslashit((string) wp_parse_url(wp_unslash($_SERVER['REQUEST_URI']), PHP_URL_PATH))
+            : '';
+        $legacyPath = untrailingslashit((string) wp_parse_url(home_url('/typer/'), PHP_URL_PATH));
         $settings = DT_DB::settings();
-        $id = (int) ($settings['typer_page_id'] ?? 0);
-        return $id > 0 && is_page($id);
+        $legacyId = (int) ($settings['typer_page_id'] ?? 0);
+
+        if (($requestPath !== '' && $requestPath === $legacyPath) || ($legacyId > 0 && is_page($legacyId))) {
+            wp_safe_redirect(self::frontend_url(), 301, 'Decka Typer');
+            exit;
+        }
+    }
+
+    /**
+     * Older modules still build /typer redirects. Keep them compatible by
+     * transparently routing that exact legacy target to the site homepage.
+     */
+    public static function normalize_legacy_redirect(string $location, int $status): string {
+        $legacyPath = untrailingslashit((string) wp_parse_url(home_url('/typer/'), PHP_URL_PATH));
+        $targetPath = untrailingslashit((string) wp_parse_url($location, PHP_URL_PATH));
+        $targetHost = strtolower((string) wp_parse_url($location, PHP_URL_HOST));
+        $homeHost = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+
+        if ($targetPath !== $legacyPath || ($targetHost !== '' && $homeHost !== '' && $targetHost !== $homeHost)) {
+            return $location;
+        }
+
+        $query = (string) wp_parse_url($location, PHP_URL_QUERY);
+        return $query !== '' ? home_url('/?' . $query) : self::frontend_url();
     }
 
     public static function hide_admin_bar(bool $show): bool {
@@ -57,6 +99,9 @@ class DT_Frontend {
     }
 
     public static function shortcode(): string {
+        // The public Typer is intentionally available only as the site homepage.
+        if (!self::is_typer_page() && !is_admin()) return '';
+
         $settings = DT_DB::settings();
         self::assets();
         ob_start();
@@ -85,7 +130,7 @@ class DT_Frontend {
         $any = false;
         if (DT_OAuth::configured('google')) { $any=true; self::oauth_button('google', 'Google'); }
         if (DT_OAuth::configured('facebook')) { $any=true; self::oauth_button('facebook', 'Facebook'); }
-        echo '<div class="dt-login-divider"><span>lub</span></div><a class="dt-social-button dt-wp-login" href="' . esc_url(wp_login_url(get_permalink())) . '">' . self::icon('user') . '<span>Zaloguj kontem strony</span></a>';
+        echo '<div class="dt-login-divider"><span>lub</span></div><a class="dt-social-button dt-wp-login" href="' . esc_url(wp_login_url(self::frontend_url())) . '">' . self::icon('user') . '<span>Zaloguj kontem strony</span></a>';
         if (!$any && current_user_can('manage_options')) echo '<div class="dt-setup-note">Skonfiguruj Google lub Facebook w <strong>Decka Typer → Ustawienia</strong>.</div>';
         echo '<small class="dt-login-legal">Logując się, akceptujesz zasady Typera i politykę prywatności serwisu.</small></div></section></main>';
     }
