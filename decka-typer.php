@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: Decka Typer
- * Description: Nowoczesny typer 1 Ligi dla społeczności Decki Pelplin — wybór zwycięzców, nieedytowalne kupony kolejek, rankingi, synchronizacja 1LM i logowanie społecznościowe.
- * Version: 0.4.9
- * Author: Decka Pelplin
+ * Plugin Name: TypujKosza.pl
+ * Description: Koszykarski typer dla kibiców — typowanie zwycięzców, kupony kolejek, rankingi, bonusy i synchronizacja wyników.
+ * Version: 0.4.10
+ * Author: TypujKosza.pl
  * Text Domain: decka-typer
  * Requires at least: 6.5
  * Requires PHP: 8.0
@@ -12,7 +12,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DT_VERSION', '0.4.9');
+define('DT_VERSION', '0.4.10');
 define('DT_FILE', __FILE__);
 define('DT_DIR', plugin_dir_path(__FILE__));
 define('DT_URL', plugin_dir_url(__FILE__));
@@ -38,6 +38,7 @@ require_once DT_DIR . 'includes/class-dt-winner-highlight.php';
 require_once DT_DIR . 'includes/class-dt-user-settings.php';
 require_once DT_DIR . 'includes/class-dt-ranking-view.php';
 require_once DT_DIR . 'includes/class-dt-session-persistence.php';
+require_once DT_DIR . 'includes/class-dt-brand.php';
 require_once DT_DIR . 'includes/class-dt-plugin.php';
 
 register_activation_hook(__FILE__, ['DT_DB', 'activate']);
@@ -45,6 +46,7 @@ register_deactivation_hook(__FILE__, ['DT_DB', 'deactivate']);
 
 add_action('plugins_loaded', static function () {
     DT_Plugin::instance()->boot();
+    DT_Brand::register();
     DT_Session_Persistence::register();
     DT_Mobile_Auth::register();
     DT_Submission::register();

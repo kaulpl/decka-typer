@@ -24,7 +24,7 @@ class DT_Plugin {
     }
 
     public function links(array $links): array {
-        array_unshift($links, '<a href="' . esc_url(admin_url('admin.php?page=decka-typer')) . '">Pulpit Typera</a>');
+        array_unshift($links, '<a href="' . esc_url(admin_url('admin.php?page=decka-typer')) . '">Pulpit TypujKosza.pl</a>');
         return $links;
     }
 }
