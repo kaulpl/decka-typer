@@ -23,7 +23,14 @@ class DT_Round_Access {
         $data = $response->get_data();
         if (!is_array($data)) return $response;
         $season = (string) ($data['season'] ?? DT_DB::settings()['season']);
-        $rounds = is_array($data['rounds'] ?? null) ? $data['rounds'] : [];
+
+        // Frontend selectors must contain only rounds that an administrator has actually opened
+        // at least once: current open rounds and rounds already closed. Drafts stay hidden even
+        // when a scheduled match date has already passed.
+        $rounds = array_values(array_filter(
+            is_array($data['rounds'] ?? null) ? $data['rounds'] : [],
+            static fn(array $round): bool => in_array((string) ($round['status'] ?? ''), ['open','closed'], true)
+        ));
         $known = [];
         foreach ($rounds as $round) $known[(int) ($round['id'] ?? 0)] = true;
 
@@ -66,6 +73,24 @@ class DT_Round_Access {
 
         usort($rounds, static fn(array $a, array $b): int => ((int) ($a['round_no'] ?? 0)) <=> ((int) ($b['round_no'] ?? 0)));
         $data['rounds'] = $rounds;
+
+        $allowed = array_fill_keys(array_map(static fn(array $r): int => (int) ($r['id'] ?? 0), $rounds), true);
+        $currentId = (int) (($data['current_round']['id'] ?? 0));
+        if (!$currentId || !isset($allowed[$currentId])) {
+            $preferredId = 0;
+            foreach ($rounds as $round) {
+                if (($round['status'] ?? '') === 'open') {
+                    $preferredId = (int) $round['id'];
+                    break;
+                }
+            }
+            if (!$preferredId && $rounds) {
+                $last = end($rounds);
+                $preferredId = (int) ($last['id'] ?? 0);
+            }
+            $data['current_round'] = $preferredId ? self::round_payload($preferredId) : null;
+        }
+
         $response->set_data($data);
         return $response;
     }
@@ -78,22 +103,29 @@ class DT_Round_Access {
         ));
         if ($status !== 'closed') return $original;
 
+        $payload = self::round_payload($roundId);
+        if (is_array($payload)) return new WP_REST_Response($payload);
+        return $original;
+    }
+
+    private static function round_payload(int $roundId): ?array {
         try {
             $method = new ReflectionMethod('DT_REST', 'round_payload');
             if (method_exists($method, 'setAccessible')) $method->setAccessible(true);
             $payload = $method->invoke(null, $roundId, false);
             if (is_array($payload)) {
-                $payload['is_open'] = false;
-                $payload['display_status'] = 'closed';
-                $payload['can_submit'] = false;
-                return new WP_REST_Response($payload);
+                $status = (string) ($payload['status'] ?? '');
+                $payload['is_open'] = $status === 'open' && !empty($payload['is_open']);
+                $payload['display_status'] = $payload['is_open'] ? 'open' : 'closed';
+                if (!$payload['is_open']) $payload['can_submit'] = false;
+                return $payload;
             }
         } catch (Throwable $e) {
             if (class_exists('DT_Logger')) {
-                DT_Logger::log('closed_round_preview_error', $e->getMessage(), ['round_id'=>$roundId], 'warning');
+                DT_Logger::log('round_preview_error', $e->getMessage(), ['round_id'=>$roundId], 'warning');
             }
         }
-        return $original;
+        return null;
     }
 
     private static function iso_datetime(?string $value): ?string {
