@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 — 2026-08-20
+
+- niezapisane wybory na ekranie „Typuj” są traktowane wyłącznie jako stan tymczasowy: przeładowanie strony lub zmiana kolejki odrzuca je bez ostrzeżenia i bez zapisu,
+- ranking otrzymał dwie nowe kolumny: `trafione / typowane` oraz skuteczność wyrażoną procentowo,
+- pod nazwą każdej drużyny na ekranie „Typuj” wyświetlana jest forma z 5 ostatnich zakończonych meczów,
+- forma używa pięciu kropek ułożonych od najstarszego meczu po lewej do najnowszego po prawej; zielony oznacza zwycięstwo, czerwony porażkę, a szary brak danych,
+- w kolorowych kropkach wyświetlane są miniatury logotypów rywali z lokalnego pakietu logotypów 1LM,
+- w lewym górnym rogu kafla drużyny wyświetlane jest aktualne miejsce `#[N]` pobierane z oficjalnej tabeli `1lm.pzkosz.pl/tabele.html`,
+- tabela 1LM jest cache'owana i odświeżana po synchronizacji terminarza oraz okresowo przy wejściu do Typera,
+- po rozliczeniu zamkniętego meczu wynik jest prezentowany dużą czcionką osobno pod właściwą drużyną,
+- cały moduł rozliczonego meczu otrzymuje zieloną ramkę przy trafionym typie i czerwoną przy nietrafionym,
+- nietrafiony wybrany kafel drużyny również przechodzi w czerwony stan, żeby nie mylić samego wyboru z poprawnym wynikiem,
+- nowe elementy mają responsywny układ mobilny.
+
 ## 0.2.6 — 2026-08-19
 
 - zakładka „Moje typy” została przebudowana na rozwijalną listę kuponów — jeden kupon odpowiada jednej kolejce,

@@ -4,7 +4,7 @@ Nowoczesna wtyczka WordPress dla społeczności Decki Pelplin do typowania zwyci
 
 ## Wersja
 
-Aktualna wersja: **0.2.6**
+Aktualna wersja: **0.3.0**
 
 ## Najważniejsze funkcje
 
@@ -12,9 +12,13 @@ Aktualna wersja: **0.2.6**
 - typowanie wyłącznie zwycięzcy meczu przez kliknięcie drużyny,
 - brak typowania dokładnego wyniku punktowego — w typie przechowywana jest tylko wybrana drużyna,
 - jeden nieedytowalny kupon na każdą kolejkę,
+- niezapisane wybory są tymczasowe i znikają bez ostrzeżenia po przeładowaniu lub zmianie kolejki,
 - administrator otwiera kolejkę i określa termin zamknięcia typowania,
-- ranking sezonu i poszczególnych kolejek,
+- ranking sezonu i poszczególnych kolejek z bilansem trafień oraz skutecznością procentową,
 - historia „Moje typy” pogrupowana w rozwijane kupony według kolejek, z oznaczeniem trafień, nietrafień i punktów,
+- aktualne miejsce drużyny `#[N]` pobierane z oficjalnej tabeli 1LM,
+- forma pięciu ostatnich rozegranych meczów pod każdą drużyną, z kolorami W/L oraz mini-logotypami rywali,
+- rozliczone mecze są kolorowane na zielono/czerwono zależnie od poprawności typu, a końcowy wynik jest pokazany osobno przy każdej drużynie,
 - logowanie Google i Facebook,
 - automatyczny import terminarza i faktycznych wyników z `1lm.pzkosz.pl`,
 - ręczne mecze i faktyczne wyniki chronione przed nadpisaniem przez synchronizację,
@@ -30,7 +34,11 @@ Aktualizacja do `0.2.5` usuwa z `dt_predictions` stare kolumny służące niegdy
 
 ## Zasada kuponu
 
-Każda kolejka ma status szkicu, otwartej lub zamkniętej. Tylko administrator może otworzyć kolejkę i ustawić termin zakończenia przyjmowania kuponów. Użytkownik wskazuje zwycięzcę wszystkich meczów dostępnej kolejki i zapisuje cały kupon jednym przyciskiem. Po zapisie kupon jest nieodwracalnie zablokowany dla użytkownika.
+Każda kolejka ma status szkicu, otwartej lub zamkniętej. Tylko administrator może otworzyć kolejkę i ustawić termin zakończenia przyjmowania kuponów. Użytkownik wskazuje zwycięzcę wszystkich meczów dostępnej kolejki i zapisuje cały kupon jednym przyciskiem. Po zapisie kupon jest nieodwracalnie zablokowany dla użytkownika. Dopóki użytkownik nie kliknie „Zapisz typy”, jego bieżące wybory nie są zapisywane i mogą zostać swobodnie porzucone przez przeładowanie strony lub zmianę kolejki.
+
+## Dane ligowe i forma
+
+Miejsca drużyn są cache'owane z oficjalnej strony `https://1lm.pzkosz.pl/tabele.html`. Cache odświeża się po synchronizacji terminarza oraz okresowo przy wejściu do Typera. Forma pięciu ostatnich meczów jest wyliczana lokalnie z zakończonych spotkań przechowywanych już w bazie Decka Typer; najstarszy z pięciu meczów znajduje się po lewej, najnowszy po prawej.
 
 ## Synchronizacja 1LM
 
