@@ -4,7 +4,7 @@ Nowoczesna wtyczka WordPress dla społeczności Decki Pelplin do typowania zwyci
 
 ## Wersja
 
-Aktualna wersja: **0.3.0**
+Aktualna wersja: **0.4.5**
 
 ## Najważniejsze funkcje
 
@@ -14,12 +14,19 @@ Aktualna wersja: **0.3.0**
 - jeden nieedytowalny kupon na każdą kolejkę,
 - niezapisane wybory są tymczasowe i znikają bez ostrzeżenia po przeładowaniu lub zmianie kolejki,
 - administrator otwiera kolejkę i określa termin zamknięcia typowania,
-- ranking sezonu i poszczególnych kolejek z bilansem trafień oraz skutecznością procentową,
-- historia „Moje typy” pogrupowana w rozwijane kupony według kolejek, z oznaczeniem trafień, nietrafień i punktów,
+- zamknięte kolejki pozostają dostępne do podglądu także dla użytkowników, którzy nie oddali w nich kuponu,
+- ranking: wszechczasów, wybranego sezonu oraz konkretnej kolejki,
+- ranking pokazuje punkty, trafione/typowane mecze, skuteczność oraz sumę zdobytych dodatkowych punktów BONUS,
+- miejsca 1–3 są oznaczone medalami,
+- jeden mecz w każdej kolejce może zostać oznaczony jako BONUS z dodatkowymi punktami za trafienie,
+- mecz BONUS jest wyróżniany żółtą szarfą, a oznaczenie trafia również do historii „Moje typy”,
+- historia „Moje typy” jest pogrupowana w rozwijane kupony według kolejek, z oznaczeniem trafień, nietrafień i punktów,
 - aktualne miejsce drużyny `#[N]` pobierane z oficjalnej tabeli 1LM,
 - forma pięciu ostatnich rozegranych meczów pod każdą drużyną, z kolorami W/L oraz mini-logotypami rywali,
-- rozliczone mecze są kolorowane na zielono/czerwono zależnie od poprawności typu, a końcowy wynik jest pokazany osobno przy każdej drużynie,
+- forma jest liczona historycznie względem terminu zamknięcia oglądanej kolejki,
+- rozliczone mecze mają zieloną/czerwoną ramkę zależnie od poprawności typu, a końcowy wynik jest pokazany osobno przy każdej drużynie,
 - logowanie Google i Facebook,
+- ustawienia użytkownika z własną publiczną nazwą rankingową oraz danymi konta,
 - automatyczny import terminarza i faktycznych wyników z `1lm.pzkosz.pl`,
 - ręczne mecze i faktyczne wyniki chronione przed nadpisaniem przez synchronizację,
 - pełne nazwy drużyn oraz wyróżnienie meczu Decki Pelplin,
@@ -36,9 +43,25 @@ Aktualizacja do `0.2.5` usuwa z `dt_predictions` stare kolumny służące niegdy
 
 Każda kolejka ma status szkicu, otwartej lub zamkniętej. Tylko administrator może otworzyć kolejkę i ustawić termin zakończenia przyjmowania kuponów. Użytkownik wskazuje zwycięzcę wszystkich meczów dostępnej kolejki i zapisuje cały kupon jednym przyciskiem. Po zapisie kupon jest nieodwracalnie zablokowany dla użytkownika. Dopóki użytkownik nie kliknie „Zapisz typy”, jego bieżące wybory nie są zapisywane i mogą zostać swobodnie porzucone przez przeładowanie strony lub zmianę kolejki.
 
+Zamknięta kolejka jest dostępna wyłącznie do odczytu również dla użytkownika, który nie brał w niej udziału.
+
+## Mecze BONUS
+
+Administrator może oznaczyć jeden mecz w każdej kolejce jako BONUS. Trafienie takiego spotkania daje standardowe punkty za zwycięzcę oraz dodatkową liczbę punktów określoną w Ustawieniach. Zmiana meczu BONUS lub wartości bonusu automatycznie przelicza już rozstrzygnięte typy.
+
+## Ranking
+
+Frontend udostępnia trzy zakresy rankingu:
+
+- **Wszechczasów** — wszystkie sezony zapisane w bazie,
+- **Sezon** — wybrany sezon,
+- **Kolejka** — wybrany sezon i konkretna kolejka.
+
+Lista sezonów jest generowana z danych zapisanych w bazie i ograniczona do bieżącego oraz maksymalnie pięciu wcześniejszych sezonów.
+
 ## Dane ligowe i forma
 
-Miejsca drużyn są cache'owane z oficjalnej strony `https://1lm.pzkosz.pl/tabele.html`. Cache odświeża się po synchronizacji terminarza oraz okresowo przy wejściu do Typera. Forma pięciu ostatnich meczów jest wyliczana lokalnie z zakończonych spotkań przechowywanych już w bazie Decka Typer; najstarszy z pięciu meczów znajduje się po lewej, najnowszy po prawej.
+Miejsca drużyn są cache'owane z oficjalnej strony `https://1lm.pzkosz.pl/tabele.html`. Tabela odświeża się po synchronizacji oraz w tle. Forma pięciu ostatnich meczów jest wyliczana lokalnie z zakończonych spotkań przechowywanych już w bazie Decka Typer. Dla historycznej kolejki uwzględniane są tylko mecze zakończone przed terminem jej zamknięcia; najstarszy z pięciu meczów znajduje się po lewej, najnowszy po prawej.
 
 ## Synchronizacja 1LM
 

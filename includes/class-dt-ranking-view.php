@@ -1,0 +1,186 @@
+<?php
+if (!defined('ABSPATH')) exit;
+
+class DT_Ranking_View {
+    public static function register(): void {
+        add_action('rest_api_init', [__CLASS__, 'routes']);
+        add_action('wp_enqueue_scripts', [__CLASS__, 'assets'], 40);
+    }
+
+    public static function routes(): void {
+        register_rest_route('decka-typer/v1', '/ranking-view', [
+            'methods'=>'GET',
+            'callback'=>[__CLASS__, 'ranking'],
+            'permission_callback'=>'__return_true',
+        ]);
+    }
+
+    public static function assets(): void {
+        if (!is_user_logged_in() || !class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
+        wp_enqueue_style('dt-ranking-view', DT_URL . 'assets/css/ranking-view.css', ['dt-front'], DT_VERSION);
+        wp_enqueue_script('dt-ranking-view', DT_URL . 'assets/js/ranking-view.js', ['dt-front'], DT_VERSION, true);
+    }
+
+    public static function ranking(WP_REST_Request $request): WP_REST_Response {
+        $scope = sanitize_key((string) $request->get_param('scope'));
+        if (!in_array($scope, ['all','season','round'], true)) $scope = 'all';
+
+        $settings = DT_DB::settings();
+        $seasons = self::seasons((string)($settings['season'] ?? ''));
+        $season = sanitize_text_field((string) $request->get_param('season'));
+        if ($season === '' || !in_array($season, $seasons, true)) $season = $seasons[0] ?? (string)($settings['season'] ?? '');
+
+        $rounds = self::rounds($season);
+        $roundId = max(0, (int) $request->get_param('round_id'));
+        if ($scope === 'round') {
+            $validIds = array_map(static fn($r)=>(int)$r['id'], $rounds);
+            if (!$roundId || !in_array($roundId, $validIds, true)) {
+                $roundId = $validIds ? (int) end($validIds) : 0;
+            }
+        } else {
+            $roundId = 0;
+        }
+
+        return new WP_REST_Response([
+            'scope'=>$scope,
+            'season'=>$season,
+            'round_id'=>$roundId,
+            'seasons'=>$seasons,
+            'rounds'=>$rounds,
+            'ranking'=>self::rows($scope, $season, $roundId),
+        ]);
+    }
+
+    private static function seasons(string $current): array {
+        global $wpdb;
+        $items = $wpdb->get_col('SELECT DISTINCT season FROM ' . DT_DB::table('rounds') . " WHERE season<>'' ORDER BY season DESC");
+        $items = array_values(array_unique(array_filter(array_map('strval', (array)$items))));
+        usort($items, static function(string $a, string $b) use ($current): int {
+            if ($a === $current && $b !== $current) return -1;
+            if ($b === $current && $a !== $current) return 1;
+            preg_match('/(20\d{2})/', $a, $ma);
+            preg_match('/(20\d{2})/', $b, $mb);
+            return ((int)($mb[1] ?? 0)) <=> ((int)($ma[1] ?? 0));
+        });
+        return array_slice($items, 0, 6); // bieżący + maksymalnie pięć wcześniejszych sezonów
+    }
+
+    private static function rounds(string $season): array {
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            'SELECT id,round_no,title,status,closes_at FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY round_no ASC,id ASC',
+            $season
+        ), ARRAY_A);
+        if (!is_array($rows)) return [];
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['round_no'] = (int)$row['round_no'];
+        }
+        unset($row);
+        return $rows;
+    }
+
+    private static function rows(string $scope, string $season, int $roundId): array {
+        global $wpdb;
+        $pred = DT_DB::table('predictions');
+        $mat = DT_DB::table('matches');
+        $rnd = DT_DB::table('rounds');
+        $adj = DT_DB::table('point_adjustments');
+        $users = $wpdb->users;
+
+        $filter = '';
+        if ($scope === 'season') {
+            $filter = $wpdb->prepare(' AND r.season=%s ', $season);
+        } elseif ($scope === 'round') {
+            $filter = $wpdb->prepare(' AND r.season=%s AND r.id=%d ', $season, $roundId);
+        }
+
+        $sql = "SELECT u.ID user_id,u.display_name,
+                       COUNT(p.id) predictions,
+                       COALESCE(SUM(p.points),0) points,
+                       SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) winner_hits
+                FROM $users u
+                JOIN $pred p ON p.user_id=u.ID
+                JOIN $mat m ON m.id=p.match_id
+                JOIN $rnd r ON r.id=m.round_id
+                WHERE p.selected_team_id IS NOT NULL $filter
+                GROUP BY u.ID,u.display_name";
+        $rows = $wpdb->get_results($sql, ARRAY_A);
+        if (!is_array($rows)) $rows = [];
+
+        $adjustments = [];
+        if ($scope !== 'round') {
+            $adjWhere = $scope === 'season' ? $wpdb->prepare(' WHERE season=%s ', $season) : '';
+            foreach ((array)$wpdb->get_results("SELECT user_id,COALESCE(SUM(points),0) points FROM $adj $adjWhere GROUP BY user_id", ARRAY_A) as $row) {
+                $adjustments[(int)$row['user_id']] = (float)$row['points'];
+            }
+        }
+
+        $perfect = [];
+        $perfectSql = "SELECT x.user_id,COUNT(*) perfect_rounds FROM (
+            SELECT p.user_id,r.id round_id,COUNT(p.id) pred_count,
+                   SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) good_count,
+                   (SELECT COUNT(*) FROM $mat mm WHERE mm.round_id=r.id) match_count
+            FROM $pred p
+            JOIN $mat m ON m.id=p.match_id
+            JOIN $rnd r ON r.id=m.round_id
+            WHERE p.selected_team_id IS NOT NULL $filter
+            GROUP BY p.user_id,r.id
+            HAVING pred_count=match_count AND good_count=match_count AND match_count>0
+        ) x GROUP BY x.user_id";
+        foreach ((array)$wpdb->get_results($perfectSql, ARRAY_A) as $row) {
+            $perfect[(int)$row['user_id']] = (int)$row['perfect_rounds'];
+        }
+
+        $bonusHits = [];
+        $bonusIds = class_exists('DT_Bonus') ? array_values(array_filter(array_map('intval', DT_Bonus::match_ids()))) : [];
+        if ($bonusIds) {
+            $placeholders = implode(',', array_fill(0, count($bonusIds), '%d'));
+            $in = $wpdb->prepare($placeholders, ...$bonusIds);
+            $bonusSql = "SELECT p.user_id,COUNT(*) hits
+                         FROM $pred p
+                         JOIN $mat m ON m.id=p.match_id
+                         JOIN $rnd r ON r.id=m.round_id
+                         WHERE p.scoring_code='winner' AND m.id IN ($in) $filter
+                         GROUP BY p.user_id";
+            foreach ((array)$wpdb->get_results($bonusSql, ARRAY_A) as $row) {
+                $bonusHits[(int)$row['user_id']] = (int)$row['hits'];
+            }
+        }
+
+        $settings = DT_DB::settings();
+        $perfectPoints = (float)($settings['perfect_round_bonus'] ?? 0);
+        $bonusValue = class_exists('DT_Bonus') ? DT_Bonus::points() : 0.0;
+        foreach ($rows as &$row) {
+            $uid = (int)$row['user_id'];
+            $row['user_id'] = $uid;
+            $row['predictions'] = (int)$row['predictions'];
+            $row['winner_hits'] = (int)$row['winner_hits'];
+            $row['perfect_rounds'] = (int)($perfect[$uid] ?? 0);
+            $row['bonus_hits'] = (int)($bonusHits[$uid] ?? 0);
+            $row['bonus_points'] = $row['bonus_hits'] * $bonusValue;
+            $row['points'] = (float)$row['points'] + (float)($adjustments[$uid] ?? 0) + ($row['perfect_rounds'] * $perfectPoints);
+            $row['efficiency'] = $row['predictions'] > 0 ? ($row['winner_hits'] / $row['predictions']) * 100 : 0.0;
+        }
+        unset($row);
+
+        if (class_exists('DT_User_Settings')) $rows = DT_User_Settings::apply_ranking_names($rows);
+
+        usort($rows, static function(array $a,array $b): int {
+            if ((float)$a['points'] !== (float)$b['points']) return (float)$a['points'] < (float)$b['points'] ? 1 : -1;
+            if ((int)$a['winner_hits'] !== (int)$b['winner_hits']) return (int)$b['winner_hits'] <=> (int)$a['winner_hits'];
+            return strcasecmp((string)$a['display_name'], (string)$b['display_name']);
+        });
+
+        $rank=0;$seen=0;$last=null;
+        foreach ($rows as &$row) {
+            $seen++;
+            $key = (string)$row['points'] . '|' . (string)$row['winner_hits'];
+            if ($key !== $last) $rank=$seen;
+            $row['rank']=$rank;
+            $last=$key;
+        }
+        unset($row);
+        return array_slice($rows, 0, 500);
+    }
+}

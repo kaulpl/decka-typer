@@ -133,13 +133,58 @@ class DT_Bonus {
 
         if ($route === '/decka-typer/v1/bootstrap') {
             if (isset($data['current_round'])) $decorateRound($data['current_round']);
+            if (isset($data['me']['history']) && is_array($data['me']['history'])) self::decorate_history($data['me']['history']);
             if (!isset($data['scoring']) || !is_array($data['scoring'])) $data['scoring'] = [];
             $data['scoring']['bonus'] = $bonusPoints;
         } elseif (preg_match('~^/decka-typer/v1/round/\d+$~', $route)) {
             $decorateRound($data);
+        } elseif ($route === '/decka-typer/v1/me' && isset($data['history']) && is_array($data['history'])) {
+            self::decorate_history($data['history']);
         }
         $response->set_data($data);
         return $response;
+    }
+
+    private static function decorate_history(array &$history): void {
+        $ids = array_values(array_filter(array_map('intval', self::match_ids())));
+        if (!$history) return;
+        if (!$ids) {
+            foreach ($history as &$item) {
+                $item['is_bonus'] = false;
+                $item['bonus_points'] = 0;
+            }
+            unset($item);
+            return;
+        }
+
+        global $wpdb;
+        $season = (string)(DT_DB::settings()['season'] ?? '');
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $sql = "SELECT m.id,r.round_no,h.name home_name,a.name away_name
+                FROM " . DT_DB::table('matches') . " m
+                JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+                JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
+                JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
+                WHERE m.id IN ($placeholders) AND r.season=%s";
+        $prepared = $wpdb->prepare($sql, ...array_merge($ids, [$season]));
+        $lookup = [];
+        foreach ((array)$wpdb->get_results($prepared, ARRAY_A) as $row) {
+            $key = self::history_key((int)$row['round_no'], (string)$row['home_name'], (string)$row['away_name']);
+            $lookup[$key] = true;
+        }
+
+        $points = self::points();
+        foreach ($history as &$item) {
+            $key = self::history_key((int)($item['round_no'] ?? 0), (string)($item['home_name'] ?? ''), (string)($item['away_name'] ?? ''));
+            $isBonus = isset($lookup[$key]);
+            $item['is_bonus'] = $isBonus;
+            $item['bonus_points'] = $isBonus ? $points : 0;
+        }
+        unset($item);
+    }
+
+    private static function history_key(int $roundNo, string $home, string $away): string {
+        return $roundNo . '|' . mb_strtolower(trim($home)) . '|' . mb_strtolower(trim($away));
     }
 
     private static function recalc_all_bonus_matches(): void {
