@@ -6,7 +6,7 @@ Wtyczka WordPress do prowadzenia bezpłatnego koszykarskiego typera dla kibiców
 
 ## Wersja
 
-Aktualna wersja: **0.4.15**
+Aktualna wersja: **0.4.16**
 
 ## Branding
 
@@ -22,6 +22,8 @@ Podstawowa identyfikacja wykorzystuje granat `#07162F`, niebieski `#055EFB`, pom
 
 Dla niezalogowanych użytkowników strona główna zawiera dodatkowy landing page renderowany po stronie PHP. Obejmuje on naturalne treści dotyczące typera koszykarskiego, rywalizacji kibiców, rankingu, meczów BONUS, ulubionej drużyny oraz instrukcję rozpoczęcia gry. W części wizualnej znajdują się responsywne mockupy ekranów typowania i rankingu z przykładowymi danymi prezentacyjnymi.
 
+Od `0.4.16` landing ma bardziej zwarty rytm pionowy, większą o około 2 px typografię treści i korzysta konsekwentnie z określenia **typowanie** zamiast wcześniejszego słowa „kupon”. Ta sama terminologia jest normalizowana w całym widocznym frontendzie i panelu administratora.
+
 Warstwa SEO dodaje meta description, Open Graph, Twitter Card oraz dane strukturalne Schema.org `WebApplication` z informacją, że korzystanie z aplikacji jest bezpłatne.
 
 ## Najważniejsze funkcje
@@ -32,7 +34,7 @@ Warstwa SEO dodaje meta description, Open Graph, Twitter Card oraz dane struktur
 - stary adres `/typer` przekierowuje na stronę główną TypujKosza.pl,
 - landing SEO i prezentacja aplikacji dla niezalogowanych,
 - typowanie wyłącznie zwycięzcy meczu,
-- jeden nieedytowalny kupon na kolejkę,
+- jedno nieedytowalne typowanie na kolejkę,
 - administrator jawnie otwiera i zamyka kolejki,
 - zamknięte kolejki można przeglądać również bez wcześniejszego udziału,
 - rankingi: wszechczasów, sezonu i kolejki,
