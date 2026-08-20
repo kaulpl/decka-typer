@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-08-20
+
+- naprawiono błędne wyświetlanie wyników w zamkniętych kuponach, gdzie liczba punktów za typ mogła dokleić się do wyniku meczu, np. `20:25 + 0 pkt` było prezentowane jako `20:250`,
+- wynik meczu jest teraz odczytywany wyłącznie z elementu zawierającego faktyczny wynik spotkania, a nie z całego tekstu wiersza,
+- dzięki poprawnemu wynikowi ponownie prawidłowo wyliczane jest, czy typ użytkownika był trafiony, a zielona/czerwona ramka meczu odpowiada rzeczywistemu rozstrzygnięciu.
+
 ## 0.3.0 — 2026-08-20
 
 - niezapisane wybory na ekranie „Typuj” są traktowane wyłącznie jako stan tymczasowy: przeładowanie strony lub zmiana kolejki odrzuca je bez ostrzeżenia i bez zapisu,
@@ -32,7 +38,7 @@
 - naprawiony błąd zapisu `Column 'home_score' cannot be null` występujący na bazach utworzonych przez starsze wersje wtyczki,
 - zapis kuponu AJAX wysyła prosty, kompaktowy payload `round_id` + `match_id:team_id` zamiast osadzonego JSON-a w formularzu,
 - cały handler zapisu jest objęty ochroną `try/catch(Throwable)` oraz awaryjną obsługą błędów krytycznych PHP,
-- w przypadku błędu krytycznego odpowiedź jest czyszczona i zwracana jako JSON z krótkim identyfikatorem `DT-XXXXXXXX`, zamiast surowej strony HTTP 500,
+- w przypadku błędu krytycznego odpowiedź jest czyszczana i zwracana jako JSON z krótkim identyfikatorem `DT-XXXXXXXX`, zamiast surowej strony HTTP 500,
 - typy są zapisywane najpierw, a blokada nieedytowalnego kuponu powstaje dopiero po poprawnym zapisaniu wszystkich meczów,
 - częściowy zapis po przerwanym żądaniu pozostaje możliwy do ponowienia i nie blokuje kolejki użytkownikowi,
 - błędy zapisu typu lub blokady kuponu trafiają do Historii Typera, ale sam mechanizm logowania nie może już przerwać odpowiedzi,
