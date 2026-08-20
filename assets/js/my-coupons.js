@@ -10,6 +10,7 @@
     const d=new Date(s);if(Number.isNaN(d.getTime()))return 'Termin do ustalenia';
     return new Intl.DateTimeFormat('pl-PL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:cfg.timezone||'Europe/Warsaw'}).format(d).replace(',',' ·');
   };
+  const fmtBonus=v=>Number.isInteger(Number(v||0))?String(Number(v||0)):Number(v||0).toFixed(1).replace('.',',');
 
   let lastHistory=[];
   let rendering=false;
@@ -47,10 +48,12 @@
   const matchRow=item=>{
     const status=statusOf(item);
     const statusLabel=status==='hit'?'TRAFIONY':status==='miss'?'NIETRAFIONY':'OCZEKUJE';
-    return `<div class="dt-coupon-match is-${status}">
+    const bonus=item.is_bonus?`<span class="dt-coupon-bonus">★ BONUS +${esc(fmtBonus(item.bonus_points))} PKT</span>`:'';
+    return `<div class="dt-coupon-match is-${status} ${item.is_bonus?'is-bonus':''}">
       <div class="dt-coupon-game">
         <strong>${esc(item.home_name)} <span>–</span> ${esc(item.away_name)}</strong>
         <small>${esc(fmtDate(item.starts_at_iso))}</small>
+        ${bonus}
       </div>
       <div class="dt-coupon-user-pick">
         <small>TWÓJ TYP</small>
@@ -65,8 +68,10 @@
     const known=items.filter(x=>x.result_known);
     const hits=known.filter(x=>x.scoring_code==='winner').length;
     const points=items.reduce((sum,x)=>sum+Number(x.points||0),0);
+    const bonusMatches=items.filter(x=>x.is_bonus).length;
     const complete=known.length===items.length&&items.length>0;
-    const meta=complete?`${hits}/${items.length} trafień · ${points.toFixed(0)} pkt`:`${known.length}/${items.length} rozliczonych`;
+    const baseMeta=complete?`${hits}/${items.length} trafień · ${points.toFixed(0)} pkt`:`${known.length}/${items.length} rozliczonych`;
+    const meta=bonusMatches?`${baseMeta} · ★ BONUS`:baseMeta;
     return `<details class="dt-coupon" ${index===0?'open':''}>
       <summary class="dt-coupon-summary">
         <div class="dt-coupon-title">
