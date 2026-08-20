@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 — 2026-08-20
+
+- w rozstrzygniętym meczu faktyczny zwycięzca jest zawsze wyróżniany zielonym kaflem, niezależnie od typu użytkownika,
+- faktyczny przegrany otrzymuje czerwone wyróżnienie,
+- zewnętrzna ramka meczu nadal pokazuje poprawność kuponu użytkownika: zielona dla trafionego typu, czerwona dla nietrafionego,
+- w nietrafionym meczu użytkownik widzi jednocześnie czerwony kafel swojego błędnego wyboru oraz zielony kafel prawdziwego zwycięzcy,
+- nie zmieniono danych meczu, punktacji ani mechanizmu zapisu kuponów.
+
 ## 0.3.1 — 2026-08-20
 
 - naprawiono błędne wyświetlanie wyników w zamkniętych kuponach, gdzie liczba punktów za typ mogła dokleić się do wyniku meczu, np. `20:25 + 0 pkt` było prezentowane jako `20:250`,
