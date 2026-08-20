@@ -32,6 +32,10 @@ class DT_Brand {
         return DT_URL . 'assets/img/typujkosza-mark.png';
     }
 
+    public static function home_url(): string {
+        return class_exists('DT_Canonical') ? DT_Canonical::URL : home_url('/');
+    }
+
     public static function migrate_default_colors(): void {
         $stored = (array) get_option('dt_settings', []);
         if (!$stored) return;
@@ -62,6 +66,7 @@ class DT_Brand {
         wp_localize_script('tk-brand', 'TypujKoszaBrand', [
             'name' => self::NAME,
             'tagline' => self::TAGLINE,
+            'home' => self::home_url(),
             'logoHorizontal' => self::logo_horizontal_url(),
             'logoStacked' => self::logo_stacked_url(),
             'mark' => self::mark_url(),
@@ -92,7 +97,7 @@ class DT_Brand {
     public static function footer(): void {
         if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
         echo '<footer class="tk-footer" aria-label="Informacje o serwisie"><div class="tk-footer-inner">';
-        echo '<div class="tk-footer-brand"><img src="' . esc_url(self::logo_horizontal_url()) . '" alt="' . esc_attr(self::NAME) . '"></div>';
+        echo '<div class="tk-footer-brand"><a href="' . esc_url(self::home_url()) . '" aria-label="' . esc_attr(self::NAME . ' — strona główna') . '"><img src="' . esc_url(self::logo_horizontal_url()) . '" alt="' . esc_attr(self::NAME) . '"></a></div>';
         echo '<p><strong>' . esc_html(self::NAME) . '</strong> to bezpłatna zabawa dla kibiców koszykówki. Serwis nie służy do zawierania zakładów ani przyjmowania stawek pieniężnych; udział jest bezpłatny. Typy, punkty i rankingi mają wyłącznie charakter rozrywkowy i społecznościowy.</p>';
         echo '<small>&copy; ' . esc_html(wp_date('Y')) . ' ' . esc_html(self::NAME) . '</small>';
         echo '</div></footer>';
