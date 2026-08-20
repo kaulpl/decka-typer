@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.16 — 2026-08-20
+
+- zmniejszono pionowe odstępy pomiędzy modułami landing page, aby strona była bardziej zwarta,
+- zwiększono czytelne teksty landing page i ekranu logowania o około 2 px,
+- mockupy aplikacji zachowują kompaktową skalę, aby nie psuć proporcji ekranów demonstracyjnych,
+- w całym widocznym interfejsie określenie „kupon” zostało zastąpione terminologią „typowanie”,
+- zmiana obejmuje frontend, panel administratora, teksty renderowane po stronie serwera oraz komunikaty dokładane dynamicznie przez JavaScript/AJAX,
+- dodano naturalne warianty językowe, m.in. „Twoje typowanie”, „Typowanie zapisane”, „Typowania” i „Czas na pierwsze typowanie”,
+- brak zmian w modelu danych — wewnętrzne nazwy tabel i API pozostają kompatybilne.
+
 ## 0.4.15 — 2026-08-20
 
 - webowe callbacki OAuth Google i Facebook zostały przeniesione z `/wp-json/...` na standardowy endpoint WordPress `wp-admin/admin-post.php`,
@@ -92,7 +102,7 @@
 
 ## 0.4.4 — 2026-08-20
 
-- zamknięte kolejki są dostępne do podglądu także bez wcześniejszego kuponu,
+- zamknięte kolejki są dostępne do podglądu także bez wcześniejszego typowania,
 - dodano jeden konfigurowalny mecz BONUS na kolejkę i dodatkową punktację.
 
 ## 0.4.3 — 2026-08-20
