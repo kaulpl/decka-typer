@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * Front-end account settings for Decka Typer users.
+ * Front-end account settings for TypujKosza.pl users.
  * Keeps the public ranking name separate from the WordPress account display name.
  */
 class DT_User_Settings {
@@ -12,6 +12,8 @@ class DT_User_Settings {
     public static function register(): void {
         add_action('rest_api_init', [__CLASS__, 'routes'], 20);
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue'], 45);
+        add_action('admin_post_dt_typer_logout', [__CLASS__, 'logout']);
+        add_action('admin_post_nopriv_dt_typer_logout', [__CLASS__, 'logout_guest']);
     }
 
     public static function routes(): void {
@@ -98,6 +100,26 @@ class DT_User_Settings {
         ]);
     }
 
+    public static function logout(): void {
+        if (!is_user_logged_in()) {
+            self::redirect_home();
+        }
+
+        check_admin_referer('dt_typer_logout');
+        $uid = get_current_user_id();
+
+        try {
+            DT_Logger::log('frontend_logout', 'Użytkownik wylogował się z TypujKosza.pl.', [], 'info', $uid);
+        } catch (Throwable $ignored) {}
+
+        wp_logout();
+        self::redirect_home();
+    }
+
+    public static function logout_guest(): void {
+        self::redirect_home();
+    }
+
     public static function ranking_name(int $uid, string $fallback = ''): string {
         $name = trim((string)get_user_meta($uid, self::META_RANKING_NAME, true));
         if ($name !== '') return $name;
@@ -137,9 +159,7 @@ class DT_User_Settings {
             if (in_array($provider, ['google','facebook'], true)) $providers[] = $provider;
         }
 
-        $returnUrl = class_exists('DT_Frontend') && DT_Frontend::is_typer_page()
-            ? get_permalink()
-            : home_url('/typer/');
+        $returnUrl = self::public_home_url();
 
         $favoriteTeamId = self::favorite_team_id($uid);
         $teams = self::teams();
@@ -162,9 +182,23 @@ class DT_User_Settings {
             'teams'=>$teams,
             'registered_at'=>(string)$user->user_registered,
             'providers'=>array_values(array_unique($providers)),
-            'password_url'=>wp_lostpassword_url($returnUrl ?: home_url('/typer/')),
-            'logout_url'=>wp_logout_url($returnUrl ?: home_url('/typer/')),
+            'password_url'=>wp_lostpassword_url($returnUrl),
+            'logout_url'=>self::logout_url(),
         ];
+    }
+
+    private static function logout_url(): string {
+        $endpoint = add_query_arg('action', 'dt_typer_logout', admin_url('admin-post.php'));
+        return wp_nonce_url($endpoint, 'dt_typer_logout');
+    }
+
+    private static function public_home_url(): string {
+        return class_exists('DT_Canonical') ? DT_Canonical::URL : home_url('/');
+    }
+
+    private static function redirect_home(): void {
+        wp_safe_redirect(self::public_home_url());
+        exit;
     }
 
     private static function teams(): array {
