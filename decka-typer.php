@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Decka Typer
  * Description: Nowoczesny typer 1 Ligi dla społeczności Decki Pelplin — wybór zwycięzców, nieedytowalne kupony kolejek, rankingi, synchronizacja 1LM i logowanie społecznościowe.
- * Version: 0.4.1
+ * Version: 0.4.2
  * Author: Decka Pelplin
  * Text Domain: decka-typer
  * Requires at least: 6.5
@@ -12,7 +12,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DT_VERSION', '0.4.1');
+define('DT_VERSION', '0.4.2');
 define('DT_FILE', __FILE__);
 define('DT_DIR', plugin_dir_path(__FILE__));
 define('DT_URL', plugin_dir_url(__FILE__));
