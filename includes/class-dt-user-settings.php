@@ -47,6 +47,13 @@ class DT_User_Settings {
             DT_VERSION,
             true
         );
+        wp_enqueue_script(
+            'dt-logout-fix',
+            DT_URL . 'assets/js/logout-fix.js',
+            ['dt-user-settings'],
+            DT_VERSION,
+            true
+        );
         wp_localize_script('dt-user-settings', 'DeckaTyperAccountConfig', [
             'favoriteTeamId'=>self::favorite_team_id(get_current_user_id()),
         ]);
@@ -188,8 +195,10 @@ class DT_User_Settings {
     }
 
     private static function logout_url(): string {
-        $endpoint = add_query_arg('action', 'dt_typer_logout', admin_url('admin-post.php'));
-        return wp_nonce_url($endpoint, 'dt_typer_logout');
+        return add_query_arg([
+            'action'=>'dt_typer_logout',
+            '_wpnonce'=>wp_create_nonce('dt_typer_logout'),
+        ], admin_url('admin-post.php'));
     }
 
     private static function public_home_url(): string {
