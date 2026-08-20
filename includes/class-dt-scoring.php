@@ -109,6 +109,10 @@ class DT_Scoring {
         }
         unset($row);
 
+        if (class_exists('DT_User_Settings')) {
+            $rows = DT_User_Settings::apply_ranking_names($rows);
+        }
+
         usort($rows, static function(array $a, array $b): int {
             if ($a['points'] != $b['points']) return $a['points'] < $b['points'] ? 1 : -1;
             if ($a['winner_hits'] != $b['winner_hits']) return $b['winner_hits'] <=> $a['winner_hits'];
