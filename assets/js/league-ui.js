@@ -1,0 +1,137 @@
+(()=>{
+  const cfg=window.DeckaTyperLeagueData||{};
+  const root=document.getElementById('decka-typer');
+  if(!root)return;
+
+  const q=(s,c=root)=>c.querySelector(s);
+  const qa=(s,c=root)=>[...c.querySelectorAll(s)];
+  const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
+
+  // Unsaved picks are intentionally ephemeral. Changing round or reloading simply
+  // discards them without browser/native confirmation dialogs.
+  const originalConfirm=window.confirm.bind(window);
+  window.confirm=message=>String(message||'').includes('Masz niezapisane typy')?true:originalConfirm(message);
+  window.addEventListener('beforeunload',event=>{
+    event.stopImmediatePropagation();
+  },true);
+
+  const teamData=id=>cfg.teams?.[String(id)]||{position:null,form:[null,null,null,null,null]};
+
+  const formDot=item=>{
+    if(!item)return '<span class="dt-form-dot is-empty" aria-label="Brak danych"></span>';
+    const status=item.status==='win'?'is-win':item.status==='loss'?'is-loss':'is-empty';
+    const label=item.status==='win'?'Wygrana':item.status==='loss'?'Porażka':'Brak rozstrzygnięcia';
+    const title=`${label}${item.opponent_name?` z ${item.opponent_name}`:''}`;
+    const image=item.opponent_logo?`<img src="${esc(item.opponent_logo)}" alt="" loading="lazy">`:'';
+    return `<span class="dt-form-dot ${status}" title="${esc(title)}" aria-label="${esc(title)}">${image}</span>`;
+  };
+
+  const decorateTeamButton=btn=>{
+    if(btn.dataset.leagueDecorated==='1')return;
+    btn.dataset.leagueDecorated='1';
+    const data=teamData(btn.dataset.team);
+    const strong=btn.querySelector('strong');
+
+    const position=document.createElement('span');
+    position.className='dt-table-position';
+    position.textContent=data.position?`#${data.position}`:'#–';
+    position.title=data.position?`Miejsce ${data.position} w tabeli 1LM`:'Brak aktualnej pozycji w tabeli';
+    btn.appendChild(position);
+
+    if(strong){
+      const form=document.createElement('span');
+      form.className='dt-team-form';
+      const items=Array.isArray(data.form)?data.form.slice(-5):[];
+      while(items.length<5)items.unshift(null);
+      form.innerHTML=items.map(formDot).join('');
+      strong.insertAdjacentElement('afterend',form);
+    }
+  };
+
+  const decorateResolvedMatch=card=>{
+    const result=card.querySelector('.dt-result-row');
+    if(!result||card.dataset.resultDecorated==='1')return;
+    const match=result.textContent.match(/(\d{1,3})\s*:\s*(\d{1,3})/);
+    if(!match)return;
+
+    const homeScore=Number(match[1]);
+    const awayScore=Number(match[2]);
+    const buttons=qa('.dt-team-choice',card);
+    if(buttons.length<2)return;
+
+    card.dataset.resultDecorated='1';
+    result.hidden=true;
+
+    [homeScore,awayScore].forEach((score,index)=>{
+      const btn=buttons[index];
+      let scoreNode=btn.querySelector('.dt-team-final-score');
+      if(!scoreNode){
+        scoreNode=document.createElement('span');
+        scoreNode.className='dt-team-final-score';
+        const form=btn.querySelector('.dt-team-form');
+        if(form)form.insertAdjacentElement('afterend',scoreNode);
+        else btn.querySelector('strong')?.insertAdjacentElement('afterend',scoreNode);
+      }
+      scoreNode.textContent=String(score);
+    });
+
+    const selectedIndex=buttons[0].classList.contains('is-selected')?0:buttons[1].classList.contains('is-selected')?1:-1;
+    if(selectedIndex<0||homeScore===awayScore)return;
+    const winnerIndex=homeScore>awayScore?0:1;
+    const correct=selectedIndex===winnerIndex;
+    card.classList.toggle('is-pick-correct',correct);
+    card.classList.toggle('is-pick-wrong',!correct);
+  };
+
+  const decorateMatches=()=>{
+    qa('#dt-matches .dt-match').forEach(card=>{
+      qa('.dt-team-choice',card).forEach(decorateTeamButton);
+      decorateResolvedMatch(card);
+    });
+  };
+
+  const enhanceRanking=()=>{
+    qa('#dt-ranking .dt-rank-row').forEach(row=>{
+      if(row.dataset.rankEnhanced==='1')return;
+      const small=row.querySelector('.dt-rank-person small');
+      const oldHits=row.querySelector('.dt-rank-exact');
+      if(!small||!oldHits)return;
+      const totalMatch=small.textContent.match(/(\d+)/);
+      const hitMatch=oldHits.textContent.match(/(\d+)/);
+      const total=totalMatch?Number(totalMatch[1]):0;
+      const hits=hitMatch?Number(hitMatch[1]):0;
+      const efficiency=total>0?(hits/total)*100:0;
+
+      row.dataset.rankEnhanced='1';
+      oldHits.className='dt-rank-hit-rate';
+      oldHits.innerHTML=`<strong>${hits}/${total}</strong><small>trafione / typowane</small>`;
+
+      const eff=document.createElement('div');
+      eff.className='dt-rank-efficiency';
+      eff.innerHTML=`<strong>${efficiency.toFixed(1)}%</strong><small>skuteczność</small>`;
+      row.appendChild(eff);
+    });
+  };
+
+  let matchScheduled=false;
+  const scheduleMatchDecorate=()=>{
+    if(matchScheduled)return;
+    matchScheduled=true;
+    requestAnimationFrame(()=>{matchScheduled=false;decorateMatches();});
+  };
+
+  let rankScheduled=false;
+  const scheduleRankEnhance=()=>{
+    if(rankScheduled)return;
+    rankScheduled=true;
+    requestAnimationFrame(()=>{rankScheduled=false;enhanceRanking();});
+  };
+
+  const matchBox=q('#dt-matches');
+  if(matchBox)new MutationObserver(scheduleMatchDecorate).observe(matchBox,{childList:true,subtree:true});
+  const rankBox=q('#dt-ranking');
+  if(rankBox)new MutationObserver(scheduleRankEnhance).observe(rankBox,{childList:true,subtree:true});
+
+  decorateMatches();
+  enhanceRanking();
+})();
