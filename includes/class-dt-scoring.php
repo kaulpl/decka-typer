@@ -22,6 +22,9 @@ class DT_Scoring {
             $matchId
         ));
         $changed = 0;
+        $isBonus = class_exists('DT_Bonus') && DT_Bonus::is_bonus($matchId, (int) $match->round_id);
+        $bonusPoints = $isBonus ? DT_Bonus::points() : 0.0;
+
         foreach ($predictions as $prediction) {
             $score = self::score(
                 (int) $prediction->selected_team_id,
@@ -30,6 +33,9 @@ class DT_Scoring {
                 (int) $match->score_home,
                 (int) $match->score_away
             );
+            if ($score['code'] === 'winner' && $bonusPoints > 0) {
+                $score['points'] += $bonusPoints;
+            }
             $wpdb->update(
                 DT_DB::table('predictions'),
                 ['points'=>$score['points'], 'scoring_code'=>$score['code']],
