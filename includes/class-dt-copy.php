@@ -18,6 +18,7 @@ class DT_Copy {
         add_action('admin_init', [__CLASS__, 'start_admin_buffer'], 1);
         add_action('wp_enqueue_scripts', [__CLASS__, 'frontend_assets'], 150);
         add_action('admin_enqueue_scripts', [__CLASS__, 'admin_assets'], 150);
+        add_filter('rest_post_dispatch', [__CLASS__, 'rewrite_rest_response'], 100, 3);
     }
 
     public static function frontend_assets(): void {
@@ -50,6 +51,20 @@ class DT_Copy {
 
     public static function rewrite_output(string $html): string {
         return strtr($html, self::replacements());
+    }
+
+    public static function rewrite_rest_response($response, WP_REST_Server $server, WP_REST_Request $request) {
+        if (strpos((string) $request->get_route(), '/decka-typer/v1/') !== 0) return $response;
+        if (!($response instanceof WP_REST_Response)) return $response;
+        $response->set_data(self::rewrite_value($response->get_data()));
+        return $response;
+    }
+
+    private static function rewrite_value($value) {
+        if (is_string($value)) return self::rewrite_output($value);
+        if (!is_array($value)) return $value;
+        foreach ($value as $key => $item) $value[$key] = self::rewrite_value($item);
+        return $value;
     }
 
     private static function replacements(): array {
