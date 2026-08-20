@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.20 — 2026-08-20
+
+- ustawiono bazową wielkość tekstu landing page na minimum `12px`,
+- podniesiono pomocnicze teksty landingu i ekranu logowania, które wcześniej schodziły do `11px`,
+- poprawiono generowanie adresu wylogowania tak, aby parametr `_wpnonce` nie był zwracany jako HTML-owe `&amp;`,
+- dodano dodatkowe zabezpieczenie po stronie JavaScript, które normalizuje starszy zakodowany adres wylogowania,
+- po kliknięciu „Wyloguj się” użytkownik jest wylogowywany bez promptu WordPressa i wraca na `https://typujkosza.pl/`.
+
+## 0.4.19 — 2026-08-20
+
+- dodano własny endpoint bezpośredniego wylogowania użytkownika z poziomu Ustawień,
+- usunięto przejście przez `wp-login.php?action=logout` i ekran potwierdzenia WordPressa,
+- po wylogowaniu użytkownik wraca bezpośrednio na `https://typujkosza.pl/`,
+- endpoint wylogowania jest zabezpieczony nonce.
+
 ## 0.4.18 — 2026-08-20
 
 - webowy callback Google/Facebook został uproszczony do kanonicznej strony głównej `https://typujkosza.pl/`,
