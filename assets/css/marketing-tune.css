@@ -1,10 +1,13 @@
-/* TypujKosza.pl 0.4.17 — compact logged-out flow and readable landing */
+/* TypujKosza.pl 0.4.20 — compact logged-out flow and minimum 12px landing copy */
 /* The base application shell uses min-height:100vh for the logged-in app.
    On the landing page the marketing section is rendered after that shell,
    which previously created a large empty viewport between login and content. */
 body:not(.logged-in) .dt-app{min-height:0!important;padding-bottom:22px!important}
 body:not(.logged-in) .dt-login-wrap{margin-bottom:0!important}
 body:not(.logged-in) .tk-marketing{padding-top:6px!important}
+
+/* Base landing typography must remain readable even for helper/secondary copy. */
+.tk-marketing{font-size:12px!important}
 
 .tk-marketing-lead{margin-bottom:20px!important}
 .tk-value-grid{margin-bottom:30px!important}
@@ -25,20 +28,20 @@ body:not(.logged-in) .tk-marketing{padding-top:6px!important}
 .tk-feature-grid h3{font-size:17px!important}
 .tk-feature-grid p{font-size:12px!important;line-height:1.58!important}
 .tk-how strong{font-size:14px!important}
-.tk-how p{font-size:11px!important;line-height:1.55!important}
+.tk-how p{font-size:12px!important;line-height:1.55!important}
 .tk-seo-columns p{font-size:13px!important;line-height:1.7!important}
 .tk-marketing-cta strong{font-size:17px!important}
-.tk-marketing-cta span{font-size:11px!important}
-.tk-marketing-cta a{font-size:11px!important}
+.tk-marketing-cta span{font-size:12px!important}
+.tk-marketing-cta a{font-size:12px!important}
 
-/* The login block is part of the logged-out landing, so its readable copy also grows by 2px. */
+/* The login block is part of the logged-out landing. */
 .dt-login-copy>p{font-size:17px!important}
 .dt-login-features strong{font-size:15px!important}
 .dt-login-features small{font-size:13px!important}
 .dt-login-panel h2{font-size:26px!important}
 .dt-login-panel>p{font-size:15px!important}
 .dt-social-button{font-size:15px!important}
-.dt-login-legal{font-size:11px!important}
+.dt-login-legal{font-size:12px!important}
 .dt-login-error{font-size:13px!important}
 .dt-setup-note{font-size:12px!important}
 
