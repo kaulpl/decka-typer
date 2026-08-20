@@ -68,17 +68,28 @@ class DT_Canonical {
     }
 
     /**
-     * The provider callback shown in wp-admin must be the same URL that is
-     * sent to Google/Facebook during OAuth. Force only authentication-related
-     * REST endpoints to the canonical production domain.
+     * Web OAuth callbacks use admin-post.php instead of a pretty REST URL.
+     * This avoids web-server rewrite/permalink dependencies which can make
+     * /wp-json/... return a server-level 404 before WordPress sees the request.
+     *
+     * Mobile OAuth endpoints remain REST endpoints and are only moved to the
+     * canonical production host.
      */
     public static function rewrite_auth_rest_url(string $url, string $path, ?int $blogId, string $scheme): string {
         $cleanPath = ltrim($path, '/');
-        $isAuthEndpoint = (bool) preg_match(
-            '#^decka-typer/v1/(?:oauth/(?:google|facebook)/callback|mobile/auth/(?:google|facebook)/callback|mobile/web-login)$#',
+
+        if (preg_match('#^decka-typer/v1/oauth/(google|facebook)/callback$#', $cleanPath, $match)) {
+            return add_query_arg([
+                'action' => 'dt_oauth_callback',
+                'provider' => sanitize_key($match[1]),
+            ], rtrim(self::URL, '/') . '/wp-admin/admin-post.php');
+        }
+
+        $isMobileAuthEndpoint = (bool) preg_match(
+            '#^decka-typer/v1/(?:mobile/auth/(?:google|facebook)/callback|mobile/web-login)$#',
             $cleanPath
         );
-        if (!$isAuthEndpoint) return $url;
+        if (!$isMobileAuthEndpoint) return $url;
 
         return rtrim(self::URL, '/') . '/wp-json/' . $cleanPath;
     }
