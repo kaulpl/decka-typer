@@ -5,6 +5,40 @@
 
   root.querySelectorAll('.dt-login-divider,.dt-wp-login').forEach(el=>el.remove());
 
+  const hero=root.querySelector('.dt-front-hero');
+  if(hero){
+    const inner=hero.querySelector('.dt-hero-inner');
+    const brand=hero.querySelector('.dt-brand');
+    const league=hero.querySelector('.dt-live-pill');
+
+    if(inner)inner.classList.add('tk-hero-inner');
+    if(league)league.remove();
+
+    if(brand){
+      brand.classList.add('tk-hero-brand');
+
+      let logo=brand.querySelector('img');
+      if(!logo){
+        logo=document.createElement('img');
+        brand.prepend(logo);
+      }
+      logo.src=cfg.logoHorizontal||'';
+      logo.alt=cfg.name||'TypujKosza.pl';
+      logo.className='tk-hero-logo';
+
+      const legacy=brand.querySelector(':scope > div');
+      if(legacy)legacy.remove();
+
+      let tagline=brand.querySelector('.tk-hero-tagline');
+      if(!tagline){
+        tagline=document.createElement('p');
+        tagline.className='tk-hero-tagline';
+        brand.append(tagline);
+      }
+      tagline.textContent=cfg.tagline||'Typuj mecze. Zdobywaj punkty. Rywalizuj w rankingu.';
+    }
+  }
+
   const copy=root.querySelector('.dt-login-copy');
   if(copy){
     const kicker=copy.querySelector('.dt-front-kicker');
