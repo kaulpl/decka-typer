@@ -4,11 +4,12 @@ Nowoczesna wtyczka WordPress dla społeczności Decki Pelplin do typowania zwyci
 
 ## Wersja
 
-Aktualna wersja: **0.4.5**
+Aktualna wersja: **0.4.9**
 
 ## Najważniejsze funkcje
 
-- samodzielny frontend pod `/typer`, bez nagłówka i stopki motywu WordPress,
+- samodzielny frontend ładowany bezpośrednio jako strona główna WordPressa (`/`), bez nagłówka i stopki motywu,
+- stary adres `/typer` jest traktowany jako legacy i przekierowuje na stronę główną,
 - typowanie wyłącznie zwycięzcy meczu przez kliknięcie drużyny,
 - brak typowania dokładnego wyniku punktowego — w typie przechowywana jest tylko wybrana drużyna,
 - jeden nieedytowalny kupon na każdą kolejkę,
@@ -21,15 +22,17 @@ Aktualna wersja: **0.4.5**
 - jeden mecz w każdej kolejce może zostać oznaczony jako BONUS z dodatkowymi punktami za trafienie,
 - mecz BONUS jest wyróżniany żółtą szarfą, a oznaczenie trafia również do historii „Moje typy”,
 - historia „Moje typy” jest pogrupowana w rozwijane kupony według kolejek, z oznaczeniem trafień, nietrafień i punktów,
+- użytkownik może ustawić publiczną nazwę rankingową oraz ulubioną drużynę,
+- mecz ulubionej drużyny otrzymuje personalizowaną niebieską szarfę i ramkę,
+- zwykłe konta Typera korzystają z trwałej sesji logowania do momentu świadomego wylogowania lub usunięcia cookies,
 - aktualne miejsce drużyny `#[N]` pobierane z oficjalnej tabeli 1LM,
 - forma pięciu ostatnich rozegranych meczów pod każdą drużyną, z kolorami W/L oraz mini-logotypami rywali,
 - forma jest liczona historycznie względem terminu zamknięcia oglądanej kolejki,
 - rozliczone mecze mają zieloną/czerwoną ramkę zależnie od poprawności typu, a końcowy wynik jest pokazany osobno przy każdej drużynie,
 - logowanie Google i Facebook,
-- ustawienia użytkownika z własną publiczną nazwą rankingową oraz danymi konta,
 - automatyczny import terminarza i faktycznych wyników z `1lm.pzkosz.pl`,
 - ręczne mecze i faktyczne wyniki chronione przed nadpisaniem przez synchronizację,
-- pełne nazwy drużyn oraz wyróżnienie meczu Decki Pelplin,
+- pełne nazwy drużyn,
 - panel administratora: Pulpit, Kolejki, Mecze, Typy, Ranking, Użytkownicy, Statystyki, Synchronizacja 1LM, Historia i Ustawienia,
 - aktualizacje wtyczki bezpośrednio z GitHub Releases.
 
@@ -38,6 +41,10 @@ Aktualna wersja: **0.4.5**
 Użytkownik nie wpisuje wyniku punktowego meczu. Dla każdego spotkania wybiera wyłącznie jedną z dwóch drużyn jako zwycięzcę. Tabela `dt_predictions` przechowuje identyfikator wybranej drużyny, punkty i status rozliczenia. Faktyczny wynik spotkania jest przechowywany oddzielnie w tabeli meczów i służy wyłącznie do rozliczenia typu.
 
 Aktualizacja do `0.2.5` usuwa z `dt_predictions` stare kolumny służące niegdyś do typowania wyniku. Odwołania do tych pól pozostają wyłącznie w jednorazowej migracji bardzo starych instalacji, aby przed usunięciem kolumn zamienić dawne typy wynikowe na wybór zwycięzcy.
+
+## Strona główna
+
+Od wersji `0.4.9` Typer nie wymaga osobnej strony WordPress pod adresem `/typer`. Frontend przejmuje wyłącznie publiczną stronę główną domeny i renderuje własny szablon standalone. Pozostałe strony WordPressa oraz panel administracyjny działają normalnie. Stary adres `/typer` oraz stare przekierowania logowania do tego adresu są automatycznie kierowane na `/`.
 
 ## Zasada kuponu
 
@@ -55,7 +62,7 @@ Frontend udostępnia trzy zakresy rankingu:
 
 - **Wszechczasów** — wszystkie sezony zapisane w bazie,
 - **Sezon** — wybrany sezon,
-- **Kolejka** — wybrany sezon i konkretna kolejka.
+- **Kolejka** — wybrany sezon i konkretną kolejkę.
 
 Lista sezonów jest generowana z danych zapisanych w bazie i ograniczona do bieżącego oraz maksymalnie pięciu wcześniejszych sezonów.
 
