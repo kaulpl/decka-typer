@@ -44,6 +44,7 @@ require_once DT_DIR . 'includes/class-dt-marketing.php';
 require_once DT_DIR . 'includes/class-dt-canonical.php';
 require_once DT_DIR . 'includes/class-dt-copy.php';
 require_once DT_DIR . 'includes/class-dt-multileague.php';
+require_once DT_DIR . 'includes/class-dt-multileague-admin-context.php';
 require_once DT_DIR . 'includes/class-dt-site-mode.php';
 require_once DT_DIR . 'includes/class-dt-plugin.php';
 
@@ -70,5 +71,6 @@ add_action('plugins_loaded', static function () {
     DT_Bonus::register();
     DT_Ranking_View::register();
     DT_Multileague::register();
+    DT_Multileague_Admin_Context::register();
     DT_Site_Mode::register();
 });
