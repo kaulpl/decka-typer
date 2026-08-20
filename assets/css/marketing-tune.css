@@ -1,4 +1,11 @@
-/* TypujKosza.pl 0.4.16 — tighter landing rhythm and +2px readable copy */
+/* TypujKosza.pl 0.4.17 — compact logged-out flow and readable landing */
+/* The base application shell uses min-height:100vh for the logged-in app.
+   On the landing page the marketing section is rendered after that shell,
+   which previously created a large empty viewport between login and content. */
+body:not(.logged-in) .dt-app{min-height:0!important;padding-bottom:22px!important}
+body:not(.logged-in) .dt-login-wrap{margin-bottom:0!important}
+body:not(.logged-in) .tk-marketing{padding-top:6px!important}
+
 .tk-marketing-lead{margin-bottom:20px!important}
 .tk-value-grid{margin-bottom:30px!important}
 .tk-showcase{margin-bottom:34px!important}
@@ -41,6 +48,8 @@
   .tk-feature-section,.tk-how{padding:28px 0!important}
 }
 @media(max-width:600px){
+  body:not(.logged-in) .dt-app{padding-bottom:16px!important}
+  body:not(.logged-in) .tk-marketing{padding-top:2px!important}
   .tk-marketing-lead{margin-bottom:16px!important}
   .tk-marketing-lead h2,.tk-section-copy h2,.tk-seo-copy h2{font-size:27px!important}
   .tk-marketing-lead p,.tk-section-copy p{font-size:14px!important}
