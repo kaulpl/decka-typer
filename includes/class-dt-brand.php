@@ -21,15 +21,15 @@ class DT_Brand {
     }
 
     public static function logo_horizontal_url(): string {
-        return DT_URL . 'assets/img/typujkosza-logo-horizontal.webp';
+        return DT_URL . 'assets/img/typujkosza-logo-horizontal.png';
     }
 
     public static function logo_stacked_url(): string {
-        return DT_URL . 'assets/img/typujkosza-logo-stacked.webp';
+        return DT_URL . 'assets/img/typujkosza-logo-stacked.png';
     }
 
     public static function mark_url(): string {
-        return DT_URL . 'assets/img/typujkosza-mark.webp';
+        return DT_URL . 'assets/img/typujkosza-mark.png';
     }
 
     public static function migrate_default_colors(): void {
@@ -80,7 +80,7 @@ class DT_Brand {
     public static function head_meta(): void {
         if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
         echo '<meta name="theme-color" content="' . esc_attr(self::NAVY) . '">\n';
-        echo '<link rel="icon" type="image/webp" href="' . esc_url(self::mark_url()) . '">\n';
+        echo '<link rel="icon" type="image/png" href="' . esc_url(self::mark_url()) . '">\n';
     }
 
     public static function document_title(string $title): string {
