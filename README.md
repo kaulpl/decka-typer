@@ -1,92 +1,87 @@
-# Decka Typer
+# TypujKosza.pl
 
-Nowoczesna wtyczka WordPress dla społeczności Decki Pelplin do typowania zwycięzców spotkań 1 Ligi.
+**Typuj mecze. Zdobywaj punkty. Rywalizuj w rankingu.**
+
+Wtyczka WordPress do prowadzenia bezpłatnego koszykarskiego typera dla kibiców. Aktualnie obsługuje terminarz i wyniki 1 Ligi Mężczyzn oraz stanowi bazę pod dalszą obsługę kolejnych lig i sezonów.
 
 ## Wersja
 
-Aktualna wersja: **0.4.9**
+Aktualna wersja: **0.4.10**
+
+## Branding
+
+Od `0.4.10` publiczna marka aplikacji to **TypujKosza.pl**. Wtyczka zawiera własne pliki identyfikacji wizualnej i korzysta z nich bezpośrednio:
+
+- `assets/img/typujkosza-logo-horizontal.webp`,
+- `assets/img/typujkosza-logo-stacked.webp`,
+- `assets/img/typujkosza-mark.webp`.
+
+Podstawowa identyfikacja wykorzystuje granat `#07162F`, niebieski `#055EFB`, pomarańczowy `#FB5D0B` i jasne tło `#F4F7FB`. Instalacje używające wcześniejszych domyślnych kolorów są automatycznie migrowane do nowej palety; własne kolory ustawione ręcznie przez administratora nie są nadpisywane.
 
 ## Najważniejsze funkcje
 
 - samodzielny frontend ładowany bezpośrednio jako strona główna WordPressa (`/`), bez nagłówka i stopki motywu,
-- stary adres `/typer` jest traktowany jako legacy i przekierowuje na stronę główną,
-- typowanie wyłącznie zwycięzcy meczu przez kliknięcie drużyny,
-- brak typowania dokładnego wyniku punktowego — w typie przechowywana jest tylko wybrana drużyna,
-- jeden nieedytowalny kupon na każdą kolejkę,
-- niezapisane wybory są tymczasowe i znikają bez ostrzeżenia po przeładowaniu lub zmianie kolejki,
-- administrator otwiera kolejkę i określa termin zamknięcia typowania,
-- zamknięte kolejki pozostają dostępne do podglądu także dla użytkowników, którzy nie oddali w nich kuponu,
-- ranking: wszechczasów, wybranego sezonu oraz konkretnej kolejki,
-- ranking pokazuje punkty, trafione/typowane mecze, skuteczność oraz sumę zdobytych dodatkowych punktów BONUS,
-- miejsca 1–3 są oznaczone medalami,
-- jeden mecz w każdej kolejce może zostać oznaczony jako BONUS z dodatkowymi punktami za trafienie,
-- mecz BONUS jest wyróżniany żółtą szarfą, a oznaczenie trafia również do historii „Moje typy”,
-- historia „Moje typy” jest pogrupowana w rozwijane kupony według kolejek, z oznaczeniem trafień, nietrafień i punktów,
-- użytkownik może ustawić publiczną nazwę rankingową oraz ulubioną drużynę,
-- mecz ulubionej drużyny otrzymuje personalizowaną niebieską szarfę i ramkę,
-- zwykłe konta Typera korzystają z trwałej sesji logowania do momentu świadomego wylogowania lub usunięcia cookies,
-- aktualne miejsce drużyny `#[N]` pobierane z oficjalnej tabeli 1LM,
-- forma pięciu ostatnich rozegranych meczów pod każdą drużyną, z kolorami W/L oraz mini-logotypami rywali,
-- forma jest liczona historycznie względem terminu zamknięcia oglądanej kolejki,
-- rozliczone mecze mają zieloną/czerwoną ramkę zależnie od poprawności typu, a końcowy wynik jest pokazany osobno przy każdej drużynie,
+- stary adres `/typer` przekierowuje na stronę główną,
+- typowanie wyłącznie zwycięzcy meczu,
+- jeden nieedytowalny kupon na kolejkę,
+- administrator jawnie otwiera i zamyka kolejki,
+- zamknięte kolejki można przeglądać również bez wcześniejszego udziału,
+- rankingi: wszechczasów, sezonu i kolejki,
+- punkty, trafione/typowane, skuteczność oraz oddzielna kolumna BONUS,
+- medale dla miejsc 1–3,
+- jeden mecz BONUS w każdej kolejce z konfigurowalnymi dodatkowymi punktami,
+- rozwijana historia „Moje typy”,
+- publiczna nazwa rankingowa użytkownika,
+- wybór ulubionej drużyny i personalizowane oznaczenie jej meczów,
+- trwała sesja zwykłego użytkownika do świadomego wylogowania lub usunięcia cookies,
+- aktualne miejsce drużyny i forma pięciu wcześniejszych spotkań,
+- historyczna forma liczona względem terminu zamknięcia oglądanej kolejki,
+- automatyczny import terminarza i faktycznych wyników z 1LM,
+- ręcznie chronione mecze i wyniki,
 - logowanie Google i Facebook,
-- automatyczny import terminarza i faktycznych wyników z `1lm.pzkosz.pl`,
-- ręczne mecze i faktyczne wyniki chronione przed nadpisaniem przez synchronizację,
-- pełne nazwy drużyn,
-- panel administratora: Pulpit, Kolejki, Mecze, Typy, Ranking, Użytkownicy, Statystyki, Synchronizacja 1LM, Historia i Ustawienia,
-- aktualizacje wtyczki bezpośrednio z GitHub Releases.
-
-## Model typowania
-
-Użytkownik nie wpisuje wyniku punktowego meczu. Dla każdego spotkania wybiera wyłącznie jedną z dwóch drużyn jako zwycięzcę. Tabela `dt_predictions` przechowuje identyfikator wybranej drużyny, punkty i status rozliczenia. Faktyczny wynik spotkania jest przechowywany oddzielnie w tabeli meczów i służy wyłącznie do rozliczenia typu.
-
-Aktualizacja do `0.2.5` usuwa z `dt_predictions` stare kolumny służące niegdyś do typowania wyniku. Odwołania do tych pól pozostają wyłącznie w jednorazowej migracji bardzo starych instalacji, aby przed usunięciem kolumn zamienić dawne typy wynikowe na wybór zwycięzcy.
+- panel administratora: Pulpit, Kolejki, Mecze, Typy, Ranking, Użytkownicy, Statystyki, Synchronizacja, Historia i Ustawienia,
+- aktualizacje bezpośrednio z GitHub Releases.
 
 ## Strona główna
 
-Od wersji `0.4.9` Typer nie wymaga osobnej strony WordPress pod adresem `/typer`. Frontend przejmuje wyłącznie publiczną stronę główną domeny i renderuje własny szablon standalone. Pozostałe strony WordPressa oraz panel administracyjny działają normalnie. Stary adres `/typer` oraz stare przekierowania logowania do tego adresu są automatycznie kierowane na `/`.
+Od `0.4.9` wtyczka nie wymaga osobnej strony WordPress pod adresem `/typer`. Frontend przejmuje publiczną stronę główną domeny i renderuje własny szablon standalone. Pozostałe podstrony WordPressa oraz `/wp-admin` działają normalnie.
 
-## Zasada kuponu
+## Model typowania
 
-Każda kolejka ma status szkicu, otwartej lub zamkniętej. Tylko administrator może otworzyć kolejkę i ustawić termin zakończenia przyjmowania kuponów. Użytkownik wskazuje zwycięzcę wszystkich meczów dostępnej kolejki i zapisuje cały kupon jednym przyciskiem. Po zapisie kupon jest nieodwracalnie zablokowany dla użytkownika. Dopóki użytkownik nie kliknie „Zapisz typy”, jego bieżące wybory nie są zapisywane i mogą zostać swobodnie porzucone przez przeładowanie strony lub zmianę kolejki.
-
-Zamknięta kolejka jest dostępna wyłącznie do odczytu również dla użytkownika, który nie brał w niej udziału.
+Użytkownik nie wpisuje dokładnego wyniku. Dla każdego spotkania wybiera jedną drużynę jako zwycięzcę. Faktyczny wynik meczu jest przechowywany osobno i służy do rozliczania typu oraz punktów.
 
 ## Mecze BONUS
 
-Administrator może oznaczyć jeden mecz w każdej kolejce jako BONUS. Trafienie takiego spotkania daje standardowe punkty za zwycięzcę oraz dodatkową liczbę punktów określoną w Ustawieniach. Zmiana meczu BONUS lub wartości bonusu automatycznie przelicza już rozstrzygnięte typy.
+Administrator może oznaczyć jeden mecz w kolejce jako BONUS. Trafienie daje standardową liczbę punktów za zwycięzcę oraz dodatkowe punkty z ustawień. Zmiana meczu BONUS lub wartości bonusu przelicza rozstrzygnięte typy.
 
 ## Ranking
 
-Frontend udostępnia trzy zakresy rankingu:
+Frontend obsługuje trzy zakresy:
 
 - **Wszechczasów** — wszystkie sezony zapisane w bazie,
 - **Sezon** — wybrany sezon,
 - **Kolejka** — wybrany sezon i konkretną kolejkę.
 
-Lista sezonów jest generowana z danych zapisanych w bazie i ograniczona do bieżącego oraz maksymalnie pięciu wcześniejszych sezonów.
-
 ## Dane ligowe i forma
 
-Miejsca drużyn są cache'owane z oficjalnej strony `https://1lm.pzkosz.pl/tabele.html`. Tabela odświeża się po synchronizacji oraz w tle. Forma pięciu ostatnich meczów jest wyliczana lokalnie z zakończonych spotkań przechowywanych już w bazie Decka Typer. Dla historycznej kolejki uwzględniane są tylko mecze zakończone przed terminem jej zamknięcia; najstarszy z pięciu meczów znajduje się po lewej, najnowszy po prawej.
+Miejsca zespołów są cache'owane z oficjalnej tabeli 1LM. Forma pięciu ostatnich spotkań jest liczona lokalnie. Dla historycznej kolejki uwzględniane są tylko mecze zakończone przed terminem zamknięcia tej kolejki, bez wyników należących do niej samej.
 
-## Synchronizacja 1LM
+## Charakter serwisu
 
-Terminarz i wyniki są pobierane z oficjalnej strony 1LM. Import nie zmienia ręcznie chronionych spotkań ani statusu otwarcia kolejki. Parser czasu preferuje właściwą godzinę meczu publikowaną w terminarzu, a nie wcześniejszą godzinę startu transmisji.
+TypujKosza.pl jest bezpłatną formą rozrywki i rywalizacji społecznościowej dla kibiców koszykówki. Serwis nie służy do zawierania zakładów ani przyjmowania stawek pieniężnych. Typy, punkty i rankingi mają charakter rozrywkowy i społecznościowy. Informacja ta jest również prezentowana w stopce publicznego frontendu.
 
 ## Aktualizacje WordPress
 
-Wtyczka korzysta z nagłówka `Update URI` oraz publicznych GitHub Releases repozytorium `kaulpl/decka-typer`. Każde stabilne wydanie zawiera asset `decka-typer-X.Y.Z.zip`, który WordPress może zainstalować standardowym mechanizmem aktualizacji wtyczek.
+Wtyczka korzysta z `Update URI` oraz GitHub Releases repozytorium `kaulpl/decka-typer`. Stabilne wydania zawierają instalacyjny ZIP oraz plik SHA-256.
 
 ## Proces wydania
 
-1. Rozwój odbywa się na gałęzi `agent/vX.Y.Z-*`.
-2. Pull request trafia do `main`.
-3. GitHub Actions sprawdza składnię PHP/JS oraz zgodność `VERSION`.
-4. Po stabilnym merge do `main` workflow `Release plugin` ponownie waliduje kod.
-5. Workflow buduje pakiet WordPress z katalogiem `decka-typer/`.
-6. Automatycznie powstaje tag `vX.Y.Z`, GitHub Release, ZIP oraz plik SHA-256.
+1. Rozwój na gałęzi `agent/vX.Y.Z-*`.
+2. Pull request do `main`.
+3. GitHub Actions sprawdza PHP, JavaScript i zgodność wersji.
+4. Po merge workflow buduje pakiet wydania.
+5. Powstają tag `vX.Y.Z`, GitHub Release, ZIP i SHA-256.
 
 ## OAuth
 
-Google i Facebook wymagają danych aplikacji OAuth skonfigurowanych w `Decka Typer → Ustawienia`. Sekrety nie są przechowywane w repozytorium.
+Google i Facebook wymagają własnych danych OAuth skonfigurowanych w **TypujKosza.pl → Ustawienia**. Callbacki są generowane z aktualnej domeny WordPressa, dlatego po przeniesieniu instalacji na inną domenę należy zaktualizować dozwolone adresy przekierowań u dostawców OAuth.
