@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.15 — 2026-08-20
+
+- webowe callbacki OAuth Google i Facebook zostały przeniesione z `/wp-json/...` na standardowy endpoint WordPress `wp-admin/admin-post.php`,
+- zmiana usuwa zależność logowania WWW od reguł REST API i permalinków serwera,
+- panel administratora pokazuje teraz dokładnie ten sam `Redirect URI`, który jest wysyłany do Google/Facebook podczas autoryzacji i wymiany kodu na token,
+- nowe callbacki są kanonicznie osadzone na `https://typujkosza.pl/`,
+- stare endpointy REST OAuth pozostają zarejestrowane dla kompatybilności, ale nowe logowania WWW ich nie używają,
+- mobilne endpointy OAuth pozostają bez zmian.
+
 ## 0.4.14 — 2026-08-20
 
 - dodano centralny adres kanoniczny aplikacji: `https://typujkosza.pl/`,
