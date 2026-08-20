@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.11 — 2026-08-20
+
+- branding TypujKosza.pl korzysta teraz z oryginalnych plików PNG wgranych bezpośrednio do repozytorium,
+- nagłówek, stopka, favicon i panel administratora zostały przepięte z plików `.webp` na `.png`,
+- poprawiono typ MIME favicon na `image/png`,
+- zmiana eliminuje problem niewyświetlających się logotypów po instalacji wydania 0.4.10.
+
 ## 0.4.10 — 2026-08-20
 
 - publiczna marka aplikacji została zmieniona z Decka Typer na **TypujKosza.pl**,
