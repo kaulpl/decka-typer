@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.13 — 2026-08-20
+
+- dodano standardowy odstęp pod nagłówkiem i 3-kolorowym paskiem identyfikacji,
+- ekran dla niezalogowanych został rozszerzony o pełny landing page TypujKosza.pl,
+- dodano treści SEO opisujące darmowy typer koszykarski, rywalizację kibiców, ranking oraz sposób działania serwisu,
+- dodano meta description, Open Graph, Twitter Card oraz dane strukturalne `WebApplication` z informacją o bezpłatnym dostępie,
+- dodano wizualne, responsywne mockupy ekranów „Typuj” i „Ranking” z przykładowymi danymi prezentacyjnymi,
+- dodano sekcje korzyści, funkcji, czterech kroków rozpoczęcia gry oraz CTA do logowania,
+- nowe materiały marketingowe są renderowane po stronie PHP tylko dla niezalogowanych użytkowników, dzięki czemu treść jest dostępna dla wyszukiwarek,
+- brak zmian w typach, punktacji i bazie danych.
+
 ## 0.4.12 — 2026-08-20
 
 - całkowicie przebudowano nagłówek publicznego Typera pod markę TypujKosza.pl,
