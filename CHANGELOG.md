@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-08-20
+
+- dodano backend dla natywnej aplikacji iOS Decka Typer,
+- logowanie mobilne Google/Facebook odbywa się przez systemowy OAuth i zwraca podpisany token aplikacji ważny 90 dni,
+- token mobilny może uwierzytelniać żądania REST bez używania ciasteczek WordPress,
+- dodano jednorazowy most `mobile/web-session` → `mobile/web-login`, który tworzy bezpieczną sesję WordPress wewnątrz `WKWebView`,
+- aplikacja iOS może dzięki temu wyświetlać pełny istniejący `/typer` i korzystać z identycznych danych, kuponów, rankingów oraz aktualizacji frontendu jak wersja WWW,
+- dodano unieważnianie tokenów mobilnych po wylogowaniu przez wersjonowanie sesji użytkownika,
+- brak migracji bazy danych.
+
 ## 0.3.3 — 2026-08-20
 
 - rozstrzygnięty mecz nie koloruje już osobno kafla zwycięskiej drużyny na zielono ani przegranej na czerwono,
