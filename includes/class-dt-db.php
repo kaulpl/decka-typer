@@ -31,6 +31,8 @@ class DT_DB {
 
         $sql[] = "CREATE TABLE " . self::table('rounds') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            league_code VARCHAR(20) NOT NULL DEFAULT '1lm',
+            group_code VARCHAR(40) NOT NULL DEFAULT '',
             season VARCHAR(20) NOT NULL,
             round_no INT NOT NULL,
             title VARCHAR(190) NOT NULL,
@@ -43,7 +45,10 @@ class DT_DB {
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
-            UNIQUE KEY season_round (season, round_no),
+            UNIQUE KEY league_season_group_round (league_code, season, group_code, round_no),
+            KEY league_code (league_code),
+            KEY group_code (group_code),
+            KEY season (season),
             KEY status (status),
             KEY closes_at (closes_at)
         ) $charset;";
@@ -73,9 +78,6 @@ class DT_DB {
             KEY manual_lock (manual_lock)
         ) $charset;";
 
-        // User prediction = selected winner only. Real match scores live in dt_matches.
-        // Keep selected_team_id nullable in dbDelta so upgrades from legacy rows are safe;
-        // migrate_to_025 removes incomplete legacy rows and makes the column NOT NULL.
         $sql[] = "CREATE TABLE " . self::table('predictions') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id BIGINT UNSIGNED NOT NULL,
@@ -120,6 +122,8 @@ class DT_DB {
         $sql[] = "CREATE TABLE " . self::table('point_adjustments') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id BIGINT UNSIGNED NOT NULL,
+            league_code VARCHAR(20) NOT NULL DEFAULT '1lm',
+            group_code VARCHAR(40) NOT NULL DEFAULT '',
             season VARCHAR(20) NOT NULL,
             points DECIMAL(8,2) NOT NULL,
             reason VARCHAR(255) NOT NULL,
@@ -127,6 +131,7 @@ class DT_DB {
             created_at DATETIME NOT NULL,
             PRIMARY KEY (id),
             KEY user_id (user_id),
+            KEY league_code (league_code),
             KEY season (season)
         ) $charset;";
 
@@ -147,6 +152,7 @@ class DT_DB {
 
         if (version_compare($oldVersion, '0.2.0', '<')) self::migrate_to_020();
         if (version_compare($oldVersion, '0.2.5', '<')) self::migrate_to_025();
+        if (version_compare($oldVersion, '0.5.0', '<')) self::migrate_to_050();
 
         $existing = (array) get_option('dt_settings', []);
         $settings = wp_parse_args($existing, self::defaults());
@@ -165,6 +171,12 @@ class DT_DB {
         return !empty($result);
     }
 
+    private static function index_exists(string $table, string $index): bool {
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare("SHOW INDEX FROM `$table` WHERE Key_name=%s", $index));
+        return !empty($rows);
+    }
+
     private static function migrate_to_020(): void {
         global $wpdb;
         $pred = self::table('predictions');
@@ -172,7 +184,6 @@ class DT_DB {
         $rnd = self::table('rounds');
         $sub = self::table('round_submissions');
 
-        // One-time conversion for installations that genuinely came from the old score-prediction model.
         if (self::column_exists($pred, 'home_score') && self::column_exists($pred, 'away_score')) {
             $wpdb->query("UPDATE $pred p JOIN $mat m ON m.id=p.match_id
                 SET p.selected_team_id = CASE
@@ -199,15 +210,33 @@ class DT_DB {
     private static function migrate_to_025(): void {
         global $wpdb;
         $pred = self::table('predictions');
-
-        // Winner-only model: legacy predicted-score columns are removed permanently.
-        // Actual basketball results remain only in dt_matches.score_home / score_away.
         foreach (['home_score', 'away_score'] as $column) {
             if (self::column_exists($pred, $column)) $wpdb->query("ALTER TABLE `$pred` DROP COLUMN `$column`");
         }
-
         $wpdb->query("DELETE FROM `$pred` WHERE selected_team_id IS NULL");
         $wpdb->query("ALTER TABLE `$pred` MODIFY selected_team_id BIGINT UNSIGNED NOT NULL");
+    }
+
+    private static function migrate_to_050(): void {
+        global $wpdb;
+        $rounds = self::table('rounds');
+        $adjustments = self::table('point_adjustments');
+
+        if (self::column_exists($rounds, 'league_code')) {
+            $wpdb->query("UPDATE `$rounds` SET league_code='1lm' WHERE league_code IS NULL OR league_code=''");
+            $wpdb->query("UPDATE `$rounds` SET group_code='' WHERE group_code IS NULL");
+        }
+        if (self::index_exists($rounds, 'season_round')) {
+            $wpdb->query("ALTER TABLE `$rounds` DROP INDEX `season_round`");
+        }
+        if (!self::index_exists($rounds, 'league_season_group_round')) {
+            $wpdb->query("ALTER TABLE `$rounds` ADD UNIQUE KEY `league_season_group_round` (`league_code`,`season`,`group_code`,`round_no`)");
+        }
+
+        if (self::column_exists($adjustments, 'league_code')) {
+            $wpdb->query("UPDATE `$adjustments` SET league_code='1lm' WHERE league_code IS NULL OR league_code=''");
+            $wpdb->query("UPDATE `$adjustments` SET group_code='' WHERE group_code IS NULL");
+        }
     }
 
     public static function close_expired_rounds(): void {
@@ -228,17 +257,18 @@ class DT_DB {
     public static function defaults(): array {
         return [
             'season' => '2026/2027',
-            'league_name' => 'PEKAO S.A. 1 LIGA',
+            'league_name' => '1 Liga Mężczyzn',
             'source_url' => 'https://1lm.pzkosz.pl/terminarz-i-wyniki.html',
+            'site_mode' => 'production',
             'sync_enabled' => 1,
             'sync_interval' => 'hourly',
             'unknown_time_lock' => '00:00',
             'points_winner' => 1,
             'perfect_round_bonus' => 0,
             'show_community_picks_after_lock' => 1,
-            'brand_primary' => '#1756A9',
-            'brand_accent' => '#F47A24',
-            'brand_surface' => '#F5F7FB',
+            'brand_primary' => '#055EFB',
+            'brand_accent' => '#FB5D0B',
+            'brand_surface' => '#F4F7FB',
             'google_client_id' => '',
             'google_client_secret' => '',
             'facebook_app_id' => '',
