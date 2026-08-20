@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TypujKosza.pl
  * Description: Koszykarski typer dla kibiców — typowanie zwycięzców, typowania kolejek, rankingi, bonusy i synchronizacja wyników.
- * Version: 0.4.17
+ * Version: 0.4.18
  * Author: TypujKosza.pl
  * Text Domain: decka-typer
  * Requires at least: 6.5
@@ -12,7 +12,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DT_VERSION', '0.4.17');
+define('DT_VERSION', '0.4.18');
 define('DT_FILE', __FILE__);
 define('DT_DIR', plugin_dir_path(__FILE__));
 define('DT_URL', plugin_dir_url(__FILE__));
@@ -23,6 +23,7 @@ require_once DT_DIR . 'includes/class-dt-bonus.php';
 require_once DT_DIR . 'includes/class-dt-scoring.php';
 require_once DT_DIR . 'includes/class-dt-sync.php';
 require_once DT_DIR . 'includes/class-dt-oauth.php';
+require_once DT_DIR . 'includes/class-dt-oauth-diagnostics.php';
 require_once DT_DIR . 'includes/class-dt-mobile-auth.php';
 require_once DT_DIR . 'includes/class-dt-rest.php';
 require_once DT_DIR . 'includes/class-dt-round-access.php';
@@ -53,6 +54,7 @@ add_action('plugins_loaded', static function () {
     DT_Brand::register();
     DT_Marketing::register();
     DT_Copy::register();
+    DT_OAuth_Diagnostics::register();
     DT_Session_Persistence::register();
     DT_Mobile_Auth::register();
     DT_Submission::register();

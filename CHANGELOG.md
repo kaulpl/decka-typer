@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.18 — 2026-08-20
+
+- webowy callback Google/Facebook został uproszczony do kanonicznej strony głównej `https://typujkosza.pl/`,
+- callback jest przechwytywany po `state + code/error` zanim renderuje się publiczny frontend,
+- `Redirect URI` pokazywany w panelu, wysyłany do Google/Facebook i używany podczas wymiany kodu na token jest teraz dokładnie tym samym adresem strony głównej,
+- dodano panel diagnostyczny Google OAuth pokazujący dokładny Client ID używany przez wtyczkę oraz faktyczny Redirect URI,
+- diagnostyka ułatwia wykrycie sytuacji, w której Redirect URI został dodany do innego klienta OAuth niż Client ID zapisany we wtyczce,
+- stare REST callbacki pozostają zarejestrowane dla kompatybilności; mobilne OAuth bez zmian.
+
 ## 0.4.17 — 2026-08-20
 
 - usunięto ogromną pustą przestrzeń pomiędzy kartą logowania a właściwą częścią landing page,
