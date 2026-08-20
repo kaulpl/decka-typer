@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.12 — 2026-08-20
+
+- całkowicie przebudowano nagłówek publicznego Typera pod markę TypujKosza.pl,
+- szeroki logotyp PNG jest teraz wyświetlany bezpośrednio jako główny element hero,
+- pod logotypem pokazujemy hasło „Typuj mecze. Zdobywaj punkty. Rywalizuj w rankingu.”,
+- usunięto z prawej strony nagłówka nazwę ligi,
+- nagłówek ma nowy, jasny layout z akcentami granat/niebieski/pomarańczowy,
+- poprawiono błędne wypisywanie dosłownych znaków `\n\n` na górze strony,
+- brak zmian w typach, rankingach, punktacji i bazie danych.
+
 ## 0.4.11 — 2026-08-20
 
 - branding TypujKosza.pl korzysta teraz z oryginalnych plików PNG wgranych bezpośrednio do repozytorium,

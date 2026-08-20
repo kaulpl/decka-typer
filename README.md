@@ -6,7 +6,7 @@ Wtyczka WordPress do prowadzenia bezpłatnego koszykarskiego typera dla kibiców
 
 ## Wersja
 
-Aktualna wersja: **0.4.11**
+Aktualna wersja: **0.4.12**
 
 ## Branding
 
@@ -16,7 +16,7 @@ Publiczna marka aplikacji to **TypujKosza.pl**. Wtyczka korzysta bezpośrednio z
 - `assets/img/typujkosza-logo-stacked.png`,
 - `assets/img/typujkosza-mark.png`.
 
-Podstawowa identyfikacja wykorzystuje granat `#07162F`, niebieski `#055EFB`, pomarańczowy `#FB5D0B` i jasne tło `#F4F7FB`. Instalacje używające wcześniejszych domyślnych kolorów są automatycznie migrowane do nowej palety; własne kolory ustawione ręcznie przez administratora nie są nadpisywane.
+Podstawowa identyfikacja wykorzystuje granat `#07162F`, niebieski `#055EFB`, pomarańczowy `#FB5D0B` i jasne tło `#F4F7FB`. Od wersji `0.4.12` publiczny nagłówek wykorzystuje jasny layout z dużym logo TypujKosza.pl, hasłem marki pod logotypem oraz bez osobnego pola nazwy ligi.
 
 ## Najważniejsze funkcje
 
