@@ -11,6 +11,7 @@ class DT_Canonical {
 
     public static function register(): void {
         add_action('template_redirect', [__CLASS__, 'redirect_public_frontend'], 0);
+        add_action('admin_init', [__CLASS__, 'maybe_handle_web_oauth_callback'], 0);
         add_filter('wp_redirect', [__CLASS__, 'rewrite_public_redirect'], 99, 2);
         add_filter('rest_url', [__CLASS__, 'rewrite_auth_rest_url'], 99, 4);
         add_action('wp_head', [__CLASS__, 'canonical_link'], 4);
@@ -18,6 +19,10 @@ class DT_Canonical {
 
     public static function url(array $query = []): string {
         return $query ? add_query_arg($query, self::URL) : self::URL;
+    }
+
+    public static function web_oauth_callback_url(): string {
+        return rtrim(self::URL, '/') . '/wp-admin/admin-post.php';
     }
 
     /**
@@ -68,21 +73,19 @@ class DT_Canonical {
     }
 
     /**
-     * Web OAuth callbacks use admin-post.php instead of a pretty REST URL.
-     * This avoids web-server rewrite/permalink dependencies which can make
-     * /wp-json/... return a server-level 404 before WordPress sees the request.
+     * Google and Facebook WWW OAuth use one clean callback without query
+     * parameters. The provider is recovered from the short-lived state
+     * transient created at the beginning of the login flow.
      *
-     * Mobile OAuth endpoints remain REST endpoints and are only moved to the
-     * canonical production host.
+     * Keeping the redirect URI free of action/provider query parameters makes
+     * the value copied to Google Cloud unambiguous and avoids mismatch caused
+     * by a different query string representation.
      */
     public static function rewrite_auth_rest_url(string $url, string $path, ?int $blogId, string $scheme): string {
         $cleanPath = ltrim($path, '/');
 
-        if (preg_match('#^decka-typer/v1/oauth/(google|facebook)/callback$#', $cleanPath, $match)) {
-            return add_query_arg([
-                'action' => 'dt_oauth_callback',
-                'provider' => sanitize_key($match[1]),
-            ], rtrim(self::URL, '/') . '/wp-admin/admin-post.php');
+        if (preg_match('#^decka-typer/v1/oauth/(google|facebook)/callback$#', $cleanPath)) {
+            return self::web_oauth_callback_url();
         }
 
         $isMobileAuthEndpoint = (bool) preg_match(
@@ -92,6 +95,35 @@ class DT_Canonical {
         if (!$isMobileAuthEndpoint) return $url;
 
         return rtrim(self::URL, '/') . '/wp-json/' . $cleanPath;
+    }
+
+    /**
+     * admin-post.php normally dispatches by the `action` parameter. The web
+     * OAuth callback intentionally has no query parameters registered in
+     * Google/Facebook, so intercept the returned state/code during admin_init,
+     * recover the provider and hand the request to the existing OAuth service.
+     */
+    public static function maybe_handle_web_oauth_callback(): void {
+        if (!class_exists('DT_OAuth')) return;
+
+        $path = isset($_SERVER['REQUEST_URI'])
+            ? (string) wp_parse_url(wp_unslash($_SERVER['REQUEST_URI']), PHP_URL_PATH)
+            : '';
+        if (untrailingslashit($path) !== '/wp-admin/admin-post.php') return;
+        if (!empty($_REQUEST['action'])) return;
+
+        $state = isset($_REQUEST['state']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['state'])) : '';
+        $code = isset($_REQUEST['code']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['code'])) : '';
+        $error = isset($_REQUEST['error']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['error'])) : '';
+        if ($state === '' || ($code === '' && $error === '')) return;
+
+        $saved = get_transient('dt_oauth_' . hash('sha256', $state));
+        $provider = is_array($saved) ? sanitize_key((string) ($saved['provider'] ?? '')) : '';
+        if (!in_array($provider, ['google', 'facebook'], true)) return;
+
+        $_REQUEST['provider'] = $provider;
+        DT_OAuth::callback();
+        exit;
     }
 
     public static function canonical_link(): void {
