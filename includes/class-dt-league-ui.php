@@ -4,17 +4,23 @@ if (!defined('ABSPATH')) exit;
 /**
  * League context for the Typer UI: current 1LM table position and historical
  * last-five form calculated separately for the round being viewed.
+ *
+ * Performance rule: frontend requests never wait for 1lm.pzkosz.pl. Standings
+ * are refreshed after the normal schedule sync (or via a background cron), while
+ * round context is cached and invalidated automatically when synchronized data changes.
  */
 class DT_League_UI {
     private const STANDINGS_URL = 'https://1lm.pzkosz.pl/tabele.html';
     private const CACHE_OPTION = 'dt_1lm_standings_cache';
     private const CACHE_TTL = 1800;
+    private const CONTEXT_CACHE_TTL = 43200;
 
     public static function register(): void {
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue'], 30);
         add_action('rest_api_init', [__CLASS__, 'routes']);
         add_action('updated_option', [__CLASS__, 'after_option_update'], 10, 3);
         add_action('added_option', [__CLASS__, 'after_option_add'], 10, 2);
+        add_action('dt_refresh_standings', [__CLASS__, 'background_standings_refresh']);
     }
 
     public static function routes(): void {
@@ -40,10 +46,16 @@ class DT_League_UI {
         if ($option === 'dt_last_sync') self::sync_standings(false);
     }
 
+    public static function background_standings_refresh(): void {
+        self::sync_standings(false);
+    }
+
     public static function enqueue(): void {
         if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page() || !is_user_logged_in()) return;
 
-        self::ensure_standings();
+        // Never perform an external HTTP request while rendering /typer.
+        // If standings are missing/stale, ask WP-Cron to refresh them after the response.
+        self::schedule_standings_refresh_if_needed();
 
         wp_enqueue_style(
             'dt-league-ui',
@@ -61,12 +73,17 @@ class DT_League_UI {
         wp_localize_script('dt-league-ui', 'DeckaTyperLeagueData', self::frontend_data());
     }
 
-    private static function ensure_standings(): void {
-        $cache = (array) get_option(self::CACHE_OPTION, []);
-        $fetchedAt = (int) ($cache['fetched_at'] ?? 0);
-        $season = (string) (DT_DB::settings()['season'] ?? '');
-        if ($fetchedAt && (time() - $fetchedAt) < self::CACHE_TTL && (string)($cache['season'] ?? '') === $season) return;
-        self::sync_standings(false);
+    private static function schedule_standings_refresh_if_needed(): void {
+        $cache = (array)get_option(self::CACHE_OPTION, []);
+        $fetchedAt = (int)($cache['fetched_at'] ?? 0);
+        $season = (string)(DT_DB::settings()['season'] ?? '');
+        $fresh = $fetchedAt
+            && (time() - $fetchedAt) < self::CACHE_TTL
+            && (string)($cache['season'] ?? '') === $season;
+        if ($fresh) return;
+        if (!wp_next_scheduled('dt_refresh_standings')) {
+            wp_schedule_single_event(time() + 5, 'dt_refresh_standings');
+        }
     }
 
     public static function sync_standings(bool $force = false): array {
@@ -84,8 +101,8 @@ class DT_League_UI {
                 self::log('standings_sync_error', $response->get_error_message(), ['url'=>self::STANDINGS_URL], 'warning');
                 return ['ok'=>false, 'error'=>$response->get_error_message()];
             }
-            $code = (int) wp_remote_retrieve_response_code($response);
-            $html = (string) wp_remote_retrieve_body($response);
+            $code = (int)wp_remote_retrieve_response_code($response);
+            $html = (string)wp_remote_retrieve_body($response);
             if ($code !== 200 || strlen($html) < 300) {
                 $message = 'Tabela 1LM zwróciła HTTP ' . $code . '.';
                 self::log('standings_sync_error', $message, ['bytes'=>strlen($html)], 'warning');
@@ -178,27 +195,58 @@ class DT_League_UI {
     }
 
     public static function context(WP_REST_Request $request): WP_REST_Response|WP_Error {
-        global $wpdb;
         $roundId = absint($request->get_param('round_id'));
         if (!$roundId) return new WP_Error('invalid_round', 'Nie wybrano kolejki.', ['status'=>422]);
+        $payload = self::context_payload($roundId);
+        return is_wp_error($payload) ? $payload : new WP_REST_Response($payload);
+    }
+
+    /**
+     * Fast user-independent context. No external network calls are allowed here.
+     */
+    public static function context_payload(int $roundId) {
+        global $wpdb;
+        if ($roundId < 1) return new WP_Error('invalid_round', 'Nie wybrano kolejki.', ['status'=>422]);
 
         $round = $wpdb->get_row($wpdb->prepare(
-            "SELECT id,season,round_no,status,closes_at FROM " . DT_DB::table('rounds') . " WHERE id=%d",
+            "SELECT id,season,round_no,status,closes_at,updated_at FROM " . DT_DB::table('rounds') . " WHERE id=%d",
             $roundId
         ), ARRAY_A);
         if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
 
-        self::ensure_standings();
         $cutoff = self::round_cutoff($roundId, $round);
-        $forms = self::forms_before_cutoff((string)$round['season'], $roundId, $cutoff);
+        $cacheKey = self::context_cache_key($roundId, $round, $cutoff);
+        $cached = get_transient($cacheKey);
+        if (is_array($cached) && !empty($cached['teams'])) {
+            $cached['cache'] = 'hit';
+            return $cached;
+        }
 
-        return new WP_REST_Response([
+        $forms = self::forms_before_cutoff((string)$round['season'], $roundId, $cutoff);
+        $payload = [
             'round_id'=>$roundId,
             'round_no'=>(int)$round['round_no'],
             'cutoff'=>$cutoff,
             'cutoff_iso'=>self::iso_datetime($cutoff),
             'teams'=>self::team_payload($forms),
+            'cache'=>'miss',
+        ];
+        set_transient($cacheKey, $payload, self::CONTEXT_CACHE_TTL);
+        return $payload;
+    }
+
+    private static function context_cache_key(int $roundId, array $round, string $cutoff): string {
+        $lastSync = (array)get_option('dt_last_sync', []);
+        $standings = (array)get_option(self::CACHE_OPTION, []);
+        $signature = implode('|', [
+            $roundId,
+            (string)($round['season'] ?? ''),
+            (string)($round['updated_at'] ?? ''),
+            $cutoff,
+            (string)($lastSync['at'] ?? ''),
+            (string)($standings['fetched_at'] ?? ''),
         ]);
+        return 'dt_lctx_' . substr(md5($signature), 0, 24);
     }
 
     private static function round_cutoff(int $roundId, array $round): string {
@@ -210,7 +258,6 @@ class DT_League_UI {
             $roundId
         ));
         if ($firstMatch) return (string)$firstMatch;
-
         return current_time('mysql');
     }
 
