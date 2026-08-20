@@ -51,7 +51,12 @@
   const decorateResolvedMatch=card=>{
     const result=card.querySelector('.dt-result-row');
     if(!result||card.dataset.resultDecorated==='1')return;
-    const match=result.textContent.match(/(\d{1,3})\s*:\s*(\d{1,3})/);
+
+    // Read only the <strong> containing the real basketball score. The whole
+    // result row also contains prediction points (for example "0 pkt" or
+    // "1 pkt"), which in 0.3.0 could turn 20:25 into 20:250 or 25:20 into 25:201.
+    const scoreText=result.querySelector('strong')?.textContent||'';
+    const match=scoreText.match(/(\d{1,3})\s*:\s*(\d{1,3})/);
     if(!match)return;
 
     const homeScore=Number(match[1]);
