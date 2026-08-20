@@ -6,7 +6,7 @@ Wtyczka WordPress do prowadzenia bezpłatnego koszykarskiego typera dla kibiców
 
 ## Wersja
 
-Aktualna wersja: **0.4.14**
+Aktualna wersja: **0.4.15**
 
 ## Branding
 
@@ -93,4 +93,4 @@ Wtyczka korzysta z `Update URI` oraz GitHub Releases repozytorium `kaulpl/decka-
 
 ## OAuth
 
-Google i Facebook wymagają własnych danych OAuth skonfigurowanych w **TypujKosza.pl → Ustawienia**. Od `0.4.14` callbacki logowania WWW są wymuszane na domenie `https://typujkosza.pl` i są identyczne z adresami pokazywanymi w panelu administratora. Dotyczy to również callbacków mobilnych i mobilnego web-loginu.
+Google i Facebook wymagają własnych danych OAuth skonfigurowanych w **TypujKosza.pl → Ustawienia**. Od `0.4.15` logowanie WWW używa standardowego endpointu WordPress `wp-admin/admin-post.php`, a nie ścieżki `/wp-json/...`. Dzięki temu callback nie zależy od konfiguracji REST/permalinków serwera. Panel administratora pokazuje dokładny Redirect URI używany przez Google/Facebook; dla Google WWW jest to `https://typujkosza.pl/wp-admin/admin-post.php?action=dt_oauth_callback&provider=google`, a dla Facebooka analogicznie z `provider=facebook`. Mobilne callbacki OAuth pozostają endpointami REST.
