@@ -1,5 +1,6 @@
 (()=>{
   const cfg=window.DeckaTyper||{};
+  const accountCfg=window.DeckaTyperAccountConfig||{};
   const root=document.getElementById('decka-typer');
   if(!root||!cfg.loggedIn)return;
 
@@ -41,6 +42,7 @@
   const box=()=>root.querySelector('#dt-account-settings');
   let loaded=false;
   let account=null;
+  let favoriteTeamId=Number(accountCfg.favoriteTeamId||0);
 
   const providerLabel=p=>p==='google'?'Google':p==='facebook'?'Facebook':p;
   const fmtRegistered=value=>{
@@ -50,20 +52,51 @@
     return new Intl.DateTimeFormat('pl-PL',{day:'2-digit',month:'long',year:'numeric'}).format(parsed);
   };
 
+  const decorateFavoriteMatches=()=>{
+    root.querySelectorAll('#dt-matches [data-match-card]').forEach(card=>{
+      const teamIds=[...card.querySelectorAll('.dt-team-choice[data-team]')].map(btn=>Number(btn.dataset.team||0));
+      const isFavorite=favoriteTeamId>0&&teamIds.includes(favoriteTeamId);
+      card.classList.toggle('is-favorite-team',isFavorite);
+      let ribbon=card.querySelector('.dt-favorite-ribbon');
+      if(isFavorite&&!ribbon){
+        ribbon=document.createElement('div');
+        ribbon.className='dt-favorite-ribbon';
+        ribbon.textContent='ULUBIONA DRUŻYNA';
+        card.appendChild(ribbon);
+      }else if(!isFavorite&&ribbon){
+        ribbon.remove();
+      }
+    });
+  };
+
+  const matchBox=root.querySelector('#dt-matches');
+  if(matchBox)new MutationObserver(()=>requestAnimationFrame(decorateFavoriteMatches)).observe(matchBox,{childList:true,subtree:true});
+  decorateFavoriteMatches();
+
   const render=data=>{
     account=data;
+    favoriteTeamId=Number(data.favorite_team_id||0);
     const target=box();if(!target)return;
     const providers=(data.providers||[]).length
       ? data.providers.map(p=>`<span class="dt-account-provider is-${esc(p)}">${esc(providerLabel(p))}</span>`).join('')
       : '<span class="dt-account-provider">konto WordPress</span>';
+    const teams=Array.isArray(data.teams)?data.teams:[];
+    const teamOptions=['<option value="0">Nie wybrano</option>',...teams.map(team=>`<option value="${Number(team.id||0)}" ${Number(team.id||0)===favoriteTeamId?'selected':''}>${esc(team.name)}</option>`)].join('');
 
     target.innerHTML=`
       <section class="dt-account-card dt-account-primary">
-        <div class="dt-account-card-head"><div><span class="dt-front-kicker">RANKING</span><h2>Nazwa publiczna</h2></div><span class="dt-account-hint">Widoczna dla innych użytkowników</span></div>
-        <form id="dt-ranking-name-form" class="dt-account-form">
+        <div class="dt-account-card-head"><div><span class="dt-front-kicker">PERSONALIZACJA</span><h2>Twój profil Typera</h2></div><span class="dt-account-hint">Widoczne w Typerze</span></div>
+        <form id="dt-profile-settings-form" class="dt-account-form">
           <label for="dt-ranking-name">Nazwa użytkownika w rankingach</label>
-          <div class="dt-account-input-row"><input id="dt-ranking-name" name="ranking_name" type="text" minlength="2" maxlength="40" autocomplete="nickname" value="${esc(data.ranking_name)}"><button type="submit">Zapisz</button></div>
+          <input id="dt-ranking-name" name="ranking_name" type="text" minlength="2" maxlength="40" autocomplete="nickname" value="${esc(data.ranking_name)}">
           <small>Może mieć od 2 do 40 znaków. Zmiana nie zmienia loginu ani adresu e-mail konta.</small>
+
+          <div class="dt-account-form-divider"></div>
+          <label for="dt-favorite-team">Ulubiona drużyna</label>
+          <div class="dt-account-select-wrap"><select id="dt-favorite-team" name="favorite_team_id">${teamOptions}</select></div>
+          <small>Mecze tej drużyny będą oznaczone na Twoim ekranie niebieską szarfą „ULUBIONA DRUŻYNA”.</small>
+
+          <div class="dt-account-save-row"><button type="submit">Zapisz ustawienia</button></div>
           <div id="dt-account-message" class="dt-account-message" aria-live="polite"></div>
         </form>
       </section>
@@ -80,10 +113,11 @@
           <a class="dt-account-button" href="${esc(data.password_url)}">Ustaw / zmień hasło</a>
           <a class="dt-account-button is-secondary" href="${esc(data.logout_url)}">Wyloguj się</a>
         </div>
-        <p class="dt-account-footnote">Zmiana hasła odbywa się przez standardowy, bezpieczny mechanizm WordPress i link wysłany na adres e-mail konta.</p>
+        <p class="dt-account-footnote">Sesja Typera jest utrzymywana na tym urządzeniu. Wylogowanie następuje dopiero po użyciu opcji „Wyloguj się” albo po usunięciu danych/cookies przeglądarki.</p>
       </section>`;
 
-    target.querySelector('#dt-ranking-name-form')?.addEventListener('submit',save);
+    target.querySelector('#dt-profile-settings-form')?.addEventListener('submit',save);
+    decorateFavoriteMatches();
   };
 
   const load=async(force=false)=>{
@@ -98,15 +132,20 @@
     e.preventDefault();
     const form=e.currentTarget;
     const input=form.querySelector('#dt-ranking-name');
+    const favorite=form.querySelector('#dt-favorite-team');
     const button=form.querySelector('button[type="submit"]');
     const message=form.querySelector('#dt-account-message');
     const name=String(input?.value||'').trim();
+    const selectedFavorite=Number(favorite?.value||0);
     if(name.length<2||name.length>40){message.textContent='Nazwa musi mieć od 2 do 40 znaków.';message.className='dt-account-message is-error';return;}
     button.disabled=true;message.textContent='Zapisywanie…';message.className='dt-account-message';
     try{
-      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name})});
+      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite})});
       account=data.account||account;
-      message.textContent='Zapisano. Nowa nazwa będzie używana w rankingach.';
+      favoriteTeamId=Number(account?.favorite_team_id||0);
+      accountCfg.favoriteTeamId=favoriteTeamId;
+      decorateFavoriteMatches();
+      message.textContent='Zapisano ustawienia profilu.';
       message.className='dt-account-message is-success';
     }catch(err){message.textContent=err.message;message.className='dt-account-message is-error';}
     finally{button.disabled=false;}

@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) exit;
  */
 class DT_User_Settings {
     private const META_RANKING_NAME = 'dt_ranking_name';
+    private const META_FAVORITE_TEAM = 'dt_favorite_team_id';
 
     public static function register(): void {
         add_action('rest_api_init', [__CLASS__, 'routes'], 20);
@@ -44,6 +45,9 @@ class DT_User_Settings {
             DT_VERSION,
             true
         );
+        wp_localize_script('dt-user-settings', 'DeckaTyperAccountConfig', [
+            'favoriteTeamId'=>self::favorite_team_id(get_current_user_id()),
+        ]);
     }
 
     public static function get_account(WP_REST_Request $request): WP_REST_Response {
@@ -67,10 +71,23 @@ class DT_User_Settings {
             );
         }
 
+        $favoriteTeamId = max(0, (int)($body['favorite_team_id'] ?? 0));
+        if ($favoriteTeamId > 0 && !self::team_exists($favoriteTeamId)) {
+            return new WP_Error(
+                'invalid_favorite_team',
+                'Wybrana ulubiona drużyna nie istnieje.',
+                ['status'=>422]
+            );
+        }
+
         update_user_meta($uid, self::META_RANKING_NAME, $name);
+        if ($favoriteTeamId > 0) update_user_meta($uid, self::META_FAVORITE_TEAM, $favoriteTeamId);
+        else delete_user_meta($uid, self::META_FAVORITE_TEAM);
+
         try {
             DT_Logger::log('account_settings_saved', 'Użytkownik zmienił ustawienia konta Typera.', [
                 'ranking_name'=>$name,
+                'favorite_team_id'=>$favoriteTeamId,
             ], 'info', $uid);
         } catch (Throwable $ignored) {}
 
@@ -87,6 +104,10 @@ class DT_User_Settings {
         if ($fallback !== '') return $fallback;
         $user = get_userdata($uid);
         return $user ? (string)$user->display_name : 'Kibic';
+    }
+
+    public static function favorite_team_id(int $uid): int {
+        return max(0, (int)get_user_meta($uid, self::META_FAVORITE_TEAM, true));
     }
 
     public static function apply_ranking_names(array $rows): array {
@@ -120,16 +141,63 @@ class DT_User_Settings {
             ? get_permalink()
             : home_url('/typer/');
 
+        $favoriteTeamId = self::favorite_team_id($uid);
+        $teams = self::teams();
+        $favoriteTeamName = '';
+        foreach ($teams as $team) {
+            if ((int)$team['id'] === $favoriteTeamId) {
+                $favoriteTeamName = (string)$team['name'];
+                break;
+            }
+        }
+
         return [
             'user_id'=>$uid,
             'username'=>(string)$user->user_login,
             'email'=>(string)$user->user_email,
             'display_name'=>(string)$user->display_name,
             'ranking_name'=>self::ranking_name($uid, (string)$user->display_name),
+            'favorite_team_id'=>$favoriteTeamId,
+            'favorite_team_name'=>$favoriteTeamName,
+            'teams'=>$teams,
             'registered_at'=>(string)$user->user_registered,
             'providers'=>array_values(array_unique($providers)),
             'password_url'=>wp_lostpassword_url($returnUrl ?: home_url('/typer/')),
             'logout_url'=>wp_logout_url($returnUrl ?: home_url('/typer/')),
         ];
+    }
+
+    private static function teams(): array {
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            'SELECT id,name,logo_url FROM ' . DT_DB::table('teams') . " WHERE name<>'' ORDER BY name ASC,id ASC",
+            ARRAY_A
+        );
+        if (!is_array($rows)) return [];
+
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $id = (int)($row['id'] ?? 0);
+            $name = trim((string)($row['name'] ?? ''));
+            if ($id <= 0 || $name === '') continue;
+            $key = function_exists('mb_strtolower') ? mb_strtolower($name) : strtolower($name);
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $out[] = [
+                'id'=>$id,
+                'name'=>$name,
+                'logo_url'=>(string)($row['logo_url'] ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    private static function team_exists(int $teamId): bool {
+        global $wpdb;
+        return (bool)$wpdb->get_var($wpdb->prepare(
+            'SELECT id FROM ' . DT_DB::table('teams') . ' WHERE id=%d LIMIT 1',
+            $teamId
+        ));
     }
 }
