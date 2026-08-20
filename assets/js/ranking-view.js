@@ -41,6 +41,16 @@
     return data;
   };
 
+  const selectWrap=(labelText,select)=>{
+    const wrap=document.createElement('label');
+    wrap.className='dt-ranking-select-wrap';
+    const label=document.createElement('span');
+    label.className='dt-ranking-select-label';
+    label.textContent=labelText;
+    wrap.append(label,select);
+    return wrap;
+  };
+
   const renderFilters=()=>{
     filters.innerHTML='';
     filters.classList.toggle('is-visible',scope!=='all');
@@ -55,7 +65,7 @@
       roundId=0;
       load();
     });
-    filters.appendChild(seasonSelect);
+    filters.appendChild(selectWrap('Sezon',seasonSelect));
 
     if(scope==='round'){
       const roundSelect=document.createElement('select');
@@ -66,7 +76,7 @@
         roundId=Number(roundSelect.value||0);
         load();
       });
-      filters.appendChild(roundSelect);
+      filters.appendChild(selectWrap('Kolejka',roundSelect));
     }
   };
 
@@ -84,9 +94,9 @@
         const icon=medal(rank);
         return `<div class="dt-rank-row dt-ranking-grid ${rank<=3?'is-podium':''}">
           <div class="dt-rank-pos">${rank}</div>
-          <div class="dt-rank-person"><div class="dt-rank-avatar">${esc(String(r.display_name||'?').split(/\s+/).filter(Boolean).slice(-2).map(x=>x[0]).join('').toUpperCase())}</div><span><strong>${icon?`<span class="dt-rank-medal" aria-label="Miejsce ${rank}">${icon}</span>`:''}${esc(r.display_name||'Kibic')}</strong><small>${Number(r.predictions||0)} typów</small></span></div>
+          <div class="dt-rank-person dt-rank-person-clean"><span class="dt-rank-user-copy"><strong>${icon?`<span class="dt-rank-medal" aria-label="Miejsce ${rank}">${icon}</span>`:''}<span class="dt-rank-name">${esc(r.display_name||'Kibic')}</span></strong><small>${Number(r.predictions||0)} typów</small></span></div>
           <div class="dt-rank-points">${fmtPoints(r.points)} pkt</div>
-          <div class="dt-rank-hit-rate"><strong>${Number(r.winner_hits||0)}/${Number(r.predictions||0)}</strong><small>trafienia</small></div>
+          <div class="dt-rank-hit-rate"><strong>${Number(r.winner_hits||0)}/${Number(r.predictions||0)}</strong><small>trafione / typowane</small></div>
           <div class="dt-rank-efficiency"><strong>${n(r.efficiency).toFixed(1).replace('.',',')}%</strong><small>skuteczność</small></div>
           <div class="dt-rank-bonus"><strong>${n(r.bonus_points)>0?`+${fmtPoints(r.bonus_points)} pkt`:'0'}</strong><small>${Number(r.bonus_hits||0)} trafień BONUS</small></div>
         </div>`;
