@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.17 — 2026-08-20
+
+- usunięto ogromną pustą przestrzeń pomiędzy kartą logowania a właściwą częścią landing page,
+- publiczny landing nie dziedziczy już `min-height: 100vh` przeznaczonego dla zalogowanej aplikacji,
+- linki i istniejące adresy z fragmentem `#decka-typer` są automatycznie czyszczone do kanonicznego adresu TypujKosza.pl,
+- webowy callback OAuth Google/Facebook został uproszczony do jednego, czystego adresu bez parametrów zapytania: `https://typujkosza.pl/wp-admin/admin-post.php`,
+- dostawca logowania jest odzyskiwany bezpiecznie z krótkotrwałego `state`, dzięki czemu Google nie musi porównywać wariantów URI z `action` i `provider`,
+- panel administratora i faktyczne żądanie OAuth korzystają z tego samego czystego Redirect URI,
+- mobilne callbacki OAuth pozostają bez zmian.
+
 ## 0.4.16 — 2026-08-20
 
 - zmniejszono pionowe odstępy pomiędzy modułami landing page, aby strona była bardziej zwarta,

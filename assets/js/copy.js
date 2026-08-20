@@ -77,14 +77,25 @@
     while((text=walker.nextNode()))rewriteNode(text);
   };
 
+  const cleanLegacyUrl=()=>{
+    if(window.location.hash==='#decka-typer'){
+      window.history.replaceState(null,'',window.location.pathname+window.location.search);
+    }
+    document.querySelectorAll('a[href="#decka-typer"]').forEach(link=>{
+      link.setAttribute('href','https://typujkosza.pl/');
+    });
+  };
+
   const start=()=>{
     if(!document.body)return;
     rewriteNode(document.body);
+    cleanLegacyUrl();
     const observer=new MutationObserver(mutations=>{
       for(const mutation of mutations){
         if(mutation.type==='characterData')rewriteNode(mutation.target);
         for(const node of mutation.addedNodes||[])rewriteNode(node);
       }
+      cleanLegacyUrl();
     });
     observer.observe(document.body,{subtree:true,childList:true,characterData:true});
   };
