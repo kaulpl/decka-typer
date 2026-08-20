@@ -26,6 +26,18 @@
       logo.alt=cfg.name||'TypujKosza.pl';
       logo.className='tk-hero-logo';
 
+      let homeLink=logo.closest('.tk-hero-home');
+      if(!homeLink){
+        homeLink=document.createElement('a');
+        homeLink.className='tk-hero-home';
+        homeLink.href=cfg.home||'https://typujkosza.pl/';
+        homeLink.setAttribute('aria-label',(cfg.name||'TypujKosza.pl')+' — strona główna');
+        logo.parentNode.insertBefore(homeLink,logo);
+        homeLink.appendChild(logo);
+      }else{
+        homeLink.href=cfg.home||'https://typujkosza.pl/';
+      }
+
       const legacy=brand.querySelector(':scope > div');
       if(legacy)legacy.remove();
 
