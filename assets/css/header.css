@@ -1,4 +1,4 @@
-/* TypujKosza.pl 0.4.13 — rebuilt public header */
+/* TypujKosza.pl 0.5.0 — rebuilt public header */
 .dt-front-hero{height:220px!important;background:radial-gradient(circle at 8% 0%,rgba(251,93,11,.08),transparent 28%),radial-gradient(circle at 92% 20%,rgba(5,94,251,.10),transparent 30%),linear-gradient(180deg,#fff 0%,#f7faff 100%)!important;border-bottom:1px solid #dfe7f2!important;position:relative;overflow:hidden;margin-bottom:30px!important}
 .dt-front-hero:after{display:none!important}
 .dt-front-hero:before{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:linear-gradient(90deg,#07162f 0 30%,#055efb 30% 78%,#fb5d0b 78% 100%);z-index:2}
@@ -7,6 +7,7 @@
 .dt-brand,.tk-hero-brand{width:100%!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:11px!important;text-align:center!important;color:#07162f!important}
 .dt-brand:before,.dt-brand:after{display:none!important;content:none!important}
 .dt-brand>div{display:none!important}
+.tk-hero-home{display:block!important;text-decoration:none!important;line-height:0!important;border:0!important;outline-offset:5px}
 .dt-brand img,.tk-hero-logo{display:block!important;width:min(560px,80vw)!important;height:auto!important;max-height:104px!important;object-fit:contain!important;filter:none!important;margin:0 auto!important}
 .tk-hero-tagline{margin:0!important;color:#5b687d!important;font-size:14px!important;line-height:1.45!important;font-weight:750!important;letter-spacing:.15px!important}
 .dt-live-pill{display:none!important}
