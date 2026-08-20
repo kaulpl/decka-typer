@@ -11,11 +11,14 @@
   // discards them without browser/native confirmation dialogs.
   const originalConfirm=window.confirm.bind(window);
   window.confirm=message=>String(message||'').includes('Masz niezapisane typy')?true:originalConfirm(message);
-  window.addEventListener('beforeunload',event=>{
-    event.stopImmediatePropagation();
-  },true);
+  window.addEventListener('beforeunload',event=>{event.stopImmediatePropagation();},true);
 
-  const teamData=id=>cfg.teams?.[String(id)]||{position:null,form:[null,null,null,null,null]};
+  let activeTeams=cfg.teams||{};
+  let activeRoundId=0;
+  let contextSequence=0;
+
+  const currentRoundId=()=>Number(q('#dt-round-select')?.value||0);
+  const teamData=id=>activeTeams?.[String(id)]||cfg.teams?.[String(id)]||{position:null,form:[null,null,null,null,null]};
 
   const formDot=item=>{
     if(!item)return '<span class="dt-form-dot is-empty" aria-label="Brak danych"></span>';
@@ -27,24 +30,75 @@
   };
 
   const decorateTeamButton=btn=>{
-    if(btn.dataset.leagueDecorated==='1')return;
-    btn.dataset.leagueDecorated='1';
     const data=teamData(btn.dataset.team);
     const strong=btn.querySelector('strong');
 
-    const position=document.createElement('span');
-    position.className='dt-table-position';
+    let position=btn.querySelector('.dt-table-position');
+    if(!position){
+      position=document.createElement('span');
+      position.className='dt-table-position';
+      btn.appendChild(position);
+    }
     position.textContent=data.position?`#${data.position}`:'#–';
     position.title=data.position?`Miejsce ${data.position} w tabeli 1LM`:'Brak aktualnej pozycji w tabeli';
-    btn.appendChild(position);
 
     if(strong){
-      const form=document.createElement('span');
-      form.className='dt-team-form';
+      let form=btn.querySelector('.dt-team-form');
+      if(!form){
+        form=document.createElement('span');
+        form.className='dt-team-form';
+        strong.insertAdjacentElement('afterend',form);
+      }
       const items=Array.isArray(data.form)?data.form.slice(-5):[];
       while(items.length<5)items.unshift(null);
       form.innerHTML=items.map(formDot).join('');
-      strong.insertAdjacentElement('afterend',form);
+    }
+  };
+
+  const loadRoundContext=async()=>{
+    const roundId=currentRoundId();
+    if(!roundId||!cfg.contextUrl)return;
+    if(activeRoundId===roundId)return;
+
+    const seq=++contextSequence;
+    try{
+      const url=new URL(cfg.contextUrl,window.location.origin);
+      url.searchParams.set('round_id',String(roundId));
+      const response=await fetch(url.toString(),{credentials:'same-origin',headers:{Accept:'application/json'}});
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      const data=await response.json();
+      if(seq!==contextSequence||currentRoundId()!==roundId)return;
+      activeRoundId=roundId;
+      activeTeams=data.teams||cfg.teams||{};
+      decorateMatches();
+    }catch(_){
+      if(seq!==contextSequence)return;
+      activeRoundId=roundId;
+      activeTeams=cfg.teams||{};
+      decorateMatches();
+    }
+  };
+
+  const decorateMissedRound=()=>{
+    const meta=q('#dt-round-meta');
+    const matches=q('#dt-matches');
+    if(!meta||!matches)return;
+
+    const labels=qa('.dt-meta-pill',meta).map(node=>String(node.textContent||'').trim());
+    const closed=labels.some(text=>text.includes('Typowanie zamknięte'));
+    const submitted=labels.some(text=>text.includes('Kupon zapisany'));
+    let note=q('#dt-missed-round-note');
+
+    if(closed&&!submitted&&currentRoundId()>0){
+      if(!note){
+        note=document.createElement('div');
+        note.id='dt-missed-round-note';
+        note.className='dt-missed-round-note';
+        note.innerHTML='<strong>Kolejka została zamknięta</strong><span>Nie oddałeś tutaj swojego typu. Możesz przejrzeć mecze i wyniki, ale kuponu nie można już zapisać.</span>';
+        matches.insertAdjacentElement('beforebegin',note);
+      }
+    }else if(note){
+      note.remove();
     }
   };
 
@@ -52,9 +106,6 @@
     const result=card.querySelector('.dt-result-row');
     if(!result||card.dataset.resultDecorated==='1')return;
 
-    // Read only the <strong> containing the real basketball score. The whole
-    // result row also contains prediction points (for example "0 pkt" or
-    // "1 pkt"), which in 0.3.0 could turn 20:25 into 20:250 or 25:20 into 25:201.
     const scoreText=result.querySelector('strong')?.textContent||'';
     const match=scoreText.match(/(\d{1,3})\s*:\s*(\d{1,3})/);
     if(!match)return;
@@ -93,6 +144,7 @@
       qa('.dt-team-choice',card).forEach(decorateTeamButton);
       decorateResolvedMatch(card);
     });
+    decorateMissedRound();
   };
 
   const enhanceRanking=()=>{
@@ -122,7 +174,11 @@
   const scheduleMatchDecorate=()=>{
     if(matchScheduled)return;
     matchScheduled=true;
-    requestAnimationFrame(()=>{matchScheduled=false;decorateMatches();});
+    requestAnimationFrame(()=>{
+      matchScheduled=false;
+      decorateMatches();
+      loadRoundContext();
+    });
   };
 
   let rankScheduled=false;
@@ -134,9 +190,19 @@
 
   const matchBox=q('#dt-matches');
   if(matchBox)new MutationObserver(scheduleMatchDecorate).observe(matchBox,{childList:true,subtree:true});
+  const metaBox=q('#dt-round-meta');
+  if(metaBox)new MutationObserver(scheduleMatchDecorate).observe(metaBox,{childList:true,subtree:true});
   const rankBox=q('#dt-ranking');
   if(rankBox)new MutationObserver(scheduleRankEnhance).observe(rankBox,{childList:true,subtree:true});
 
+  q('#dt-round-select')?.addEventListener('change',()=>{
+    activeRoundId=0;
+    contextSequence++;
+    activeTeams=cfg.teams||{};
+    setTimeout(scheduleMatchDecorate,0);
+  });
+
   decorateMatches();
   enhanceRanking();
+  loadRoundContext();
 })();

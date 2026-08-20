@@ -2,9 +2,8 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * League context for the Typer UI: current 1LM table position and last-five form.
- * Standings are cached from the official 1LM table page; recent form is derived
- * from finished matches already synchronized into Decka Typer.
+ * League context for the Typer UI: current 1LM table position and historical
+ * last-five form calculated separately for the round being viewed.
  */
 class DT_League_UI {
     private const STANDINGS_URL = 'https://1lm.pzkosz.pl/tabele.html';
@@ -13,8 +12,24 @@ class DT_League_UI {
 
     public static function register(): void {
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue'], 30);
+        add_action('rest_api_init', [__CLASS__, 'routes']);
         add_action('updated_option', [__CLASS__, 'after_option_update'], 10, 3);
         add_action('added_option', [__CLASS__, 'after_option_add'], 10, 2);
+    }
+
+    public static function routes(): void {
+        register_rest_route('decka-typer/v1', '/league-context', [
+            'methods'=>'GET',
+            'callback'=>[__CLASS__, 'context'],
+            'permission_callback'=>'__return_true',
+            'args'=>[
+                'round_id'=>[
+                    'required'=>true,
+                    'sanitize_callback'=>'absint',
+                    'validate_callback'=>static fn($value)=>(int)$value > 0,
+                ],
+            ],
+        ]);
     }
 
     public static function after_option_update(string $option, $oldValue, $value): void {
@@ -137,7 +152,6 @@ class DT_League_UI {
 
         if ($out) return $out;
 
-        // Conservative fallback for hosts without DOMDocument.
         if (preg_match_all('~<tr\b[^>]*>(.*?)</tr>~isu', $html, $rows)) {
             foreach ($rows[1] as $row) {
                 if (!preg_match_all('~<td\b[^>]*>(.*?)</td>~isu', $row, $cells) || count($cells[1]) < 3) continue;
@@ -153,38 +167,80 @@ class DT_League_UI {
     }
 
     private static function frontend_data(): array {
-        global $wpdb;
-        $settings = DT_DB::settings();
-        $season = (string)($settings['season'] ?? '');
         $cache = (array)get_option(self::CACHE_OPTION, []);
-        $positions = is_array($cache['positions'] ?? null) ? $cache['positions'] : [];
+        return [
+            'version'=>DT_VERSION,
+            'teams'=>self::team_payload([]),
+            'contextUrl'=>esc_url_raw(rest_url('decka-typer/v1/league-context')),
+            'standingsUpdatedAt'=>(string)($cache['fetched_at_mysql'] ?? ''),
+            'standingsSource'=>self::STANDINGS_URL,
+        ];
+    }
 
+    public static function context(WP_REST_Request $request): WP_REST_Response|WP_Error {
+        global $wpdb;
+        $roundId = absint($request->get_param('round_id'));
+        if (!$roundId) return new WP_Error('invalid_round', 'Nie wybrano kolejki.', ['status'=>422]);
+
+        $round = $wpdb->get_row($wpdb->prepare(
+            "SELECT id,season,round_no,status,closes_at FROM " . DT_DB::table('rounds') . " WHERE id=%d",
+            $roundId
+        ), ARRAY_A);
+        if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
+
+        self::ensure_standings();
+        $cutoff = self::round_cutoff($roundId, $round);
+        $forms = self::forms_before_cutoff((string)$round['season'], $roundId, $cutoff);
+
+        return new WP_REST_Response([
+            'round_id'=>$roundId,
+            'round_no'=>(int)$round['round_no'],
+            'cutoff'=>$cutoff,
+            'cutoff_iso'=>self::iso_datetime($cutoff),
+            'teams'=>self::team_payload($forms),
+        ]);
+    }
+
+    private static function round_cutoff(int $roundId, array $round): string {
+        global $wpdb;
+        if (!empty($round['closes_at'])) return (string)$round['closes_at'];
+
+        $firstMatch = $wpdb->get_var($wpdb->prepare(
+            "SELECT MIN(starts_at) FROM " . DT_DB::table('matches') . " WHERE round_id=%d AND starts_at IS NOT NULL",
+            $roundId
+        ));
+        if ($firstMatch) return (string)$firstMatch;
+
+        return current_time('mysql');
+    }
+
+    private static function forms_before_cutoff(string $season, int $roundId, string $cutoff): array {
+        global $wpdb;
         $teamsTable = DT_DB::table('teams');
         $matchesTable = DT_DB::table('matches');
         $roundsTable = DT_DB::table('rounds');
 
-        $teams = $wpdb->get_results("SELECT id,name,logo_url FROM $teamsTable", ARRAY_A);
-        if (!is_array($teams)) $teams = [];
-
-        $teamIndex = [];
-        foreach ($teams as $team) {
-            $teamIndex[(int)$team['id']] = $team;
-        }
-
-        $forms = [];
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT m.id,m.home_team_id,m.away_team_id,m.score_home,m.score_away,m.starts_at,
+            "SELECT m.id,m.round_id,m.home_team_id,m.away_team_id,m.score_home,m.score_away,m.starts_at,
                     h.name home_name,h.logo_url home_logo,a.name away_name,a.logo_url away_logo
              FROM $matchesTable m
              JOIN $roundsTable r ON r.id=m.round_id
              JOIN $teamsTable h ON h.id=m.home_team_id
              JOIN $teamsTable a ON a.id=m.away_team_id
-             WHERE r.season=%s AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
-             ORDER BY COALESCE(m.starts_at,m.created_at) ASC,m.id ASC",
-            $season
+             WHERE r.season=%s
+               AND m.round_id<>%d
+               AND m.score_home IS NOT NULL
+               AND m.score_away IS NOT NULL
+               AND m.starts_at IS NOT NULL
+               AND m.starts_at<%s
+             ORDER BY m.starts_at ASC,m.id ASC",
+            $season,
+            $roundId,
+            $cutoff
         ), ARRAY_A);
         if (!is_array($rows)) $rows = [];
 
+        $forms = [];
         foreach ($rows as $match) {
             $homeId = (int)$match['home_team_id'];
             $awayId = (int)$match['away_team_id'];
@@ -198,26 +254,29 @@ class DT_League_UI {
             if (count($forms[$homeId]) > 5) array_shift($forms[$homeId]);
             if (count($forms[$awayId]) > 5) array_shift($forms[$awayId]);
         }
+        return $forms;
+    }
 
-        $payloadTeams = [];
+    private static function team_payload(array $forms): array {
+        global $wpdb;
+        $cache = (array)get_option(self::CACHE_OPTION, []);
+        $positions = is_array($cache['positions'] ?? null) ? $cache['positions'] : [];
+        $teams = $wpdb->get_results("SELECT id,name,logo_url FROM " . DT_DB::table('teams'), ARRAY_A);
+        if (!is_array($teams)) $teams = [];
+
+        $payload = [];
         foreach ($teams as $team) {
             $id = (int)$team['id'];
             $items = array_values($forms[$id] ?? []);
             while (count($items) < 5) array_unshift($items, null);
             $key = self::club_key((string)$team['name']);
             $position = isset($positions[$key]['position']) ? (int)$positions[$key]['position'] : null;
-            $payloadTeams[(string)$id] = [
+            $payload[(string)$id] = [
                 'position'=>$position,
                 'form'=>array_slice($items, -5),
             ];
         }
-
-        return [
-            'version'=>DT_VERSION,
-            'teams'=>$payloadTeams,
-            'standingsUpdatedAt'=>(string)($cache['fetched_at_mysql'] ?? ''),
-            'standingsSource'=>self::STANDINGS_URL,
-        ];
+        return $payload;
     }
 
     private static function form_item(string $status, int $opponentId, string $opponentName, string $storedLogo): array {
@@ -228,6 +287,13 @@ class DT_League_UI {
             'opponent_name'=>$opponentName,
             'opponent_logo'=>$localLogo ?: $storedLogo,
         ];
+    }
+
+    private static function iso_datetime(?string $value): ?string {
+        if (!$value) return null;
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, wp_timezone());
+        if (!$date) $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $value, wp_timezone());
+        return $date ? $date->format(DateTimeInterface::ATOM) : null;
     }
 
     private static function club_key(string $name): string {

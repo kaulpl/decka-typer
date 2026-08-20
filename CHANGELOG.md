@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.2 — 2026-08-20
+
+- zamknięte, wcześniejsze kolejki pozostają dostępne do podglądu także dla użytkownika, który nie wysłał w nich kuponu,
+- przy zamkniętej kolejce bez kuponu pojawia się czytelna informacja, że kolejka została zamknięta i użytkownik nie oddał typu,
+- forma pięciu ostatnich meczów jest teraz liczona osobno dla każdej oglądanej kolejki,
+- do formy wchodzą wyłącznie zakończone mecze rozegrane przed terminem zamknięcia danej kolejki,
+- mecze należące do aktualnie oglądanej kolejki są wykluczane z jej własnej formy nawet po późniejszym wpisaniu wyników,
+- forma jest pobierana dynamicznie dla wybranej kolejki przez lekki endpoint `league-context`, bez migracji bazy danych.
+
+## 0.4.1 — 2026-08-20
+
+- dodano zakładkę Ustawienia dla zalogowanego użytkownika na `/typer`,
+- użytkownik może ustawić osobną publiczną nazwę używaną w rankingach,
+- dodano podgląd loginu, e-maila, daty utworzenia konta i podłączonych metod logowania,
+- dodano link do ustawienia lub zmiany hasła oraz wylogowania,
+- nazwa rankingowa jest zapisywana w `user_meta`, bez zmiany loginu i danych OAuth,
+- ranking WWW i panel administratora korzystają z publicznej nazwy użytkownika.
+
 ## 0.4.0 — 2026-08-20
 
 - dodano backend dla natywnej aplikacji iOS Decka Typer,
