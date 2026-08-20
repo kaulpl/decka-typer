@@ -62,13 +62,13 @@ class DT_Ranking_View {
             preg_match('/(20\d{2})/', $b, $mb);
             return ((int)($mb[1] ?? 0)) <=> ((int)($ma[1] ?? 0));
         });
-        return array_slice($items, 0, 6); // bieżący + maksymalnie pięć wcześniejszych sezonów
+        return array_slice($items, 0, 6);
     }
 
     private static function rounds(string $season): array {
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare(
-            'SELECT id,round_no,title,status,closes_at FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY round_no ASC,id ASC',
+            "SELECT id,round_no,title,status,closes_at FROM " . DT_DB::table('rounds') . " WHERE season=%s AND status IN ('open','closed') ORDER BY round_no ASC,id ASC",
             $season
         ), ARRAY_A);
         if (!is_array($rows)) return [];
