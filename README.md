@@ -6,7 +6,7 @@ Wtyczka WordPress do prowadzenia bezpłatnego koszykarskiego typera dla kibiców
 
 ## Wersja
 
-Aktualna wersja: **0.4.13**
+Aktualna wersja: **0.4.14**
 
 ## Branding
 
@@ -27,7 +27,9 @@ Warstwa SEO dodaje meta description, Open Graph, Twitter Card oraz dane struktur
 ## Najważniejsze funkcje
 
 - samodzielny frontend ładowany bezpośrednio jako strona główna WordPressa (`/`), bez nagłówka i stopki motywu,
-- stary adres `/typer` przekierowuje na stronę główną,
+- kanoniczny publiczny adres aplikacji: `https://typujkosza.pl/`,
+- wejście przez inną domenę lub wariant `www` jest przekierowywane na adres kanoniczny,
+- stary adres `/typer` przekierowuje na stronę główną TypujKosza.pl,
 - landing SEO i prezentacja aplikacji dla niezalogowanych,
 - typowanie wyłącznie zwycięzcy meczu,
 - jeden nieedytowalny kupon na kolejkę,
@@ -51,7 +53,7 @@ Warstwa SEO dodaje meta description, Open Graph, Twitter Card oraz dane struktur
 
 ## Strona główna
 
-Od `0.4.9` wtyczka nie wymaga osobnej strony WordPress pod adresem `/typer`. Frontend przejmuje publiczną stronę główną domeny i renderuje własny szablon standalone. Pozostałe podstrony WordPressa oraz `/wp-admin` działają normalnie.
+Od `0.4.9` wtyczka nie wymaga osobnej strony WordPress pod adresem `/typer`. Frontend przejmuje publiczną stronę główną domeny i renderuje własny szablon standalone. Od `0.4.14` publiczny Typer ma stały adres kanoniczny `https://typujkosza.pl/`; przekierowania logowania oraz legacy `/typer` są normalizowane do tego adresu. Pozostałe podstrony WordPressa oraz `/wp-admin` działają normalnie.
 
 ## Model typowania
 
@@ -91,4 +93,4 @@ Wtyczka korzysta z `Update URI` oraz GitHub Releases repozytorium `kaulpl/decka-
 
 ## OAuth
 
-Google i Facebook wymagają własnych danych OAuth skonfigurowanych w **TypujKosza.pl → Ustawienia**. Callbacki są generowane z aktualnej domeny WordPressa, dlatego po przeniesieniu instalacji na inną domenę należy zaktualizować dozwolone adresy przekierowań u dostawców OAuth.
+Google i Facebook wymagają własnych danych OAuth skonfigurowanych w **TypujKosza.pl → Ustawienia**. Od `0.4.14` callbacki logowania WWW są wymuszane na domenie `https://typujkosza.pl` i są identyczne z adresami pokazywanymi w panelu administratora. Dotyczy to również callbacków mobilnych i mobilnego web-loginu.

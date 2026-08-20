@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.14 — 2026-08-20
+
+- dodano centralny adres kanoniczny aplikacji: `https://typujkosza.pl/`,
+- wejście na publiczny Typer przez inną domenę lub wariant `www` jest automatycznie przekierowywane na `https://typujkosza.pl/`,
+- stare przekierowania na `/typer` oraz powroty OAuth do lokalnej strony głównej są normalizowane do głównego adresu TypujKosza.pl,
+- zachowywane są parametry przekierowania, m.in. `dt_login` i `dt_login_error`,
+- callbacki Google i Facebook wyświetlane w panelu oraz używane podczas logowania są wymuszane na domenie `typujkosza.pl`,
+- kanoniczne callbacki obejmują także mobilne OAuth i mobilny web-login,
+- dodano znacznik `<link rel="canonical" href="https://typujkosza.pl/">` na stronie głównej,
+- nie zmieniamy automatycznie opcji `siteurl` WordPressa, dzięki czemu panel administratora i pliki instalacji pozostają bezpieczne.
+
 ## 0.4.13 — 2026-08-20
 
 - dodano standardowy odstęp pod nagłówkiem i 3-kolorowym paskiem identyfikacji,
