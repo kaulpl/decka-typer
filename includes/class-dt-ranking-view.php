@@ -53,7 +53,7 @@ class DT_Ranking_View {
             'league'=>$league,
             'group'=>$group,
             'groups'=>$availableGroups,
-            'leagues'=>[['key'=>'all','name'=>'Wszystkie ligi'],['key'=>'plk','name'=>'PLK'],['key'=>'1lm','name'=>'1LM'],['key'=>'2lm','name'=>'2LM']],
+            'leagues'=>[['key'=>'all','name'=>'Wszystkie'],['key'=>'1lm','name'=>'1LM'],['key'=>'plk','name'=>'PLK'],['key'=>'2lm','name'=>'2LM']],
             'round_id'=>$roundId,
             'seasons'=>$seasons,
             'rounds'=>$rounds,

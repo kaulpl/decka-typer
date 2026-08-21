@@ -49,7 +49,7 @@
     const leagueBar=document.createElement('div');leagueBar.className='dt-filter-segmented dt-filter-leagues';
     leagueBar.innerHTML=leagues.map(l=>`<button type="button" data-filter-league="${esc(l.key)}" class="${l.key===league?'is-active':''}">${esc(l.name)}</button>`).join('');
     filters.appendChild(leagueBar);
-    if(league==='2lm'&&groups.length){const groupBar=document.createElement('div');groupBar.className='dt-filter-segmented dt-filter-groups';groupBar.innerHTML=groups.map(g=>`<button type="button" data-filter-group="${esc(g)}" class="${g===group?'is-active':''}">Grupa ${esc(g)}</button>`).join('');filters.appendChild(groupBar);}
+    if(league==='2lm'&&groups.length){const groupBar=document.createElement('div');groupBar.className='dt-filter-segmented dt-filter-groups';groupBar.innerHTML=groups.map(g=>`<button type="button" data-filter-group="${esc(g)}" class="${g===group?'is-active':''}">GRUPA ${esc(String(g).toUpperCase())}</button>`).join('');filters.appendChild(groupBar);}
     if(scope==='all')return;
 
     const seasonBar=document.createElement('div');seasonBar.className='dt-filter-segmented dt-filter-seasons';seasonBar.innerHTML=seasons.map(s=>`<button type="button" data-filter-season="${esc(s)}" class="${s===season?'is-active':''}">${esc(s)}</button>`).join('');filters.appendChild(seasonBar);

@@ -84,7 +84,8 @@
   const renderLeagueRounds=()=>{
     const box=$('#dt-league-rounds');if(!box||!state.boot)return;
     const labels={plk:'ORLEN Basket Liga', '1lm':'1 Liga Mężczyzn','2lm':'2 Liga Mężczyzn'};
-    const available=[...new Set((state.boot.rounds||[]).map(r=>String(r.league_key||'1lm')))];
+    const present=new Set((state.boot.rounds||[]).map(r=>String(r.league_key||'1lm')));
+    const available=['1lm','plk','2lm'].filter(key=>present.has(key));
     const groups=[...new Set((state.boot.rounds||[]).filter(r=>String(r.league_key)==='2lm').map(r=>normalizeGroup(r.group_key)).filter(Boolean))];
     box.innerHTML=`<div class="dt-segmented dt-league-segments">${available.map(key=>`<button type="button" data-league="${esc(key)}" class="${state.league===key?'is-active':''}">${esc(labels[key]||key.toUpperCase())}</button>`).join('')}</div>${state.league==='2lm'?`<div class="dt-segmented dt-group-segments">${groups.map(group=>`<button type="button" data-group="${esc(group)}" class="${normalizeGroup(state.group)===group?'is-active':''}">GRUPA ${esc(group)}</button>`).join('')}</div>`:''}`;
   };

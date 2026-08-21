@@ -95,12 +95,12 @@
     if(!lastHistory.length){
       box.innerHTML='<div class="dt-empty-front">Nie masz jeszcze zapisanych typów.</div>';
     }else{
-      const leagues=[...new Set(lastHistory.map(x=>String(x.league_key||'1lm')))];
-      if(activeLeague!=='all'&&!leagues.includes(activeLeague))activeLeague='all';
-      const groups=[...new Set(lastHistory.filter(x=>String(x.league_key)==='2lm').map(x=>String(x.group_key||'')).filter(Boolean))];
-      const filtered=lastHistory.filter(x=>(activeLeague==='all'||String(x.league_key||'1lm')===activeLeague)&&(activeLeague!=='2lm'||!activeGroup||String(x.group_key||'')===activeGroup));
+      const normalizeGroup=value=>String(value||'').trim().toUpperCase();
+      const groups=[...new Set(lastHistory.filter(x=>String(x.league_key)==='2lm').map(x=>normalizeGroup(x.group_key)).filter(Boolean))].sort();
+      if(activeLeague==='2lm'&&groups.length&&!groups.includes(normalizeGroup(activeGroup)))activeGroup=groups[0];
+      const filtered=lastHistory.filter(x=>(activeLeague==='all'||String(x.league_key||'1lm')===activeLeague)&&(activeLeague!=='2lm'||!activeGroup||normalizeGroup(x.group_key)===normalizeGroup(activeGroup)));
       const labels={all:'Wszystkie',plk:'PLK','1lm':'1LM','2lm':'2LM'};
-      box.innerHTML=`<div class="dt-coupon-filters"><div class="dt-filter-segmented">${['all',...leagues].map(l=>`<button type="button" data-coupon-league="${esc(l)}" class="${activeLeague===l?'is-active':''}">${esc(labels[l]||l)}</button>`).join('')}</div>${activeLeague==='2lm'?`<div class="dt-filter-segmented dt-filter-groups">${groups.map(g=>`<button type="button" data-coupon-group="${esc(g)}" class="${activeGroup===g?'is-active':''}">Grupa ${esc(g)}</button>`).join('')}</div>`:''}</div>${groupHistory(filtered).map(coupon).join('')||'<div class="dt-empty-front">Brak typów dla wybranego zakresu.</div>'}`;
+      box.innerHTML=`<div class="dt-coupon-filters"><div class="dt-filter-segmented">${['all','1lm','plk','2lm'].map(l=>`<button type="button" data-coupon-league="${esc(l)}" class="${activeLeague===l?'is-active':''}">${esc(labels[l]||l)}</button>`).join('')}</div>${activeLeague==='2lm'&&groups.length?`<div class="dt-filter-segmented dt-filter-groups">${groups.map(g=>`<button type="button" data-coupon-group="${esc(g)}" class="${normalizeGroup(activeGroup)===g?'is-active':''}">GRUPA ${esc(g)}</button>`).join('')}</div>`:''}</div>${groupHistory(filtered).map(coupon).join('')||'<div class="dt-empty-front">Brak typów dla wybranego zakresu.</div>'}`;
     }
     box.dataset.couponView='1';
     queueMicrotask(()=>{rendering=false;});
