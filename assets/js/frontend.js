@@ -49,13 +49,14 @@
   const preferredLeague=rounds=>{
     const open=rounds.find(r=>r.is_open);return String(open?.league_key||rounds[0]?.league_key||'1lm');
   };
+  const normalizeGroup=value=>String(value||'').trim().toUpperCase();
   const preferredGroup=rounds=>{
     const relevant=rounds.filter(r=>String(r.league_key)==='2lm');
-    return String(relevant.find(r=>r.is_open)?.group_key||relevant[0]?.group_key||'');
+    return normalizeGroup(relevant.find(r=>r.is_open)?.group_key||relevant[0]?.group_key||'');
   };
   const filteredRounds=()=>{
     const rounds=state.boot?.rounds||[];
-    return rounds.filter(r=>String(r.league_key||'1lm')===state.league&&(state.league!=='2lm'||String(r.group_key||'')===state.group));
+    return rounds.filter(r=>String(r.league_key||'1lm')===state.league&&(state.league!=='2lm'||normalizeGroup(r.group_key)===normalizeGroup(state.group)));
   };
   const nearestRound=rounds=>rounds.find(r=>r.is_open)||rounds.find(r=>!r.submitted)||rounds[rounds.length-1]||null;
   const renderUser=me=>{
@@ -69,7 +70,13 @@
   const renderRoundSelector=()=>{
     const sel=$('#dt-round-select');if(!sel||!state.boot)return;
     const rounds=filteredRounds();
-    sel.innerHTML=rounds.map(r=>`<option value="${r.id}" ${state.round&&Number(r.id)===Number(state.round.id)?'selected':''}>${esc(r.title)}${state.league==='2lm'&&r.group_key?` · grupa ${esc(r.group_key)}`:''}${r.is_open?' · OTWARTA':''}</option>`).join('');
+    sel.innerHTML=rounds.map(r=>{
+      const parts=[r.title||`${r.round_no}. kolejka`,String(r.league_key||state.league||'1lm').toUpperCase()];
+      if(String(r.league_key||state.league)==='2lm'&&r.group_key)parts.push(`GRUPA ${normalizeGroup(r.group_key)}`);
+      parts.push(r.season||state.boot.season||cfg.season||'');
+      parts.push(r.is_open?'OTWARTA':'ZAMKNIĘTA');
+      return `<option value="${r.id}" ${state.round&&Number(r.id)===Number(state.round.id)?'selected':''}>${parts.filter(Boolean).map(esc).join(' · ')}</option>`;
+    }).join('');
     sel.closest('.dt-round-nav')?.classList.toggle('is-hidden',!rounds.length);
     updateNav();
   };
@@ -77,8 +84,8 @@
     const box=$('#dt-league-rounds');if(!box||!state.boot)return;
     const labels={plk:'ORLEN Basket Liga', '1lm':'1 Liga Mężczyzn','2lm':'2 Liga Mężczyzn'};
     const available=[...new Set((state.boot.rounds||[]).map(r=>String(r.league_key||'1lm')))];
-    const groups=[...new Set((state.boot.rounds||[]).filter(r=>String(r.league_key)==='2lm').map(r=>String(r.group_key||'')).filter(Boolean))];
-    box.innerHTML=`<div class="dt-segmented dt-league-segments">${available.map(key=>`<button type="button" data-league="${esc(key)}" class="${state.league===key?'is-active':''}">${esc(labels[key]||key.toUpperCase())}</button>`).join('')}</div>${state.league==='2lm'?`<div class="dt-segmented dt-group-segments">${groups.map(group=>`<button type="button" data-group="${esc(group)}" class="${state.group===group?'is-active':''}">Grupa ${esc(group)}</button>`).join('')}</div>`:''}`;
+    const groups=[...new Set((state.boot.rounds||[]).filter(r=>String(r.league_key)==='2lm').map(r=>normalizeGroup(r.group_key)).filter(Boolean))];
+    box.innerHTML=`<div class="dt-segmented dt-league-segments">${available.map(key=>`<button type="button" data-league="${esc(key)}" class="${state.league===key?'is-active':''}">${esc(labels[key]||key.toUpperCase())}</button>`).join('')}</div>${state.league==='2lm'?`<div class="dt-segmented dt-group-segments">${groups.map(group=>`<button type="button" data-group="${esc(group)}" class="${normalizeGroup(state.group)===group?'is-active':''}">GRUPA ${esc(group)}</button>`).join('')}</div>`:''}`;
   };
   const updateNav=()=>{
     if(!state.boot||!state.round)return;
@@ -187,7 +194,7 @@
     if(tab){$$('[data-tab]').forEach(b=>b.classList.toggle('is-active',b===tab));$$('[data-panel]').forEach(p=>p.classList.toggle('is-active',p.dataset.panel===tab.dataset.tab));state.tab=tab.dataset.tab;if(state.tab==='mine')api('me').then(m=>{if(state.boot)state.boot.me=m;renderUser(m);renderMine(m);}).catch(x=>toast(x.message,true));return;}
     const rank=e.target.closest('[data-rank]');if(rank){loadRanking(rank.dataset.rank);return;}
     const leagueButton=e.target.closest('[data-league]');if(leagueButton){state.league=leagueButton.dataset.league||'1lm';state.group=state.league==='2lm'?preferredGroup(state.boot?.rounds||[]):'';const next=nearestRound(filteredRounds());renderLeagueRounds();if(next)loadRound(Number(next.id));else{state.round=null;renderRoundSelector();renderRound(null);}return;}
-    const groupButton=e.target.closest('[data-group]');if(groupButton){state.group=groupButton.dataset.group||'';const next=nearestRound(filteredRounds());renderLeagueRounds();if(next)loadRound(Number(next.id));else{state.round=null;renderRoundSelector();renderRound(null);}return;}
+    const groupButton=e.target.closest('[data-group]');if(groupButton){state.group=normalizeGroup(groupButton.dataset.group);const next=nearestRound(filteredRounds());renderLeagueRounds();if(next)loadRound(Number(next.id));else{state.round=null;renderRoundSelector();renderRound(null);}return;}
     if(e.target.closest('[data-modal-close]')){closeSubmitModal();return;}
   });
   $('#dt-round-select')?.addEventListener('change',e=>loadRound(Number(e.target.value)));

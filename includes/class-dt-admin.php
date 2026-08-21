@@ -135,7 +135,7 @@ class DT_Admin {
         $league = sanitize_key($_GET['league'] ?? 'all');
         if (!in_array($league,['all','plk','1lm','2lm'],true)) $league='all';
         $group = $league === '2lm' ? strtoupper(sanitize_text_field($_GET['group'] ?? '')) : '';
-        if($league==='2lm'&&$group==='')$group=(string)$wpdb->get_var($wpdb->prepare("SELECT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key LIMIT 1",$s['season']));
+        if($league==='2lm'&&$group==='')$group=strtoupper((string)$wpdb->get_var($wpdb->prepare("SELECT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key LIMIT 1",$s['season'])));
         $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND r.league_key=%s ', $league) : '';
         $groupSql = $group !== '' ? $wpdb->prepare(' AND r.group_key=%s ', $group) : '';
         $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
@@ -196,7 +196,7 @@ class DT_Admin {
         $league = sanitize_key($_GET['league'] ?? 'all');
         if (!in_array($league,['all','plk','1lm','2lm'],true)) $league='all';
         $group = $league === '2lm' ? strtoupper(sanitize_text_field($_GET['group'] ?? '')) : '';
-        if($league==='2lm'&&$group==='')$group=(string)$wpdb->get_var($wpdb->prepare("SELECT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key LIMIT 1",$s['season']));
+        if($league==='2lm'&&$group==='')$group=strtoupper((string)$wpdb->get_var($wpdb->prepare("SELECT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key LIMIT 1",$s['season'])));
         $roundId = (int)($_GET['round_id'] ?? 0);
         $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND league_key=%s ', $league) : '';
         $groupSql = $group !== '' ? $wpdb->prepare(' AND group_key=%s ', $group) : '';
@@ -265,10 +265,11 @@ class DT_Admin {
     private static function group_tabs(string $page, string $active): void {
         global $wpdb;
         $season=(string)(DT_DB::settings()['season']??'');
-        $groups=array_values(array_filter(array_map('strval',(array)$wpdb->get_col($wpdb->prepare("SELECT DISTINCT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key",$season)))));
+        $active=strtoupper(trim($active));
+        $groups=array_values(array_unique(array_filter(array_map(static fn($group)=>strtoupper(trim((string)$group)),(array)$wpdb->get_col($wpdb->prepare("SELECT DISTINCT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key",$season))))));
         echo '<nav class="dt-group-tabs" aria-label="Wybór grupy 2LM">';
         foreach ($groups as $key) {
-            $label='Grupa '.strtoupper($key);
+            $label='Grupa '.$key;
             $url=add_query_arg(['page'=>$page,'league'=>'2lm','group'=>$key],admin_url('admin.php'));
             echo '<a class="dt-group-tab '.($active===$key?'is-active':'').'" href="'.esc_url($url).'">'.esc_html($label).'</a>';
         }
