@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.3 — 2026-08-21
+
+- Dwupoziomowe filtrowanie 2LM według ligi i grupy w panelu administratora.
+- Pełnoszerokościowy selektor kolejki i spójne przełączniki w aplikacji użytkownika.
+- Paginacja dużych list administracyjnych.
+- Usunięcie Rankingu z menu administratora.
+- Konfigurowalna częstotliwość synchronizacji PZKosz.
+- Osobne nazwy PLK, 1LM i 2LM oraz uporządkowane ustawienia punktacji i BONUS.
+- Kolorowe tryby dostępności serwisu i rozszerzone pobieranie logotypów klubowych.
+
 ## 0.5.2 — 2026-08-21
 
 - naprawiono powielanie meczów po przejściu z kluczy tekstowych na oficjalne identyfikatory PZKosz,

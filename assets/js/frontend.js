@@ -3,7 +3,7 @@
   const root=document.getElementById('decka-typer');
   if(!root||!cfg.loggedIn)return;
   const $=(s,c=root)=>c.querySelector(s), $$=(s,c=root)=>[...c.querySelectorAll(s)];
-  const state={boot:null,round:null,picks:new Map(),tab:'picks',rankMode:'season',saving:false};
+  const state={boot:null,round:null,picks:new Map(),tab:'picks',rankMode:'season',saving:false,league:'',group:''};
 
   const icon=n=>{
     const p={calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',alert:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.6 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.6a2 2 0 0 0-3.4 0z"/>'};
@@ -37,6 +37,8 @@
   const load=async()=>{
     try{
       const boot=await api('bootstrap');state.boot=boot;state.round=boot.current_round;
+      state.league=String(state.round?.league_key||preferredLeague(boot.rounds||[]));
+      state.group=state.league==='2lm'?String(state.round?.group_key||preferredGroup(boot.rounds||[])):'';
       hydratePicks();renderUser(boot.me);renderLeagueRounds();renderRoundSelector();renderRound(state.round);renderRanking(boot.ranking||[]);renderMine(boot.me);
     }catch(e){toast(e.message,true);const box=$('#dt-matches');if(box)box.innerHTML='<div class="dt-empty-front">Nie udało się załadować Typera. Odśwież stronę za chwilę.</div>';}
   };
@@ -44,6 +46,18 @@
     state.picks.clear();
     (state.round?.matches||[]).forEach(m=>{if(m.prediction?.selected_team_id)state.picks.set(Number(m.id),Number(m.prediction.selected_team_id));});
   };
+  const preferredLeague=rounds=>{
+    const open=rounds.find(r=>r.is_open);return String(open?.league_key||rounds[0]?.league_key||'1lm');
+  };
+  const preferredGroup=rounds=>{
+    const relevant=rounds.filter(r=>String(r.league_key)==='2lm');
+    return String(relevant.find(r=>r.is_open)?.group_key||relevant[0]?.group_key||'');
+  };
+  const filteredRounds=()=>{
+    const rounds=state.boot?.rounds||[];
+    return rounds.filter(r=>String(r.league_key||'1lm')===state.league&&(state.league!=='2lm'||String(r.group_key||'')===state.group));
+  };
+  const nearestRound=rounds=>rounds.find(r=>r.is_open)||rounds.find(r=>!r.submitted)||rounds[rounds.length-1]||null;
   const renderUser=me=>{
     if(!me)return;
     const chip=$('#dt-user-chip');if(chip)chip.innerHTML=`<img src="${esc(me.avatar)}" alt=""><span><b>${esc(me.display_name)}</b><small>${me.rank?`#${me.rank} w rankingu`:'Czas na pierwszy kupon'}</small></span>`;
@@ -54,19 +68,21 @@
   };
   const renderRoundSelector=()=>{
     const sel=$('#dt-round-select');if(!sel||!state.boot)return;
-    const rounds=state.boot.rounds||[];
-    sel.innerHTML=rounds.map(r=>`<option value="${r.id}" ${state.round&&Number(r.id)===Number(state.round.id)?'selected':''}>${esc(r.title)}${r.is_open?' · OTWARTA':''}</option>`).join('');
+    const rounds=filteredRounds();
+    sel.innerHTML=rounds.map(r=>`<option value="${r.id}" ${state.round&&Number(r.id)===Number(state.round.id)?'selected':''}>${esc(r.title)}${state.league==='2lm'&&r.group_key?` · grupa ${esc(r.group_key)}`:''}${r.is_open?' · OTWARTA':''}</option>`).join('');
+    sel.closest('.dt-round-nav')?.classList.toggle('is-hidden',!rounds.length);
     updateNav();
   };
   const renderLeagueRounds=()=>{
     const box=$('#dt-league-rounds');if(!box||!state.boot)return;
     const labels={plk:'ORLEN Basket Liga', '1lm':'1 Liga Mężczyzn','2lm':'2 Liga Mężczyzn'};
-    const groups={};(state.boot.rounds||[]).forEach(r=>{const k=r.league_key||'1lm';(groups[k]??=[]).push(r);});
-    box.innerHTML=Object.entries(groups).map(([key,rounds],index)=>`<details class="dt-league-section" ${rounds.some(r=>r.is_open)||index===0?'open':''}><summary><span>${esc(labels[key]||key.toUpperCase())}</span><span class="dt-league-chip">${rounds.filter(r=>r.is_open).length?`${rounds.filter(r=>r.is_open).length} otwarte`:`${rounds.length} kolejek`}</span></summary><div class="dt-league-section-body"><div class="dt-round-pills">${rounds.map(r=>`<button type="button" data-league-round="${r.id}" class="${state.round&&Number(state.round.id)===Number(r.id)?'is-active':''}">${esc(r.group_key?`Grupa ${r.group_key} · ${r.title}`:r.title)}</button>`).join('')}</div></div></details>`).join('');
+    const available=[...new Set((state.boot.rounds||[]).map(r=>String(r.league_key||'1lm')))];
+    const groups=[...new Set((state.boot.rounds||[]).filter(r=>String(r.league_key)==='2lm').map(r=>String(r.group_key||'')).filter(Boolean))];
+    box.innerHTML=`<div class="dt-segmented dt-league-segments">${available.map(key=>`<button type="button" data-league="${esc(key)}" class="${state.league===key?'is-active':''}">${esc(labels[key]||key.toUpperCase())}</button>`).join('')}</div>${state.league==='2lm'?`<div class="dt-segmented dt-group-segments">${groups.map(group=>`<button type="button" data-group="${esc(group)}" class="${state.group===group?'is-active':''}">Grupa ${esc(group)}</button>`).join('')}</div>`:''}`;
   };
   const updateNav=()=>{
     if(!state.boot||!state.round)return;
-    const rounds=state.boot.rounds||[],idx=rounds.findIndex(r=>Number(r.id)===Number(state.round.id));
+    const rounds=filteredRounds(),idx=rounds.findIndex(r=>Number(r.id)===Number(state.round.id));
     $('#dt-prev-round').disabled=idx<=0;$('#dt-next-round').disabled=idx<0||idx>=rounds.length-1;
   };
   const loadRound=async id=>{
@@ -170,17 +186,18 @@
     const tab=e.target.closest('[data-tab]');
     if(tab){$$('[data-tab]').forEach(b=>b.classList.toggle('is-active',b===tab));$$('[data-panel]').forEach(p=>p.classList.toggle('is-active',p.dataset.panel===tab.dataset.tab));state.tab=tab.dataset.tab;if(state.tab==='mine')api('me').then(m=>{if(state.boot)state.boot.me=m;renderUser(m);renderMine(m);}).catch(x=>toast(x.message,true));return;}
     const rank=e.target.closest('[data-rank]');if(rank){loadRanking(rank.dataset.rank);return;}
-    const leagueRound=e.target.closest('[data-league-round]');if(leagueRound){loadRound(Number(leagueRound.dataset.leagueRound));return;}
+    const leagueButton=e.target.closest('[data-league]');if(leagueButton){state.league=leagueButton.dataset.league||'1lm';state.group=state.league==='2lm'?preferredGroup(state.boot?.rounds||[]):'';const next=nearestRound(filteredRounds());renderLeagueRounds();if(next)loadRound(Number(next.id));else{state.round=null;renderRoundSelector();renderRound(null);}return;}
+    const groupButton=e.target.closest('[data-group]');if(groupButton){state.group=groupButton.dataset.group||'';const next=nearestRound(filteredRounds());renderLeagueRounds();if(next)loadRound(Number(next.id));else{state.round=null;renderRoundSelector();renderRound(null);}return;}
     if(e.target.closest('[data-modal-close]')){closeSubmitModal();return;}
   });
   $('#dt-round-select')?.addEventListener('change',e=>loadRound(Number(e.target.value)));
-  $('#dt-prev-round')?.addEventListener('click',()=>{const rs=state.boot?.rounds||[],i=rs.findIndex(r=>Number(r.id)===Number(state.round?.id));if(i>0)loadRound(rs[i-1].id);});
-  $('#dt-next-round')?.addEventListener('click',()=>{const rs=state.boot?.rounds||[],i=rs.findIndex(r=>Number(r.id)===Number(state.round?.id));if(i>=0&&i<rs.length-1)loadRound(rs[i+1].id);});
+  $('#dt-prev-round')?.addEventListener('click',()=>{const rs=filteredRounds(),i=rs.findIndex(r=>Number(r.id)===Number(state.round?.id));if(i>0)loadRound(rs[i-1].id);});
+  $('#dt-next-round')?.addEventListener('click',()=>{const rs=filteredRounds(),i=rs.findIndex(r=>Number(r.id)===Number(state.round?.id));if(i>=0&&i<rs.length-1)loadRound(rs[i+1].id);});
   $('#dt-save-all')?.addEventListener('click',openSubmitModal);
   $('#dt-confirm-submit')?.addEventListener('click',saveCoupon);
-  const refreshAchievements=async()=>{const scope=$('#dt-achievement-scope')?.value||'all',league=$('#dt-achievement-league')?.value||'all';try{const q=new URLSearchParams({scope,league});const me=await api('me?'+q.toString());renderUser(me);}catch(e){toast(e.message,true);}};
-  $('#dt-achievement-scope')?.addEventListener('change',refreshAchievements);
-  $('#dt-achievement-league')?.addEventListener('change',refreshAchievements);
+  let achievementScope='all',achievementLeague='all';
+  const refreshAchievements=async()=>{try{const q=new URLSearchParams({scope:achievementScope,league:achievementLeague});const me=await api('me?'+q.toString());renderUser(me);}catch(e){toast(e.message,true);}};
+  $$('.dt-achievement-controls [data-value]').forEach(button=>button.addEventListener('click',()=>{const parent=button.parentElement;parent.querySelectorAll('[data-value]').forEach(x=>x.classList.toggle('is-active',x===button));if(parent.id==='dt-achievement-scope')achievementScope=button.dataset.value||'all';else achievementLeague=button.dataset.value||'all';refreshAchievements();}));
   $('#dt-submit-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)closeSubmitModal();});
   window.addEventListener('beforeunload',e=>{if(hasUnsavedPicks()){e.preventDefault();e.returnValue='';}});
   load();
