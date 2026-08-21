@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.11 — 2026-08-21
+
+- dodano po 15 edytowalnych, losowanych odpowiedzi Bota Artura dla każdej z 8 sytuacji,
+- powiększono avatara Artura o około 20% na komputerach i urządzeniach mobilnych,
+- dodano administratorowi możliwość oznaczania i odznaczania użytkowników jako ekspertów,
+- wyróżniono ekspertów etykietą „EKSPERT!” we wszystkich rankingach bez wpływu na punktację i kolejność.
+
 ## 0.5.10 — 2026-08-21
 
 - zmieniono nazwę grafiki zapisanego typowania na `03-typowanie-zapisany.png`,

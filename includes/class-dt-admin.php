@@ -7,7 +7,7 @@ class DT_Admin {
         add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
         foreach ([
             'sync_now','save_settings','save_match','add_match','add_round','adjust_points',
-            'open_round','close_round','reset_typer_data','save_avatar'
+            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert'
         ] as $action) {
             add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
         }
@@ -326,7 +326,7 @@ class DT_Admin {
     private static function ranking_table(array $rows): void {
         echo '<table class="widefat dt-table"><thead><tr><th>#</th><th>Użytkownik</th><th>Punkty</th><th>Trafienia</th><th>Typy</th><th>Perfekcyjne kolejki</th></tr></thead><tbody>';
         foreach ($rows as $r) {
-            echo '<tr><td><span class="dt-rank dt-rank-' . min(3,(int)$r['rank']) . '">' . (int)$r['rank'] . '</span></td><td><strong>' . esc_html($r['display_name']) . '</strong></td><td><strong>' . esc_html((string)(int)$r['points']) . '</strong></td><td>' . (int)$r['winner_hits'] . '</td><td>' . (int)$r['predictions'] . '</td><td>' . (int)$r['perfect_rounds'] . '</td></tr>';
+            echo '<tr class="'.(!empty($r['is_expert'])?'dt-expert-row':'').'"><td><span class="dt-rank dt-rank-' . min(3,(int)$r['rank']) . '">' . (int)$r['rank'] . '</span></td><td><strong>' . esc_html($r['display_name']) . '</strong>'.(!empty($r['is_expert'])?' <span class="dt-expert-badge">EKSPERT!</span>':'').'</td><td><strong>' . esc_html((string)(int)$r['points']) . '</strong></td><td>' . (int)$r['winner_hits'] . '</td><td>' . (int)$r['predictions'] . '</td><td>' . (int)$r['perfect_rounds'] . '</td></tr>';
         }
         if (!$rows) echo '<tr><td colspan="6" class="dt-empty">Ranking jest jeszcze pusty.</td></tr>';
         echo '</tbody></table>';
@@ -350,11 +350,12 @@ class DT_Admin {
              ORDER BY points DESC,u.display_name LIMIT ".(int)$perPage." OFFSET ".(int)(($dtPage-1)*$perPage)
         );
         self::shell('Użytkownicy','Uczestnicy Typera i ręczne korekty punktów');
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Użytkownik</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Korekta</th></tr></thead><tbody>';
+        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Użytkownik</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Ekspert</th><th>Korekta</th></tr></thead><tbody>';
         foreach ($users as $u) {
-            echo '<tr><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($u->display_name) . '</strong><small class="dt-muted">' . esc_html($u->user_email) . '</small></span></div></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="± pkt" required><input name="reason" placeholder="Powód" required><button class="button">Dodaj</button></form></td></tr>';
+            $expert = DT_User_Settings::is_expert((int)$u->ID);
+            echo '<tr class="'.($expert?'dt-expert-row':'').'"><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($u->display_name) . ($expert?' <span class="dt-expert-badge">EKSPERT!</span>':'') . '</strong><small class="dt-muted">' . esc_html($u->user_email) . '</small></span></div></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_toggle_expert"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_toggle_expert'); echo '<button class="button '.($expert?'dt-unmark-expert':'dt-mark-expert').'">'.($expert?'Odznacz jako ekspert':'Oznacz jako ekspert').'</button></form></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="± pkt" required><input name="reason" placeholder="Powód" required><button class="button">Dodaj</button></form></td></tr>';
         }
-        if (!$users) echo '<tr><td colspan="6" class="dt-empty">Brak uczestników.</td></tr>';
+        if (!$users) echo '<tr><td colspan="7" class="dt-empty">Brak uczestników.</td></tr>';
         echo '</tbody></table></section>';
         self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-users']);
         self::end_shell();
@@ -420,8 +421,12 @@ class DT_Admin {
         self::shell('AVATAR','Komunikaty pomocnika wyświetlane użytkownikom w odpowiednich momentach.');
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" class="dt-settings"><input type="hidden" name="action" value="dt_save_avatar">';
         wp_nonce_field('dt_save_avatar');
-        echo '<section class="dt-card"><span class="dt-eyebrow">POMOCNIK TYPERA</span><h2>Teksty w chmurkach</h2><p class="dt-muted">Każdy komunikat jest w osobnym wierszu. Krótko działa najlepiej — Artur nie prowadzi tu konferencji prasowej.</p><div class="dt-avatar-admin-list">';
-        foreach ($messages as $key=>$item) echo '<div class="dt-avatar-admin-row"><img src="'.esc_url($item['url']).'" alt=""><label><strong>'.esc_html($item['label']).'</strong><input name="messages['.esc_attr($key).']" maxlength="180" value="'.esc_attr($item['text']).'"></label></div>';
+        echo '<section class="dt-card"><span class="dt-eyebrow">POMOCNIK TYPERA</span><h2>Teksty w chmurkach</h2><p class="dt-muted">Artur losuje jedną z 15 odpowiedzi przypisanych do sytuacji. Wszystkie teksty możesz edytować poniżej.</p><div class="dt-avatar-admin-list">';
+        foreach ($messages as $key=>$item) {
+            echo '<details class="dt-avatar-admin-row"><summary><img src="'.esc_url($item['url']).'" alt=""><span><strong>'.esc_html($item['label']).'</strong><small>15 edytowalnych odpowiedzi</small></span></summary><div class="dt-avatar-message-grid">';
+            foreach ($item['texts'] as $index=>$text) echo '<label><span>Odpowiedź '.($index+1).'</span><input name="messages['.esc_attr($key).']['.(int)$index.']" maxlength="180" value="'.esc_attr($text).'"></label>';
+            echo '</div></details>';
+        }
         echo '</div></section><div class="dt-savebar"><div><strong>Komunikaty avatara</strong><span>Zmiany będą widoczne od razu po odświeżeniu aplikacji.</span></div><button class="button button-primary dt-button">Zapisz komunikaty</button></div></form>';
         self::end_shell();
     }
@@ -540,6 +545,18 @@ class DT_Admin {
         $wpdb->insert(DT_DB::table('point_adjustments'),['user_id'=>$uid,'season'=>$s['season'],'points'=>$points,'reason'=>$reason,'admin_user_id'=>get_current_user_id(),'created_at'=>current_time('mysql')]);
         DT_Logger::log('points_adjusted','Administrator skorygował punkty.',['target_user'=>$uid,'points'=>$points,'reason'=>$reason],'notice',get_current_user_id());
         self::redirect('decka-typer-users','Korekta punktów zapisana.');
+    }
+
+    public static function toggle_expert(): void {
+        self::guard('dt_toggle_expert');
+        $uid = (int)($_POST['user_id'] ?? 0);
+        $user = $uid > 0 ? get_userdata($uid) : false;
+        if (!$user) self::redirect('decka-typer-users','Nie znaleziono użytkownika.','error');
+        $wasExpert = DT_User_Settings::is_expert($uid);
+        if ($wasExpert) delete_user_meta($uid, 'dt_typer_expert');
+        else update_user_meta($uid, 'dt_typer_expert', 1);
+        DT_Logger::log('expert_status_changed',$wasExpert?'Odebrano oznaczenie eksperta.':'Nadano oznaczenie eksperta.',['target_user'=>$uid,'is_expert'=>$wasExpert?0:1],'notice',get_current_user_id());
+        self::redirect('decka-typer-users',$wasExpert?'Użytkownik nie jest już oznaczony jako ekspert.':'Użytkownik został oznaczony jako ekspert.');
     }
 
     public static function save_avatar(): void {

@@ -139,11 +139,16 @@ class DT_User_Settings {
         return max(0, (int)get_user_meta($uid, self::META_FAVORITE_TEAM, true));
     }
 
+    public static function is_expert(int $uid): bool {
+        return $uid > 0 && (bool)get_user_meta($uid, 'dt_typer_expert', true);
+    }
+
     public static function apply_ranking_names(array $rows): array {
         foreach ($rows as &$row) {
             $uid = (int)($row['user_id'] ?? 0);
             if ($uid > 0) {
                 $row['display_name'] = self::ranking_name($uid, (string)($row['display_name'] ?? ''));
+                $row['is_expert'] = self::is_expert($uid);
             }
         }
         unset($row);
