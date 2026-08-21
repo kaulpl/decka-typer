@@ -90,10 +90,13 @@ class DT_Brand {
     }
 
     public static function footer(): void {
-        if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
+        $isTyper = class_exists('DT_Frontend') && DT_Frontend::is_typer_page();
+        $isLegal = class_exists('DT_Legal') && DT_Legal::is_public_page();
+        if (!$isTyper && !$isLegal) return;
         echo '<footer class="tk-footer" aria-label="Informacje o serwisie"><div class="tk-footer-inner">';
         echo '<div class="tk-footer-brand"><a href="' . esc_url(home_url('/')) . '" aria-label="TypujKosza.pl — strona główna"><img src="' . esc_url(self::logo_horizontal_url()) . '" alt="' . esc_attr(self::NAME) . '"></a></div>';
         echo '<p><strong>' . esc_html(self::NAME) . '</strong> to bezpłatna zabawa dla kibiców koszykówki. Serwis nie służy do zawierania zakładów ani przyjmowania stawek pieniężnych; udział jest bezpłatny. Typy, punkty i rankingi mają wyłącznie charakter rozrywkowy i społecznościowy.</p>';
+        echo '<nav class="tk-footer-links" aria-label="Dokumenty i kontakt"><a href="'.esc_url(DT_Legal::privacy_url()).'">Polityka prywatności</a><a href="'.esc_url(DT_Legal::contact_url()).'">Kontakt</a></nav>';
         echo '<small>&copy; ' . esc_html(wp_date('Y')) . ' ' . esc_html(self::NAME) . '</small>';
         echo '</div></footer>';
     }
