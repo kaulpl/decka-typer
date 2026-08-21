@@ -32,6 +32,8 @@ class DT_DB {
         $sql[] = "CREATE TABLE " . self::table('rounds') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             season VARCHAR(20) NOT NULL,
+            league_key VARCHAR(20) NOT NULL DEFAULT '1lm',
+            group_key VARCHAR(40) NOT NULL DEFAULT '',
             round_no INT NOT NULL,
             title VARCHAR(190) NOT NULL,
             status VARCHAR(30) NOT NULL DEFAULT 'draft',
@@ -43,7 +45,8 @@ class DT_DB {
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
-            UNIQUE KEY season_round (season, round_no),
+            UNIQUE KEY league_season_group_round (league_key, season, group_key, round_no),
+            KEY league_season (league_key, season),
             KEY status (status),
             KEY closes_at (closes_at)
         ) $charset;";
@@ -147,6 +150,7 @@ class DT_DB {
 
         if (version_compare($oldVersion, '0.2.0', '<')) self::migrate_to_020();
         if (version_compare($oldVersion, '0.2.5', '<')) self::migrate_to_025();
+        if (version_compare($oldVersion, '0.5.0', '<')) self::migrate_to_050();
 
         $existing = (array) get_option('dt_settings', []);
         $settings = wp_parse_args($existing, self::defaults());
@@ -210,6 +214,15 @@ class DT_DB {
         $wpdb->query("ALTER TABLE `$pred` MODIFY selected_team_id BIGINT UNSIGNED NOT NULL");
     }
 
+    private static function migrate_to_050(): void {
+        global $wpdb;
+        $rounds = self::table('rounds');
+        if (self::column_exists($rounds, 'league_key')) {
+            $wpdb->query("UPDATE `$rounds` SET league_key='1lm' WHERE league_key='' OR league_key IS NULL");
+            $wpdb->query("ALTER TABLE `$rounds` DROP INDEX season_round");
+        }
+    }
+
     public static function close_expired_rounds(): void {
         global $wpdb;
         $now = current_time('mysql');
@@ -229,6 +242,8 @@ class DT_DB {
         return [
             'season' => '2026/2027',
             'league_name' => 'PEKAO S.A. 1 LIGA',
+            'site_mode' => 'test',
+            'leagues' => ['plk'=>1, '1lm'=>1, '2lm'=>1],
             'source_url' => 'https://1lm.pzkosz.pl/terminarz-i-wyniki.html',
             'sync_enabled' => 1,
             'sync_interval' => 'hourly',
