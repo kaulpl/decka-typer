@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.12 — 2026-08-21
+
+- zabezpieczono własne komunikaty Artura zapisane w bazie przed nadpisaniem podczas aktualizacji wtyczki,
+- dodano ikonę użytkownika przy pozycji „Moje konto”,
+- przebudowano wybór ulubionej drużyny na przełączniki 1LM, PLK i 2LM oraz listę aktualnych drużyn wybranej ligi,
+- dodano reakcję Artura „Wybór ulubionej drużyny” z 15 edytowalnymi odpowiedziami.
+
 ## 0.5.11 — 2026-08-21
 
 - dodano po 15 edytowalnych, losowanych odpowiedzi Bota Artura dla każdej z 8 sytuacji,
