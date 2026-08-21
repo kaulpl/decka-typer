@@ -133,15 +133,18 @@ class DT_Admin {
     public static function rounds(): void {
         global $wpdb;
         $s = DT_DB::settings();
+        $league = sanitize_key($_GET['league'] ?? 'all');
+        if (!in_array($league,['all','plk','1lm','2lm'],true)) $league='all';
+        $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND r.league_key=%s ', $league) : '';
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT r.*,COUNT(m.id) matches,MIN(m.starts_at) first_match,MAX(m.starts_at) last_match,
              MIN(CASE WHEN m.start_time_known=1 THEN m.starts_at END) first_known_match,
              (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss WHERE ss.round_id=r.id) submissions
              FROM " . DT_DB::table('rounds') . " r LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
-             WHERE r.season=%s GROUP BY r.id ORDER BY r.round_no", $s['season']
+             WHERE r.season=%s $leagueSql GROUP BY r.id ORDER BY r.league_key,r.group_key,r.round_no", $s['season']
         ));
         self::shell('Kolejki','Tylko kolejka otwarta przez administratora jest dostępna do nowych typów.');
-        echo '<div class="dt-toolbar"><button class="button button-primary dt-button" data-dt-open="dt-round-modal"><span class="dashicons dashicons-plus-alt2"></span> Dodaj kolejkę</button></div>';
+        echo '<div class="dt-toolbar"><form method="get"><input type="hidden" name="page" value="decka-typer-rounds"><select name="league" onchange="this.form.submit()"><option value="all">Wszystkie ligi</option><option value="plk" '.selected($league,'plk',false).'>PLK</option><option value="1lm" '.selected($league,'1lm',false).'>1LM</option><option value="2lm" '.selected($league,'2lm',false).'>2LM</option></select></form><button class="button button-primary dt-button" data-dt-open="dt-round-modal"><span class="dashicons dashicons-plus-alt2"></span> Dodaj kolejkę</button></div>';
         echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Kolejka</th><th>Termin meczów</th><th>Mecze</th><th>Kupony</th><th>Status</th><th>Zamknięcie typowania</th><th>Źródło</th><th>Akcje</th></tr></thead><tbody>';
         foreach ($rows as $r) {
             $range = $r->first_match ? substr(self::date_pl($r->first_match),0,10) . ' – ' . substr(self::date_pl($r->last_match),0,10) : '—';
@@ -151,7 +154,8 @@ class DT_Admin {
                 'default_close'=>self::html_datetime($r->closes_at ?: $r->first_known_match),
                 'first_match'=>self::date_pl($r->first_known_match ?: $r->first_match),
             ];
-            echo '<tr><td><strong>' . esc_html($r->title) . '</strong></td><td>' . esc_html($range) . '</td><td>' . (int)$r->matches . '</td><td>' . (int)$r->submissions . '</td><td>' . self::round_badge((string)$r->status) . '</td><td><strong>' . esc_html(self::date_pl($r->closes_at)) . '</strong></td><td>' . self::badge($r->source === '1lm' ? '1LM' : 'Ręcznie', $r->source === '1lm' ? 'blue' : 'orange') . '</td><td>';
+            $leagueLabel = strtoupper((string)$r->league_key) . ($r->group_key ? ' · grupa '.(string)$r->group_key : '');
+            echo '<tr><td><small class="dt-muted">'.esc_html($leagueLabel).'</small><br><strong>' . esc_html($r->title) . '</strong></td><td>' . esc_html($range) . '</td><td>' . (int)$r->matches . '</td><td>' . (int)$r->submissions . '</td><td>' . self::round_badge((string)$r->status) . '</td><td><strong>' . esc_html(self::date_pl($r->closes_at)) . '</strong></td><td>' . self::badge($r->source === '1lm' ? 'Auto 1LM' : 'Ręcznie', $r->source === '1lm' ? 'blue' : 'orange') . '</td><td>';
             if ($r->status === 'open') {
                 echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline">';
                 echo '<input type="hidden" name="action" value="dt_close_round"><input type="hidden" name="round_id" value="' . (int)$r->id . '">';
@@ -167,7 +171,7 @@ class DT_Admin {
 
         echo '<dialog id="dt-round-modal" class="dt-modal"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><button type="button" class="dt-modal-x" data-dt-close>×</button><span class="dt-eyebrow">NOWA KOLEJKA</span><h2>Dodaj kolejkę ręcznie</h2><input type="hidden" name="action" value="dt_add_round">';
         wp_nonce_field('dt_add_round');
-        echo '<label>Numer kolejki<input type="number" name="round_no" min="1" max="99" required></label><label>Nazwa<input name="title" placeholder="np. 12. kolejka"></label><div class="dt-inline-warning">Nowa kolejka powstanie jako szkic. Otworzysz ją osobno po ustawieniu terminu zamknięcia typowania.</div><button class="button button-primary dt-button">Zapisz kolejkę</button></form></dialog>';
+        echo '<div class="dt-form-2"><label>Liga<select name="league_key"><option value="plk">PLK</option><option value="1lm" selected>1LM</option><option value="2lm">2LM</option></select></label><label>Grupa (dla 2LM)<input name="group_key" placeholder="np. A, B, C lub D"></label></div><label>Numer kolejki<input type="number" name="round_no" min="1" max="99" required></label><label>Nazwa<input name="title" placeholder="np. 12. kolejka"></label><div class="dt-inline-warning">Nowa kolejka powstanie jako szkic. Otworzysz ją osobno po ustawieniu terminu zamknięcia typowania.</div><button class="button button-primary dt-button">Zapisz kolejkę</button></form></dialog>';
 
         echo '<dialog id="dt-open-round-modal" class="dt-modal"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><button type="button" class="dt-modal-x" data-dt-close>×</button><span class="dt-eyebrow">OTWARCIE TYPOWANIA</span><h2 id="dt-open-round-title">Otwórz kolejkę</h2><input type="hidden" name="action" value="dt_open_round"><input type="hidden" name="round_id" id="dt-open-round-id">';
         wp_nonce_field('dt_open_round');
@@ -180,7 +184,7 @@ class DT_Admin {
         global $wpdb;
         $s = DT_DB::settings();
         $roundId = (int)($_GET['round_id'] ?? 0);
-        $rounds = $wpdb->get_results($wpdb->prepare('SELECT * FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY round_no', $s['season']));
+        $rounds = $wpdb->get_results($wpdb->prepare('SELECT * FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY league_key,group_key,round_no', $s['season']));
         if (!$roundId && $rounds) $roundId = (int)$rounds[0]->id;
         $rows = $roundId ? $wpdb->get_results($wpdb->prepare(
             'SELECT m.*,h.name home_name,a.name away_name FROM ' . DT_DB::table('matches') . ' m JOIN ' . DT_DB::table('teams') . ' h ON h.id=m.home_team_id JOIN ' . DT_DB::table('teams') . ' a ON a.id=m.away_team_id WHERE m.round_id=%d ORDER BY m.starts_at,m.id', $roundId
@@ -221,7 +225,7 @@ class DT_Admin {
         global $wpdb;
         $roundId = (int)($_GET['round_id'] ?? 0);
         $s = DT_DB::settings();
-        $rounds = $wpdb->get_results($wpdb->prepare('SELECT id,title FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY round_no',$s['season']));
+        $rounds = $wpdb->get_results($wpdb->prepare('SELECT id,title,league_key,group_key FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY league_key,group_key,round_no',$s['season']));
         if (!$roundId && $rounds) $roundId = (int)$rounds[0]->id;
         $rows = $roundId ? $wpdb->get_results($wpdb->prepare(
             "SELECT p.*,u.display_name,h.name home_name,a.name away_name,sel.name selected_name,m.score_home,m.score_away
@@ -319,7 +323,12 @@ class DT_Admin {
         self::shell('Ustawienia','Rozgrywki, punktacja, logowanie i wygląd');
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" class="dt-settings"><input type="hidden" name="action" value="dt_save_settings">';
         wp_nonce_field('dt_save_settings');
-        echo '<section class="dt-card"><span class="dt-eyebrow">ROZGRYWKI</span><h2>Sezon i synchronizacja</h2><div class="dt-form-2"><label>Sezon<input name="season" value="' . esc_attr($s['season']) . '"></label><label>Nazwa ligi w nagłówku Typera<input name="league_name" value="' . esc_attr($s['league_name']) . '"></label></div><label>Adres terminarza 1LM<input type="url" name="source_url" value="' . esc_attr($s['source_url']) . '"></label><label class="dt-check"><input type="checkbox" name="sync_enabled" value="1" ' . checked(!empty($s['sync_enabled']),true,false) . '><span><strong>Automatyczna synchronizacja</strong><small>Pobieraj terminarz i wyniki co godzinę. Stan otwarcia kolejki pozostaje zawsze pod kontrolą administratora.</small></span></label></section>';
+        echo '<section class="dt-card"><span class="dt-eyebrow">TRYB SERWISU</span><h2>Dostępność TypujKosza.pl</h2><div class="dt-mode-options">';
+        foreach (['production'=>'Produkcyjny','test'=>'Testowy','break'=>'Przerwa'] as $value=>$label) echo '<label class="dt-mode-card"><input type="radio" name="site_mode" value="'.esc_attr($value).'" '.checked(($s['site_mode']??'test'),$value,false).'><span><strong>'.esc_html($label).'</strong><small>'.esc_html($value==='production'?'Pełne działanie serwisu.':($value==='test'?'Żółty komunikat o wersji testowej.':'Ekran startowy; wp-admin pozostaje dostępny.')).'</small></span></label>';
+        echo '</div></section>';
+        echo '<section class="dt-card"><span class="dt-eyebrow">ROZGRYWKI</span><h2>Ligi i sezon</h2><div class="dt-form-2"><label>Sezon<input name="season" value="' . esc_attr($s['season']) . '"></label><label>Domyślna nazwa ligi<input name="league_name" value="' . esc_attr($s['league_name']) . '"></label></div><div class="dt-form-3">';
+        foreach (['plk'=>'PLK','1lm'=>'1 Liga Mężczyzn','2lm'=>'2 Liga Mężczyzn'] as $key=>$label) echo '<label class="dt-check"><input type="checkbox" name="leagues[]" value="'.esc_attr($key).'" '.checked(!empty(($s['leagues']??[])[$key]),true,false).'><span><strong>'.esc_html($label).'</strong><small>Aktywna w typowaniu i rankingach</small></span></label>';
+        echo '</div><label>Adres terminarza 1LM<input type="url" name="source_url" value="' . esc_attr($s['source_url']) . '"></label><label class="dt-check"><input type="checkbox" name="sync_enabled" value="1" ' . checked(!empty($s['sync_enabled']),true,false) . '><span><strong>Automatyczna synchronizacja 1LM</strong><small>Pobieraj terminarz i wyniki co godzinę.</small></span></label></section>';
         echo '<section class="dt-card"><span class="dt-eyebrow">PUNKTACJA</span><h2>Zasady Typera</h2><div class="dt-form-2"><label>Punkty za poprawnego zwycięzcę<input type="number" name="points_winner" step="1" value="' . esc_attr($s['points_winner']) . '"></label><label>Bonus za perfekcyjną kolejkę<input type="number" name="perfect_round_bonus" step="1" value="' . esc_attr($s['perfect_round_bonus']) . '"></label></div><p class="dt-muted">Użytkownik wybiera wyłącznie zwycięzcę. Dokładny wynik nie jest typowany.</p></section>';
         self::provider_fields('Google',[['google_client_id','Client ID','text'],['google_client_secret','Client Secret','password']],DT_OAuth::callback_url('google'),$s);
         self::provider_fields('Facebook',[['facebook_app_id','App ID','text'],['facebook_app_secret','App Secret','password']],DT_OAuth::callback_url('facebook'),$s);
@@ -351,6 +360,10 @@ class DT_Admin {
         foreach (['points_winner','perfect_round_bonus'] as $k) $new[$k] = (float)($_POST[$k] ?? 0);
         foreach (['brand_primary','brand_accent','brand_surface'] as $k) $new[$k] = sanitize_hex_color($_POST[$k] ?? '') ?: $old[$k];
         $new['sync_enabled'] = !empty($_POST['sync_enabled']) ? 1 : 0;
+        $mode = sanitize_key($_POST['site_mode'] ?? 'test');
+        $new['site_mode'] = in_array($mode, ['production','test','break'], true) ? $mode : 'test';
+        $selected = array_map('sanitize_key', (array)($_POST['leagues'] ?? []));
+        $new['leagues'] = ['plk'=>in_array('plk',$selected,true)?1:0,'1lm'=>in_array('1lm',$selected,true)?1:0,'2lm'=>in_array('2lm',$selected,true)?1:0];
         foreach (['apple_client_id','apple_team_id','apple_key_id','apple_private_key','points_exact','points_margin'] as $deprecated) unset($new[$deprecated]);
         update_option('dt_settings',$new);
         DT_Logger::log('settings_saved','Zapisano ustawienia Typera.');
@@ -365,8 +378,8 @@ class DT_Admin {
         $title = sanitize_text_field($_POST['title'] ?? '') ?: $no . '. kolejka';
         $now = current_time('mysql');
         $ok = $wpdb->insert(DT_DB::table('rounds'),[
-            'season'=>$s['season'],'round_no'=>$no,'title'=>$title,'status'=>'draft','source'=>'manual',
-            'external_key'=>sha1($s['season'].'|manual|'.$no),'created_at'=>$now,'updated_at'=>$now
+            'season'=>$s['season'],'league_key'=>in_array(sanitize_key($_POST['league_key']??'1lm'),['plk','1lm','2lm'],true)?sanitize_key($_POST['league_key']):'1lm','group_key'=>sanitize_text_field($_POST['group_key']??''),'round_no'=>$no,'title'=>$title,'status'=>'draft','source'=>'manual',
+            'external_key'=>sha1($s['season'].'|manual|'.$no.'|'.($_POST['league_key']??'1lm').'|'.($_POST['group_key']??'')),'created_at'=>$now,'updated_at'=>$now
         ]);
         self::redirect('decka-typer-rounds',$ok?'Kolejka dodana jako szkic.':'Nie udało się dodać kolejki.',$ok?'success':'error');
     }
@@ -387,7 +400,7 @@ class DT_Admin {
         if ($firstDt && $firstDt <= $now) self::redirect('decka-typer-rounds','Nie można otworzyć kolejki po rozpoczęciu pierwszego meczu.','error');
 
         $nowSql = current_time('mysql');
-        $wpdb->query($wpdb->prepare("UPDATE " . DT_DB::table('rounds') . " SET status='closed',closes_at=CASE WHEN closes_at IS NULL OR closes_at>%s THEN %s ELSE closes_at END,updated_at=%s WHERE season=%s AND status='open' AND id<>%d",$nowSql,$nowSql,$nowSql,$round->season,$id));
+        $wpdb->query($wpdb->prepare("UPDATE " . DT_DB::table('rounds') . " SET status='closed',closes_at=CASE WHEN closes_at IS NULL OR closes_at>%s THEN %s ELSE closes_at END,updated_at=%s WHERE season=%s AND league_key=%s AND group_key=%s AND status='open' AND id<>%d",$nowSql,$nowSql,$nowSql,$round->season,$round->league_key,$round->group_key,$id));
         $wpdb->update(DT_DB::table('rounds'),['status'=>'open','opens_at'=>$nowSql,'closes_at'=>$close,'updated_at'=>$nowSql],['id'=>$id],['%s','%s','%s','%s'],['%d']);
         DT_Logger::log('round_opened','Administrator otworzył kolejkę do typowania.',['round_id'=>$id,'closes_at'=>$close], 'notice', get_current_user_id());
         self::redirect('decka-typer-rounds','Typowanie kolejki zostało otwarte do ' . self::date_pl($close) . '.');
