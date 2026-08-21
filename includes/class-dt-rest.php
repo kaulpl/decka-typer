@@ -35,7 +35,7 @@ class DT_REST {
         return new WP_REST_Response([
             'version'=>DT_VERSION,
             'season'=>$settings['season'],
-            'league_name'=>$settings['league_name'],
+            'league_name'=>'PLK · 1LM · 2LM',
             'timezone'=>wp_timezone_string() ?: 'Europe/Warsaw',
             'rounds'=>$rounds,
             'leagues'=>self::league_catalog($rounds),
@@ -247,7 +247,8 @@ class DT_REST {
     }
 
     private static function league_name(string $key): string {
-        return ['plk'=>'ORLEN Basket Liga','1lm'=>'1 Liga Mężczyzn','2lm'=>'2 Liga Mężczyzn'][$key] ?? strtoupper($key);
+        $names=(array)(DT_DB::settings()['league_names']??[]);
+        return (string)($names[$key]??(['plk'=>'ORLEN Basket Liga','1lm'=>'1 Liga Mężczyzn','2lm'=>'2 Liga Mężczyzn'][$key]??strtoupper($key)));
     }
 
     private static function round_payload(int $roundId, bool $visibleOnly = false): ?array {
