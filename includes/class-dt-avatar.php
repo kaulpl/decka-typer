@@ -8,8 +8,8 @@ class DT_Avatar {
         return [
             'welcome' => ['image'=>'01-powitanie.png','label'=>'Powitanie','text'=>'No, jesteś! Piłka czeka, typy same się nie zrobią.'],
             'thinking' => ['image'=>'02-myslenie.png','label'=>'Myślenie','text'=>'Spokojnie. Nawet trener czasem patrzy w tablicę trochę dłużej.'],
-            'saved' => ['image'=>'03-kupon-zapisany.png','label'=>'Kupon zapisany','text'=>'Kupon zapisany. Teraz pozostaje udawać, że wszystko było przemyślane.'],
-            'perfect' => ['image'=>'04-idealny-kupon.png','label'=>'Idealny kupon','text'=>'Komplet trafień! Możesz przez chwilę mówić, że znasz się najlepiej.'],
+            'saved' => ['image'=>'03-typowanie-zapisany.png','label'=>'Kupon zapisany','text'=>'Kupon zapisany. Teraz pozostaje udawać, że wszystko było przemyślane.'],
+            'perfect' => ['image'=>'04-idealny-typowanie.png','label'=>'Idealny kupon','text'=>'Komplet trafień! Możesz przez chwilę mówić, że znasz się najlepiej.'],
             'warning' => ['image'=>'05-ostrzezenie.png','label'=>'Niepełny kupon','text'=>'Halo, zostały puste mecze. Piłka nie wybierze za Ciebie.'],
             'closed' => ['image'=>'06-kolejka-zamknieta.png','label'=>'Kolejka zamknięta','text'=>'Koniec typowania. Gwizdek był, reklamacji nie przyjmuję.'],
             'missed' => ['image'=>'07-nietrafiony-typ.png','label'=>'Nietrafiony typ','text'=>'Nie weszło. Koszykówka bywa złośliwa, ale następna kolejka już czeka.'],
