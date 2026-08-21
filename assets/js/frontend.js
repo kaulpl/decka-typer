@@ -39,7 +39,7 @@
       const boot=await api('bootstrap');state.boot=boot;state.round=boot.current_round;
       state.league=String(state.round?.league_key||preferredLeague(boot.rounds||[]));
       state.group=state.league==='2lm'?String(state.round?.group_key||preferredGroup(boot.rounds||[])):'';
-      hydratePicks();renderUser(boot.me);renderLeagueRounds();renderRoundSelector();renderRound(state.round);renderRanking(boot.ranking||[]);renderMine(boot.me);
+      hydratePicks();renderUser(boot.me);renderAchievements(boot.me);renderLeagueRounds();renderRoundSelector();renderRound(state.round);renderRanking(boot.ranking||[]);renderMine(boot.me);
     }catch(e){toast(e.message,true);const box=$('#dt-matches');if(box)box.innerHTML='<div class="dt-empty-front">Nie udało się załadować Typera. Odśwież stronę za chwilę.</div>';}
   };
   const hydratePicks=()=>{
@@ -63,10 +63,13 @@
   const renderUser=me=>{
     if(!me)return;
     const chip=$('#dt-user-chip');if(chip)chip.innerHTML=`<img src="${esc(me.avatar)}" alt=""><span><b>${esc(me.display_name)}</b><small>${me.rank?`#${me.rank} w rankingu`:'Czas na pierwszy kupon'}</small></span>`;
-    const stats=$$('#dt-user-stats .dt-stat strong');
-    if(stats[0])stats[0].textContent=me.rank?`#${me.rank}`:'—';
-    if(stats[1])stats[1].textContent=Number(me.points||0).toFixed(0);
-    if(stats[2])stats[2].textContent=String(me.winner_hits||0);
+    const ranks=$('#dt-league-ranks'),leagueRanks=me.league_ranks||{};
+    if(ranks)ranks.innerHTML=['1lm','plk','2lm'].map(key=>`<span>${key.toUpperCase()} <b>${leagueRanks[key]?.rank?`#${leagueRanks[key].rank}`:'#–'}</b></span>`).join('');
+  };
+  const renderAchievements=me=>{
+    const box=$('#dt-achievement-leagues');if(!box||!me)return;
+    const data=me.league_achievements||{};
+    box.innerHTML=['1lm','plk','2lm'].map(key=>{const item=data[key]||{};return `<article class="dt-achievement-league"><header><span>${key.toUpperCase()}</span><strong>${item.rank?`#${item.rank}`:'—'}</strong></header><div><span>Punkty<b>${Number(item.points||0).toFixed(0)}</b></span><span>Trafienia<b>${Number(item.winner_hits||0)}</b></span><span>Typy<b>${Number(item.predictions||0)}</b></span></div></article>`;}).join('');
   };
   const renderRoundSelector=()=>{
     const sel=$('#dt-round-select');if(!sel||!state.boot)return;
@@ -204,9 +207,9 @@
   $('#dt-next-round')?.addEventListener('click',()=>{const rs=filteredRounds(),i=rs.findIndex(r=>Number(r.id)===Number(state.round?.id));if(i>=0&&i<rs.length-1)loadRound(rs[i+1].id);});
   $('#dt-save-all')?.addEventListener('click',openSubmitModal);
   $('#dt-confirm-submit')?.addEventListener('click',saveCoupon);
-  let achievementScope='all',achievementLeague='all';
-  const refreshAchievements=async()=>{try{const q=new URLSearchParams({scope:achievementScope,league:achievementLeague});const me=await api('me?'+q.toString());renderUser(me);}catch(e){toast(e.message,true);}};
-  $$('.dt-achievement-controls [data-value]').forEach(button=>button.addEventListener('click',()=>{const parent=button.parentElement;parent.querySelectorAll('[data-value]').forEach(x=>x.classList.toggle('is-active',x===button));if(parent.id==='dt-achievement-scope')achievementScope=button.dataset.value||'all';else achievementLeague=button.dataset.value||'all';refreshAchievements();}));
+  let achievementScope='all';
+  const refreshAchievements=async()=>{try{const q=new URLSearchParams({scope:achievementScope});const me=await api('me?'+q.toString());renderAchievements(me);}catch(e){toast(e.message,true);}};
+  $$('.dt-achievement-controls [data-value]').forEach(button=>button.addEventListener('click',()=>{const parent=button.parentElement;parent.querySelectorAll('[data-value]').forEach(x=>x.classList.toggle('is-active',x===button));achievementScope=button.dataset.value||'all';refreshAchievements();}));
   $('#dt-submit-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)closeSubmitModal();});
   window.addEventListener('beforeunload',e=>{if(hasUnsavedPicks()){e.preventDefault();e.returnValue='';}});
   load();
