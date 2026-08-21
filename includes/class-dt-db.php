@@ -266,10 +266,19 @@ class DT_DB {
         flush_rewrite_rules();
     }
 
+    public static function cron_schedules(array $schedules): array {
+        $minutes = max(5, min(1440, (int) (self::settings()['sync_interval_minutes'] ?? 60)));
+        $schedules['dt_custom_sync'] = [
+            'interval' => $minutes * MINUTE_IN_SECONDS,
+            'display' => sprintf('TypujKosza.pl co %d min', $minutes),
+        ];
+        return $schedules;
+    }
+
     public static function defaults(): array {
         return [
             'season' => '2026/2027',
-            'league_name' => 'PEKAO S.A. 1 LIGA',
+            'league_names' => ['plk'=>'ORLEN Basket Liga', '1lm'=>'1 Liga Mężczyzn', '2lm'=>'2 Liga Mężczyzn'],
             'site_mode' => 'test',
             'leagues' => ['plk'=>1, '1lm'=>1, '2lm'=>1],
             'source_url' => 'https://1lm.pzkosz.pl/terminarz-i-wyniki.html',
@@ -277,7 +286,7 @@ class DT_DB {
             'source_1lm_url' => 'https://rozgrywki.pzkosz.pl/liga/1/terminarz_i_wyniki.html',
             'source_2lm_url' => 'https://rozgrywki.pzkosz.pl/liga/4/terminarz_i_wyniki.html',
             'sync_enabled' => 1,
-            'sync_interval' => 'hourly',
+            'sync_interval_minutes' => 60,
             'unknown_time_lock' => '00:00',
             'points_winner' => 1,
             'perfect_round_bonus' => 0,
@@ -321,6 +330,15 @@ class DT_DB {
     }
 
     public static function ensure_cron(): void {
-        if (!wp_next_scheduled('dt_sync_schedule')) wp_schedule_event(time() + 300, 'hourly', 'dt_sync_schedule');
+        add_filter('cron_schedules', [__CLASS__, 'cron_schedules']);
+        $minutes = max(5, min(1440, (int) (self::settings()['sync_interval_minutes'] ?? 60)));
+        $signature = (int) get_option('dt_sync_interval_signature', 0);
+        $timestamp = wp_next_scheduled('dt_sync_schedule');
+        if ($timestamp && $signature !== $minutes) {
+            wp_unschedule_event($timestamp, 'dt_sync_schedule');
+            $timestamp = false;
+        }
+        if (!$timestamp) wp_schedule_event(time() + min(300, $minutes * MINUTE_IN_SECONDS), 'dt_custom_sync', 'dt_sync_schedule');
+        update_option('dt_sync_interval_signature', $minutes, false);
     }
 }
