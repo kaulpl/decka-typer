@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.9 — 2026-08-21
+
+- ręczne otwarcie kolejki jest trwałym nadpisaniem automatycznego harmonogramu aż do terminu zamknięcia,
+- dodano chroniony reset wszystkich typów, kuponów, korekt punktów i ustawień profilowych Typera bez usuwania kont WordPress,
+- dodano moduł administratora „AVATAR” z ośmioma edytowalnymi komunikatami i podglądem grafik,
+- avatar reaguje na powitanie, ładowanie, niepełny lub zapisany kupon, zamkniętą kolejkę, wyniki i mecz BONUS.
+
 ## 0.5.8 — 2026-08-21
 
 - Dodano synchronizację miejsc drużyn PLK z oficjalnej tabeli PLK.

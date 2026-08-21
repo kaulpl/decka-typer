@@ -37,6 +37,7 @@ class DT_DB {
             round_no INT NOT NULL,
             title VARCHAR(190) NOT NULL,
             status VARCHAR(30) NOT NULL DEFAULT 'draft',
+            manual_availability TINYINT(1) NOT NULL DEFAULT 0,
             opens_at DATETIME NULL,
             closes_at DATETIME NULL,
             source VARCHAR(30) NOT NULL DEFAULT '1lm',
@@ -152,6 +153,7 @@ class DT_DB {
         if (version_compare($oldVersion, '0.2.5', '<')) self::migrate_to_025();
         if (version_compare($oldVersion, '0.5.0', '<')) self::migrate_to_050();
         if (version_compare($oldVersion, '0.5.2', '<')) self::migrate_to_052();
+        if (version_compare($oldVersion, '0.5.9', '<')) self::migrate_to_059();
 
         $existing = (array) get_option('dt_settings', []);
         $settings = wp_parse_args($existing, self::defaults());
@@ -251,6 +253,14 @@ class DT_DB {
         }
     }
 
+    private static function migrate_to_059(): void {
+        global $wpdb;
+        $rounds = self::table('rounds');
+        if (!self::column_exists($rounds, 'manual_availability')) {
+            $wpdb->query("ALTER TABLE `$rounds` ADD manual_availability TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
+        }
+    }
+
     /**
      * Recalculate every round from its earliest match with a confirmed tip-off.
      * The database status is useful for lists, while opens_at/closes_at make the
@@ -269,18 +279,21 @@ class DT_DB {
                  WHERE start_time_known=1 AND starts_at IS NOT NULL
                  GROUP BY round_id
              ) schedule ON schedule.round_id=r.id
-             SET r.opens_at=DATE_SUB(schedule.first_match, INTERVAL 7 DAY),
-                 r.closes_at=schedule.first_match,
+             SET r.opens_at=CASE WHEN r.manual_availability=1 THEN r.opens_at ELSE DATE_SUB(schedule.first_match, INTERVAL 7 DAY) END,
+                 r.closes_at=CASE WHEN r.manual_availability=1 THEN LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) ELSE schedule.first_match END,
                  r.status=CASE
-                     WHEN %s>=schedule.first_match THEN 'closed'
+                     WHEN %s>=LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) THEN 'closed'
+                     WHEN r.manual_availability=1 THEN 'open'
                      WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
                      ELSE 'draft'
                  END,
                  r.updated_at=%s
-             WHERE COALESCE(r.opens_at,'')<>DATE_SUB(schedule.first_match, INTERVAL 7 DAY)
-                OR COALESCE(r.closes_at,'')<>schedule.first_match
+             WHERE (r.manual_availability=0 AND COALESCE(r.opens_at,'')<>DATE_SUB(schedule.first_match, INTERVAL 7 DAY))
+                OR (r.manual_availability=0 AND COALESCE(r.closes_at,'')<>schedule.first_match)
+                OR (r.manual_availability=1 AND r.closes_at>schedule.first_match)
                 OR r.status<>CASE
-                    WHEN %s>=schedule.first_match THEN 'closed'
+                    WHEN %s>=LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) THEN 'closed'
+                    WHEN r.manual_availability=1 THEN 'open'
                     WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
                     ELSE 'draft'
                 END",

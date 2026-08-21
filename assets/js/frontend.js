@@ -20,6 +20,13 @@
     return data;
   };
   let toastTimer;
+  let avatarTimer;
+  const avatar=(key,duration=6500)=>{
+    const helper=$('#dt-avatar-helper'),item=cfg.avatar?.[key];if(!helper||!item)return;
+    helper.querySelector('img').src=item.url||'';helper.querySelector('.dt-avatar-bubble').textContent=item.text||'';
+    helper.hidden=false;helper.classList.add('is-show');clearTimeout(avatarTimer);
+    avatarTimer=setTimeout(()=>{helper.classList.remove('is-show');setTimeout(()=>helper.hidden=true,220);},duration);
+  };
   const toast=(msg,error=false)=>{
     const t=$('#dt-toast');if(!t)return;
     t.textContent=msg;t.classList.toggle('is-error',error);t.classList.add('is-show');
@@ -40,6 +47,7 @@
       state.league=String(state.round?.league_key||preferredLeague(boot.rounds||[]));
       state.group=state.league==='2lm'?String(state.round?.group_key||preferredGroup(boot.rounds||[])):'';
       hydratePicks();renderUser(boot.me);renderAchievements(boot.me);renderLeagueRounds();renderRoundSelector();renderRound(state.round);renderRanking(boot.ranking||[]);renderMine(boot.me);
+      setTimeout(()=>avatar('welcome'),500);
     }catch(e){toast(e.message,true);const box=$('#dt-matches');if(box)box.innerHTML='<div class="dt-empty-front">Nie udało się załadować Typera. Odśwież stronę za chwilę.</div>';}
   };
   const hydratePicks=()=>{
@@ -101,6 +109,7 @@
     if(!id)return;
     if(hasUnsavedPicks()&&!confirm('Masz niezapisane typy. Zmienić kolejkę i je odrzucić?')){renderRoundSelector();return;}
     state.picks.clear();$('#dt-matches').innerHTML='<div class="dt-loading-card"></div><div class="dt-loading-card"></div>';
+    avatar('thinking',3000);
     try{state.round=await api(`round/${id}`);hydratePicks();renderLeagueRounds();renderRoundSelector();renderRound(state.round);if(state.rankMode==='round')loadRanking('round');}catch(e){toast(e.message,true);}
   };
   const hasUnsavedPicks=()=>!!(state.round?.can_submit&&state.picks.size);
@@ -122,6 +131,9 @@
     meta.push(`<span class="dt-meta-pill">${icon('target')}${matches.length} meczów</span>`);
     $('#dt-round-meta').innerHTML=meta.join('');
     $('#dt-matches').innerHTML=matches.length?matches.map(matchCard).join(''):'<div class="dt-empty-front">Brak meczów w tej kolejce.</div>';
+    const resolved=matches.filter(m=>m.score_home!==null&&m.score_home!==undefined&&m.score_away!==null&&m.score_away!==undefined&&m.prediction);
+    if(!open&&!submitted)avatar('closed');
+    else if(submitted&&resolved.length===matches.length&&matches.length){const hits=resolved.filter(m=>Number(m.prediction?.points||0)>0).length;avatar(hits===matches.length?'perfect':(hits===0?'missed':'thinking'));}
     bindTeamChoices();updateNav();updateSaveDock();
   };
   const matchCard=m=>{
@@ -149,6 +161,7 @@
     $$('[data-team-choice]').forEach(btn=>btn.addEventListener('click',()=>{
       if(!state.round?.can_submit)return;
       state.picks.set(Number(btn.dataset.match),Number(btn.dataset.team));
+      const match=state.round?.matches?.find(m=>Number(m.id)===Number(btn.dataset.match));if(match?.is_bonus)avatar('bonus');
       renderRound(state.round);
     }));
   };
@@ -160,11 +173,11 @@
     if(!state.round.is_open){label.textContent='Typowanie zamknięte';dock.classList.add('is-locked');button.disabled=true;return;}
     dock.classList.remove('is-locked');button.querySelector('span').textContent='Zapisz typy';
     label.textContent=selected===total&&total?`Komplet: ${selected}/${total}`:`Wybrano ${selected}/${total}`;
-    button.disabled=selected!==total||total===0||state.saving;
+    button.disabled=total===0||state.saving;
   };
   const openSubmitModal=()=>{
     if(!state.round?.can_submit)return;
-    const total=(state.round.matches||[]).length;if(state.picks.size!==total){toast('Wytypuj zwycięzcę każdego meczu.',true);return;}
+    const total=(state.round.matches||[]).length;if(state.picks.size!==total){toast('Wytypuj zwycięzcę każdego meczu.',true);avatar('warning');return;}
     $('#dt-submit-modal')?.showModal();
   };
   const closeSubmitModal=()=>$('#dt-submit-modal')?.close();
@@ -175,6 +188,7 @@
     try{
       await api('submission',{method:'POST',body:JSON.stringify(payload)});
       toast('Kupon zapisany. Typów nie można już edytować.');
+      avatar('saved');
       state.round=await api(`round/${state.round.id}`);hydratePicks();renderRound(state.round);
       const me=await api('me');if(state.boot)state.boot.me=me;renderUser(me);renderMine(me);
     }catch(e){toast(e.message,true);}finally{state.saving=false;updateSaveDock();}
@@ -211,6 +225,7 @@
   const refreshAchievements=async()=>{try{const q=new URLSearchParams({scope:achievementScope});const me=await api('me?'+q.toString());renderAchievements(me);}catch(e){toast(e.message,true);}};
   $$('.dt-achievement-controls [data-value]').forEach(button=>button.addEventListener('click',()=>{const parent=button.parentElement;parent.querySelectorAll('[data-value]').forEach(x=>x.classList.toggle('is-active',x===button));achievementScope=button.dataset.value||'all';refreshAchievements();}));
   $('#dt-submit-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)closeSubmitModal();});
+  $('#dt-avatar-helper .dt-avatar-close')?.addEventListener('click',()=>{clearTimeout(avatarTimer);const h=$('#dt-avatar-helper');h.classList.remove('is-show');setTimeout(()=>h.hidden=true,220);});
   window.addEventListener('beforeunload',e=>{if(hasUnsavedPicks()){e.preventDefault();e.returnValue='';}});
   load();
 })();
