@@ -11,6 +11,7 @@
   let roundId=0;
   let seasons=[];
   let rounds=[];
+  let league='all',leagues=[];
   let loadingSeq=0;
 
   const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
@@ -32,6 +33,7 @@
   const api=async()=>{
     const qs=new URLSearchParams({scope});
     if(scope!=='all'&&season)qs.set('season',season);
+    if(league)qs.set('league',league);
     if(scope==='round'&&roundId)qs.set('round_id',String(roundId));
     const headers={Accept:'application/json'};
     if(cfg.nonce)headers['X-WP-Nonce']=cfg.nonce;
@@ -53,7 +55,12 @@
 
   const renderFilters=()=>{
     filters.innerHTML='';
-    filters.classList.toggle('is-visible',scope!=='all');
+    filters.classList.add('is-visible');
+    const leagueSelect=document.createElement('select');
+    leagueSelect.className='dt-ranking-select';
+    leagueSelect.innerHTML=leagues.map(l=>`<option value="${esc(l.key)}" ${l.key===league?'selected':''}>${esc(l.name)}</option>`).join('');
+    leagueSelect.addEventListener('change',()=>{league=leagueSelect.value;roundId=0;load();});
+    filters.appendChild(selectWrap('Liga',leagueSelect));
     if(scope==='all')return;
 
     const seasonSelect=document.createElement('select');
@@ -122,6 +129,8 @@
       seasons=Array.isArray(data.seasons)?data.seasons:[];
       season=String(data.season||season||seasons[0]||'');
       rounds=Array.isArray(data.rounds)?data.rounds:[];
+      leagues=Array.isArray(data.leagues)?data.leagues:[];
+      league=String(data.league||league||'all');
       roundId=Number(data.round_id||roundId||0);
       if(scope==='round'&&!roundId&&rounds.length)roundId=Number(rounds[rounds.length-1].id);
       renderFilters();

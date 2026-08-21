@@ -160,3 +160,10 @@
 ## Starsze wersje
 
 Pełna historia zmian wersji `0.1.x–0.3.x` pozostaje dostępna w historii Git repozytorium.
+# 0.5.0
+
+- Przygotowano model kolejek dla PLK, 1LM i 2LM (wraz z grupami 2LM).
+- Dodano tryby serwisu: produkcyjny, testowy i przerwa.
+- Logo w nagłówku i stopce prowadzi na stronę główną.
+- Zmieniono nazwę „Ustawienia” na „Moje konto” w widoku użytkownika.
+- Przygotowano filtry ligowe dla rankingów i historii typów.

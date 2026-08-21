@@ -27,9 +27,10 @@
   const groupHistory=history=>{
     const groups=new Map();
     history.forEach(item=>{
-      const no=Number(item.round_no||0);
-      if(!groups.has(no))groups.set(no,[]);
-      groups.get(no).push(item);
+      const no=Number(item.round_no||0),league=String(item.league_key||'1lm'),group=String(item.group_key||'');
+      const key=`${league}|${group}|${no}`;
+      if(!groups.has(key))groups.set(key,[]);
+      groups.get(key).push(item);
     });
     return [...groups.entries()].sort((a,b)=>b[0]-a[0]);
   };
@@ -64,7 +65,9 @@
     </div>`;
   };
 
-  const coupon=([roundNo,items],index)=>{
+  const coupon=([key,items],index)=>{
+    const [league,group,roundNo]=key.split('|');
+    const leagueLabel=league==='plk'?'PLK':league==='2lm'?`2LM${group?` · GRUPA ${group}`:''}`:'1LM';
     const known=items.filter(x=>x.result_known);
     const hits=known.filter(x=>x.scoring_code==='winner').length;
     const points=items.reduce((sum,x)=>sum+Number(x.points||0),0);
@@ -75,7 +78,7 @@
     return `<details class="dt-coupon" ${index===0?'open':''}>
       <summary class="dt-coupon-summary">
         <div class="dt-coupon-title">
-          <small>${esc(cfg.leagueName||'1 LIGA')}</small>
+          <small>${esc(leagueLabel)}</small>
           <strong>#${roundNo} kolejka</strong>
         </div>
         <div class="dt-coupon-meta">${esc(meta)}</div>

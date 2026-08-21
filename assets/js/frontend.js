@@ -37,7 +37,7 @@
   const load=async()=>{
     try{
       const boot=await api('bootstrap');state.boot=boot;state.round=boot.current_round;
-      hydratePicks();renderUser(boot.me);renderRoundSelector();renderRound(state.round);renderRanking(boot.ranking||[]);renderMine(boot.me);
+      hydratePicks();renderUser(boot.me);renderLeagueRounds();renderRoundSelector();renderRound(state.round);renderRanking(boot.ranking||[]);renderMine(boot.me);
     }catch(e){toast(e.message,true);const box=$('#dt-matches');if(box)box.innerHTML='<div class="dt-empty-front">Nie udało się załadować Typera. Odśwież stronę za chwilę.</div>';}
   };
   const hydratePicks=()=>{
@@ -58,6 +58,12 @@
     sel.innerHTML=rounds.map(r=>`<option value="${r.id}" ${state.round&&Number(r.id)===Number(state.round.id)?'selected':''}>${esc(r.title)}${r.is_open?' · OTWARTA':''}</option>`).join('');
     updateNav();
   };
+  const renderLeagueRounds=()=>{
+    const box=$('#dt-league-rounds');if(!box||!state.boot)return;
+    const labels={plk:'ORLEN Basket Liga', '1lm':'1 Liga Mężczyzn','2lm':'2 Liga Mężczyzn'};
+    const groups={};(state.boot.rounds||[]).forEach(r=>{const k=r.league_key||'1lm';(groups[k]??=[]).push(r);});
+    box.innerHTML=Object.entries(groups).map(([key,rounds],index)=>`<details class="dt-league-section" ${rounds.some(r=>r.is_open)||index===0?'open':''}><summary><span>${esc(labels[key]||key.toUpperCase())}</span><span class="dt-league-chip">${rounds.filter(r=>r.is_open).length?`${rounds.filter(r=>r.is_open).length} otwarte`:`${rounds.length} kolejek`}</span></summary><div class="dt-league-section-body"><div class="dt-round-pills">${rounds.map(r=>`<button type="button" data-league-round="${r.id}" class="${state.round&&Number(state.round.id)===Number(r.id)?'is-active':''}">${esc(r.group_key?`Grupa ${r.group_key} · ${r.title}`:r.title)}</button>`).join('')}</div></div></details>`).join('');
+  };
   const updateNav=()=>{
     if(!state.boot||!state.round)return;
     const rounds=state.boot.rounds||[],idx=rounds.findIndex(r=>Number(r.id)===Number(state.round.id));
@@ -67,7 +73,7 @@
     if(!id)return;
     if(hasUnsavedPicks()&&!confirm('Masz niezapisane typy. Zmienić kolejkę i je odrzucić?')){renderRoundSelector();return;}
     state.picks.clear();$('#dt-matches').innerHTML='<div class="dt-loading-card"></div><div class="dt-loading-card"></div>';
-    try{state.round=await api(`round/${id}`);hydratePicks();renderRoundSelector();renderRound(state.round);if(state.rankMode==='round')loadRanking('round');}catch(e){toast(e.message,true);}
+    try{state.round=await api(`round/${id}`);hydratePicks();renderLeagueRounds();renderRoundSelector();renderRound(state.round);if(state.rankMode==='round')loadRanking('round');}catch(e){toast(e.message,true);}
   };
   const hasUnsavedPicks=()=>!!(state.round?.can_submit&&state.picks.size);
   const renderRound=round=>{
@@ -164,6 +170,7 @@
     const tab=e.target.closest('[data-tab]');
     if(tab){$$('[data-tab]').forEach(b=>b.classList.toggle('is-active',b===tab));$$('[data-panel]').forEach(p=>p.classList.toggle('is-active',p.dataset.panel===tab.dataset.tab));state.tab=tab.dataset.tab;if(state.tab==='mine')api('me').then(m=>{if(state.boot)state.boot.me=m;renderUser(m);renderMine(m);}).catch(x=>toast(x.message,true));return;}
     const rank=e.target.closest('[data-rank]');if(rank){loadRanking(rank.dataset.rank);return;}
+    const leagueRound=e.target.closest('[data-league-round]');if(leagueRound){loadRound(Number(leagueRound.dataset.leagueRound));return;}
     if(e.target.closest('[data-modal-close]')){closeSubmitModal();return;}
   });
   $('#dt-round-select')?.addEventListener('change',e=>loadRound(Number(e.target.value)));
@@ -171,6 +178,9 @@
   $('#dt-next-round')?.addEventListener('click',()=>{const rs=state.boot?.rounds||[],i=rs.findIndex(r=>Number(r.id)===Number(state.round?.id));if(i>=0&&i<rs.length-1)loadRound(rs[i+1].id);});
   $('#dt-save-all')?.addEventListener('click',openSubmitModal);
   $('#dt-confirm-submit')?.addEventListener('click',saveCoupon);
+  const refreshAchievements=async()=>{const scope=$('#dt-achievement-scope')?.value||'all',league=$('#dt-achievement-league')?.value||'all';try{const q=new URLSearchParams({scope,league});const me=await api('me?'+q.toString());renderUser(me);}catch(e){toast(e.message,true);}};
+  $('#dt-achievement-scope')?.addEventListener('change',refreshAchievements);
+  $('#dt-achievement-league')?.addEventListener('change',refreshAchievements);
   $('#dt-submit-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)closeSubmitModal();});
   window.addEventListener('beforeunload',e=>{if(hasUnsavedPicks()){e.preventDefault();e.returnValue='';}});
   load();

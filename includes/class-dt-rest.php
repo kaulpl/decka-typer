@@ -38,6 +38,7 @@ class DT_REST {
             'league_name'=>$settings['league_name'],
             'timezone'=>wp_timezone_string() ?: 'Europe/Warsaw',
             'rounds'=>$rounds,
+            'leagues'=>self::league_catalog($rounds),
             'current_round'=>$roundData,
             'ranking'=>DT_Scoring::ranking((string) $settings['season'], 10),
             'me'=>$me,
@@ -127,8 +128,6 @@ class DT_REST {
                 if ($predictionId) {
                     $ok = $wpdb->update($predTable, [
                         'selected_team_id'=>$teamId,
-                        'home_score'=>null,
-                        'away_score'=>null,
                         'points'=>0,
                         'scoring_code'=>null,
                         'updated_at'=>$now,
@@ -139,8 +138,6 @@ class DT_REST {
                         'user_id'=>$uid,
                         'match_id'=>$matchId,
                         'selected_team_id'=>$teamId,
-                        'home_score'=>null,
-                        'away_score'=>null,
                         'points'=>0,
                         'scoring_code'=>null,
                         'submitted_at'=>$now,
@@ -174,7 +171,11 @@ class DT_REST {
 
     public static function me(WP_REST_Request $request): WP_REST_Response {
         $settings = DT_DB::settings();
-        return new WP_REST_Response(self::me_payload(get_current_user_id(), (string) $settings['season']));
+        $scope = sanitize_key((string)$request->get_param('scope'));
+        $season = $scope === 'all' ? '' : (string)$settings['season'];
+        $league = sanitize_key((string)$request->get_param('league'));
+        if (!in_array($league,['all','plk','1lm','2lm'],true)) $league='all';
+        return new WP_REST_Response(self::me_payload(get_current_user_id(), $season, $league));
     }
 
     private static function visible_rounds(string $season): array {
@@ -216,6 +217,9 @@ class DT_REST {
             $isOpen = self::round_accepts_picks($row);
             $row['id'] = $id;
             $row['round_no'] = (int) $row['round_no'];
+            $row['league_key'] = (string)($row['league_key'] ?? '1lm');
+            $row['league_name'] = self::league_name($row['league_key']);
+            $row['group_key'] = (string)($row['group_key'] ?? '');
             $row['match_count'] = (int) $row['match_count'];
             $row['finished_count'] = (int) $row['finished_count'];
             $row['is_open'] = $isOpen;
@@ -227,6 +231,23 @@ class DT_REST {
             $visible[] = $row;
         }
         return $visible;
+    }
+
+    private static function league_catalog(array $rounds): array {
+        $out = [];
+        foreach ($rounds as $round) {
+            $key = (string)($round['league_key'] ?? '1lm');
+            if (!isset($out[$key])) $out[$key] = ['key'=>$key,'name'=>self::league_name($key),'round_count'=>0,'open_count'=>0,'groups'=>[]];
+            $out[$key]['round_count']++;
+            if (!empty($round['is_open'])) $out[$key]['open_count']++;
+            $group = (string)($round['group_key'] ?? '');
+            if ($group !== '' && !in_array($group,$out[$key]['groups'],true)) $out[$key]['groups'][] = $group;
+        }
+        return array_values($out);
+    }
+
+    private static function league_name(string $key): string {
+        return ['plk'=>'ORLEN Basket Liga','1lm'=>'1 Liga Mężczyzn','2lm'=>'2 Liga Mężczyzn'][$key] ?? strtoupper($key);
     }
 
     private static function round_payload(int $roundId, bool $visibleOnly = false): ?array {
@@ -296,6 +317,9 @@ class DT_REST {
 
         $round['id'] = (int) $round['id'];
         $round['round_no'] = (int) $round['round_no'];
+        $round['league_key'] = (string)($round['league_key'] ?? '1lm');
+        $round['league_name'] = self::league_name($round['league_key']);
+        $round['group_key'] = (string)($round['group_key'] ?? '');
         $round['matches'] = $matches;
         $round['is_open'] = $isOpen;
         $round['display_status'] = $isOpen ? 'open' : 'closed';
@@ -310,34 +334,38 @@ class DT_REST {
         return $round;
     }
 
-    private static function me_payload(int $uid, string $season): array {
+    private static function me_payload(int $uid, string $season, string $league = 'all'): array {
         global $wpdb;
         $user = get_userdata($uid);
+        $roundFilter = '';
+        $args = [$uid];
+        if ($season !== '') { $roundFilter .= ' AND r.season=%s'; $args[]=$season; }
+        if ($league !== 'all') { $roundFilter .= ' AND r.league_key=%s'; $args[]=$league; }
         $row = $wpdb->get_row($wpdb->prepare(
             "SELECT COUNT(p.id) predictions,COALESCE(SUM(p.points),0) points,
                     SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) winner_hits
              FROM " . DT_DB::table('predictions') . " p
              JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
              JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
-             WHERE p.user_id=%d AND r.season=%s AND p.selected_team_id IS NOT NULL",
-            $uid, $season
+             WHERE p.user_id=%d $roundFilter AND p.selected_team_id IS NOT NULL",
+            ...$args
         ), ARRAY_A);
+        $subArgs=[$uid]; if($season!=='')$subArgs[]=$season; if($league!=='all')$subArgs[]=$league;
         $submissions = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " s
              JOIN " . DT_DB::table('rounds') . " r ON r.id=s.round_id
-             WHERE s.user_id=%d AND r.season=%s",
-            $uid, $season
+             WHERE s.user_id=%d $roundFilter",
+            ...$subArgs
         ));
-        $adjustment = (float) $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(points),0) FROM " . DT_DB::table('point_adjustments') . " WHERE user_id=%d AND season=%s",
-            $uid, $season
-        ));
-        $ranking = DT_Scoring::ranking($season, 500);
+        $adjustment = $season !== '' ? (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(points),0) FROM " . DT_DB::table('point_adjustments') . " WHERE user_id=%d AND season=%s", $uid, $season
+        )) : 0.0;
+        $ranking = $season !== '' && $league === 'all' ? DT_Scoring::ranking($season, 500) : [];
         $rank = null;
         foreach ($ranking as $item) if ((int) $item['user_id'] === $uid) { $rank = (int) $item['rank']; break; }
 
         $history = $wpdb->get_results($wpdb->prepare(
-            "SELECT r.round_no,m.starts_at,h.name home_name,a.name away_name,
+            "SELECT r.round_no,r.league_key,r.group_key,r.season,m.starts_at,h.name home_name,a.name away_name,
                     p.selected_team_id,p.points,p.scoring_code,
                     h.id home_team_id,a.id away_team_id,m.score_home,m.score_away
              FROM " . DT_DB::table('predictions') . " p
@@ -345,9 +373,9 @@ class DT_REST {
              JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
              JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
              JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
-             WHERE p.user_id=%d AND r.season=%s AND p.selected_team_id IS NOT NULL
+             WHERE p.user_id=%d $roundFilter AND p.selected_team_id IS NOT NULL
              ORDER BY r.round_no DESC,m.starts_at DESC,p.id DESC LIMIT 160",
-            $uid, $season
+            ...$args
         ), ARRAY_A);
         foreach ($history as &$item) {
             $selected = (int) $item['selected_team_id'];

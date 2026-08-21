@@ -107,7 +107,9 @@ class DT_Frontend {
         ob_start();
         echo '<div id="decka-typer" class="dt-app" style="--dt-primary:' . esc_attr($settings['brand_primary']) . ';--dt-accent:' . esc_attr($settings['brand_accent']) . ';--dt-surface:' . esc_attr($settings['brand_surface']) . '">';
         self::hero($settings);
-        if (!is_user_logged_in()) self::login(); else self::app_shell();
+        if (($settings['site_mode'] ?? 'test') === 'test') echo '<div class="dt-test-banner"><strong>Wersja testowa</strong><span>Serwis jest w trakcie testów. Dane i funkcje mogą jeszcze ulec zmianie.</span></div>';
+        if (($settings['site_mode'] ?? 'test') === 'break' && !current_user_can('manage_options')) self::break_screen();
+        elseif (!is_user_logged_in()) self::login(); else self::app_shell();
         echo '<div id="dt-toast" class="dt-front-toast" role="status" aria-live="polite"></div>';
         echo '</div>';
         return ob_get_clean();
@@ -115,9 +117,13 @@ class DT_Frontend {
 
     private static function hero(array $settings): void {
         echo '<header class="dt-front-hero"><div class="dt-hero-glow"></div><div class="dt-front-inner dt-hero-inner">';
-        echo '<div class="dt-brand"><img src="' . esc_url(DT_URL . 'assets/img/decka-logo.png') . '" alt="Decka Pelplin"><div><span>DECKA PELPLIN</span><strong>TYPER <em>' . esc_html($settings['season']) . '</em></strong></div></div>';
+        echo '<a class="dt-brand" href="' . esc_url(home_url('/')) . '" aria-label="TypujKosza.pl — strona główna"><img src="' . esc_url(DT_URL . 'assets/img/decka-logo.png') . '" alt="Decka Pelplin"><div><span>DECKA PELPLIN</span><strong>TYPER <em>' . esc_html($settings['season']) . '</em></strong></div></a>';
         echo '<div class="dt-live-pill"><i></i>' . esc_html($settings['league_name']) . '</div>';
         echo '</div></header>';
+    }
+
+    private static function break_screen(): void {
+        echo '<main class="dt-break-screen"><img src="' . esc_url(DT_Brand::logo_stacked_url()) . '" alt="TypujKosza.pl"><p>' . esc_html(DT_Brand::TAGLINE) . '</p><h1>Ruszamy w sezonie 2026/2027</h1></main>';
     }
 
     private static function login(): void {
@@ -141,10 +147,10 @@ class DT_Frontend {
 
     private static function app_shell(): void {
         echo '<main class="dt-front-inner dt-app-main">';
-        echo '<div class="dt-app-top"><nav class="dt-tabs" aria-label="Typer"><button class="is-active" data-tab="picks">' . self::icon('target') . '<span>Typuj</span></button><button data-tab="ranking">' . self::icon('trophy') . '<span>Ranking</span></button><button data-tab="mine">' . self::icon('history') . '<span>Moje typy</span></button></nav><div class="dt-user-chip" id="dt-user-chip"><span class="dt-skeleton dt-sk-avatar"></span><span><b class="dt-skeleton dt-sk-text"></b><small>Ładowanie…</small></span></div></div>';
-        echo '<section class="dt-user-stats" id="dt-user-stats"><div class="dt-stat"><span>' . self::icon('trophy') . 'Miejsce</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('star') . 'Punkty</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('check') . 'Trafienia</span><strong>—</strong></div></section>';
+        echo '<div class="dt-app-top"><nav class="dt-tabs" aria-label="Typer"><button class="is-active" data-tab="picks">' . self::icon('target') . '<span>Typuj</span></button><button data-tab="ranking">' . self::icon('trophy') . '<span>Ranking</span></button><button data-tab="mine">' . self::icon('history') . '<span>Moje typy</span></button><button data-tab="settings"><span>Moje konto</span></button></nav><div class="dt-user-chip" id="dt-user-chip"><span class="dt-skeleton dt-sk-avatar"></span><span><b class="dt-skeleton dt-sk-text"></b><small>Ładowanie…</small></span></div></div>';
+        echo '<div class="dt-achievement-controls"><strong>Moje osiągnięcia</strong><select id="dt-achievement-scope"><option value="all">Wszechczasów</option><option value="season">Sezon</option></select><select id="dt-achievement-league"><option value="all">Wszystkie ligi</option><option value="plk">PLK</option><option value="1lm">1LM</option><option value="2lm">2LM</option></select></div><section class="dt-user-stats" id="dt-user-stats"><div class="dt-stat"><span>' . self::icon('trophy') . 'Miejsce</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('star') . 'Punkty</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('check') . 'Trafienia</span><strong>—</strong></div></section>';
 
-        echo '<div class="dt-tab-panel is-active" data-panel="picks"><div class="dt-panel-head"><div><span class="dt-front-kicker">KOLEJKA</span><h1 id="dt-round-title">Ładowanie…</h1></div><div class="dt-round-nav"><button id="dt-prev-round" aria-label="Poprzednia kolejka">' . self::icon('chev-left') . '</button><select id="dt-round-select" aria-label="Wybierz kolejkę"></select><button id="dt-next-round" aria-label="Następna kolejka">' . self::icon('chev-right') . '</button></div></div><div id="dt-round-meta" class="dt-round-meta"></div><div id="dt-matches" class="dt-matches"><div class="dt-loading-card"></div><div class="dt-loading-card"></div></div>';
+        echo '<div class="dt-tab-panel is-active" data-panel="picks"><div id="dt-league-rounds" class="dt-league-accordion"></div><div class="dt-panel-head"><div><span class="dt-front-kicker">KOLEJKA</span><h1 id="dt-round-title">Ładowanie…</h1></div><div class="dt-round-nav"><button id="dt-prev-round" aria-label="Poprzednia kolejka">' . self::icon('chev-left') . '</button><select id="dt-round-select" aria-label="Wybierz kolejkę"></select><button id="dt-next-round" aria-label="Następna kolejka">' . self::icon('chev-right') . '</button></div></div><div id="dt-round-meta" class="dt-round-meta"></div><div id="dt-matches" class="dt-matches"><div class="dt-loading-card"></div><div class="dt-loading-card"></div></div>';
         echo '<div class="dt-save-dock" id="dt-save-dock"><div><strong id="dt-save-count">Wybierz zwycięzców</strong><span>Po zapisaniu kuponu nie będzie można go edytować.</span></div><button id="dt-save-all" disabled>' . self::icon('save') . '<span>Zapisz typy</span></button></div></div>';
 
         echo '<div class="dt-tab-panel" data-panel="ranking"><div class="dt-panel-head"><div><span class="dt-front-kicker">KLASYFIKACJA</span><h1>Ranking sezonu</h1></div><div class="dt-ranking-toggle"><button class="is-active" data-rank="season">Sezon</button><button data-rank="round">Kolejka</button></div></div><div id="dt-ranking" class="dt-ranking-list"></div></div>';
