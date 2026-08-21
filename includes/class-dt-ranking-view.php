@@ -32,8 +32,11 @@ class DT_Ranking_View {
 
         $league = sanitize_key((string)$request->get_param('league'));
         if (!in_array($league,['all','plk','1lm','2lm'],true)) $league = 'all';
+        $availableGroups = $league === '2lm' ? self::groups($season) : [];
+        $group = $league === '2lm' ? strtoupper(sanitize_text_field((string)$request->get_param('group'))) : '';
+        if ($league === '2lm' && ($group === '' || !in_array($group,$availableGroups,true))) $group=$availableGroups[0]??'';
 
-        $rounds = self::rounds($season, $league);
+        $rounds = self::rounds($season, $league, $group);
         $roundId = max(0, (int) $request->get_param('round_id'));
         if ($scope === 'round') {
             $validIds = array_map(static fn($r)=>(int)$r['id'], $rounds);
@@ -48,11 +51,13 @@ class DT_Ranking_View {
             'scope'=>$scope,
             'season'=>$season,
             'league'=>$league,
+            'group'=>$group,
+            'groups'=>$availableGroups,
             'leagues'=>[['key'=>'all','name'=>'Wszystkie ligi'],['key'=>'plk','name'=>'PLK'],['key'=>'1lm','name'=>'1LM'],['key'=>'2lm','name'=>'2LM']],
             'round_id'=>$roundId,
             'seasons'=>$seasons,
             'rounds'=>$rounds,
-            'ranking'=>self::rows($scope, $season, $roundId, $league),
+            'ranking'=>self::rows($scope, $season, $roundId, $league, $group),
         ]);
     }
 
@@ -70,11 +75,17 @@ class DT_Ranking_View {
         return array_slice($items, 0, 6);
     }
 
-    private static function rounds(string $season, string $league = 'all'): array {
+    private static function groups(string $season): array {
+        global $wpdb;
+        return array_values(array_filter(array_map('strval',(array)$wpdb->get_col($wpdb->prepare("SELECT DISTINCT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key",$season)))));
+    }
+
+    private static function rounds(string $season, string $league = 'all', string $group = ''): array {
         global $wpdb;
         $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND league_key=%s ', $league) : '';
+        $groupSql = $group !== '' ? $wpdb->prepare(' AND group_key=%s ', $group) : '';
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT id,round_no,title,status,closes_at,league_key,group_key FROM " . DT_DB::table('rounds') . " WHERE season=%s $leagueSql AND status IN ('open','closed') ORDER BY league_key,group_key,round_no ASC,id ASC",
+            "SELECT id,round_no,title,status,closes_at,league_key,group_key FROM " . DT_DB::table('rounds') . " WHERE season=%s $leagueSql $groupSql AND status IN ('open','closed') ORDER BY league_key,group_key,round_no ASC,id ASC",
             $season
         ), ARRAY_A);
         if (!is_array($rows)) return [];
@@ -86,7 +97,7 @@ class DT_Ranking_View {
         return $rows;
     }
 
-    private static function rows(string $scope, string $season, int $roundId, string $league = 'all'): array {
+    private static function rows(string $scope, string $season, int $roundId, string $league = 'all', string $group = ''): array {
         global $wpdb;
         $pred = DT_DB::table('predictions');
         $mat = DT_DB::table('matches');
@@ -101,6 +112,7 @@ class DT_Ranking_View {
             $filter = $wpdb->prepare(' AND r.season=%s AND r.id=%d ', $season, $roundId);
         }
         if ($league !== 'all') $filter .= $wpdb->prepare(' AND r.league_key=%s ', $league);
+        if ($group !== '') $filter .= $wpdb->prepare(' AND r.group_key=%s ', $group);
 
         $sql = "SELECT u.ID user_id,u.display_name,
                        COUNT(p.id) predictions,
