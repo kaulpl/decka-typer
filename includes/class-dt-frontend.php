@@ -76,6 +76,7 @@ class DT_Frontend {
     private static function assets(): void {
         $settings = DT_DB::settings();
         wp_enqueue_style('dt-front', DT_URL . 'assets/css/frontend.css', [], DT_VERSION);
+        wp_enqueue_style('dt-mobile-nav', DT_URL . 'assets/css/mobile-nav.css', ['dt-front', 'dt-user-settings'], DT_VERSION);
         wp_enqueue_script('dt-front', DT_URL . 'assets/js/frontend.js', [], DT_VERSION, true);
         wp_localize_script('dt-front', 'DeckaTyper', [
             'root'=>esc_url_raw(rest_url('decka-typer/v1/')),

@@ -1,0 +1,32 @@
+@media (max-width: 760px) {
+    .dt-tabs button[data-tab="settings"] span {
+        display: inline;
+    }
+}
+
+@media (max-width: 620px) {
+    .dt-tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 3px;
+    }
+
+    .dt-tabs button {
+        min-width: 0;
+        padding: 7px 2px;
+        flex-direction: column;
+        gap: 2px;
+        line-height: 1.1;
+        text-align: center;
+        white-space: normal;
+    }
+
+    .dt-tabs button .dt-icon {
+        width: 18px;
+        height: 18px;
+    }
+
+    .dt-tabs button span {
+        display: inline;
+    }
+}

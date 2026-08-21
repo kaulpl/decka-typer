@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.17 — 2026-08-21
+
+- Nazwy lig w przełączniku zakładki „Typuj” są pobierane z ustawień administratora.
+- Przywrócono widoczny podpis „Moje konto” w nawigacji mobilnej.
+- Ułożono cztery pozycje mobilnego menu w równych kolumnach z ikonami nad podpisami.
+
 ## 0.5.16 — 2026-08-21
 
 - Dodano komplet metadanych Open Graph i Twitter Cards z głównym logo TypujKosza.pl.
