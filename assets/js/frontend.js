@@ -228,6 +228,7 @@
   $$('.dt-achievement-controls [data-value]').forEach(button=>button.addEventListener('click',()=>{const parent=button.parentElement;parent.querySelectorAll('[data-value]').forEach(x=>x.classList.toggle('is-active',x===button));achievementScope=button.dataset.value||'all';refreshAchievements();}));
   $('#dt-submit-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)closeSubmitModal();});
   $('#dt-avatar-helper .dt-avatar-close')?.addEventListener('click',()=>{clearTimeout(avatarTimer);const h=$('#dt-avatar-helper');h.classList.remove('is-show');setTimeout(()=>h.hidden=true,220);});
+  root.addEventListener('dt:avatar',event=>{const key=String(event.detail?.key||'');if(key)avatar(key);});
   window.addEventListener('beforeunload',e=>{if(hasUnsavedPicks()){e.preventDefault();e.returnValue='';}});
   load();
 })();

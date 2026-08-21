@@ -217,10 +217,24 @@ class DT_User_Settings {
 
     private static function teams(): array {
         global $wpdb;
-        $rows = $wpdb->get_results(
-            'SELECT id,name,logo_url FROM ' . DT_DB::table('teams') . " WHERE name<>'' ORDER BY name ASC,id ASC",
-            ARRAY_A
-        );
+        $season = (string)(DT_DB::settings()['season'] ?? '');
+        $teamsTable = DT_DB::table('teams');
+        $matchesTable = DT_DB::table('matches');
+        $roundsTable = DT_DB::table('rounds');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT t.id,t.name,t.logo_url,GROUP_CONCAT(DISTINCT r.league_key ORDER BY r.league_key SEPARATOR ',') league_keys
+             FROM $teamsTable t
+             JOIN (
+                SELECT home_team_id team_id,round_id FROM $matchesTable
+                UNION ALL
+                SELECT away_team_id team_id,round_id FROM $matchesTable
+             ) mt ON mt.team_id=t.id
+             JOIN $roundsTable r ON r.id=mt.round_id
+             WHERE t.name<>'' AND r.season=%s AND r.league_key IN ('1lm','plk','2lm')
+             GROUP BY t.id,t.name,t.logo_url
+             ORDER BY t.name ASC,t.id ASC",
+            $season
+        ), ARRAY_A);
         if (!is_array($rows)) return [];
 
         $out = [];
@@ -236,6 +250,7 @@ class DT_User_Settings {
                 'id'=>$id,
                 'name'=>$name,
                 'logo_url'=>(string)($row['logo_url'] ?? ''),
+                'leagues'=>array_values(array_filter(array_map('sanitize_key', explode(',', (string)($row['league_keys'] ?? ''))))),
             ];
         }
         return $out;
