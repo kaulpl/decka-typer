@@ -1,7 +1,21 @@
 (()=>{
   const cfg=window.DeckaTyper||{};
   const root=document.getElementById('decka-typer');
-  if(!root||!cfg.loggedIn)return;
+  if(!root)return;
+  if(!cfg.loggedIn){
+    const helper=root.querySelector('#dt-avatar-helper'),item=cfg.avatar?.landing_welcome;
+    if(helper&&item){
+      const texts=Array.isArray(item.texts)?item.texts.filter(Boolean):[item.text].filter(Boolean);
+      const message=texts.length?texts[Math.floor(Math.random()*texts.length)]:(item.text||'');
+      helper.querySelector('img').src=item.url||'';
+      helper.querySelector('.dt-avatar-bubble').textContent=message;
+      let hideTimer;
+      const hide=()=>{clearTimeout(hideTimer);helper.classList.remove('is-show');setTimeout(()=>helper.hidden=true,220);};
+      helper.querySelector('.dt-avatar-close')?.addEventListener('click',hide);
+      setTimeout(()=>{helper.hidden=false;helper.classList.add('is-show');hideTimer=setTimeout(hide,6500);},2800);
+    }
+    return;
+  }
   const $=(s,c=root)=>c.querySelector(s), $$=(s,c=root)=>[...c.querySelectorAll(s)];
   const state={boot:null,round:null,picks:new Map(),tab:'picks',rankMode:'season',saving:false,league:'',group:''};
 
