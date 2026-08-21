@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.5 — 2026-08-21
+
+- Usunięto podwójne wyświetlanie grupy 2LM w nazwie kolejki i pełnym scrollerze.
+- Ustawiono stały nagłówek podstrony rankingu: „KLASYFIKACJA / RANKING”.
+- Połączono filtry zakresu, ligi, grupy, sezonu i kolejki w jeden równy poziomy pasek.
+
 ## 0.5.4 — 2026-08-21
 
 - Poprawiono aktywne podświetlenie przycisków grup 2LM w panelu Mecze.
