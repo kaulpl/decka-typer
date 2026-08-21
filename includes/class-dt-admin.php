@@ -421,9 +421,9 @@ class DT_Admin {
         self::shell('AVATAR','Komunikaty pomocnika wyświetlane użytkownikom w odpowiednich momentach.');
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" class="dt-settings"><input type="hidden" name="action" value="dt_save_avatar">';
         wp_nonce_field('dt_save_avatar');
-        echo '<section class="dt-card"><span class="dt-eyebrow">POMOCNIK TYPERA</span><h2>Teksty w chmurkach</h2><p class="dt-muted">Artur losuje jedną z 15 odpowiedzi przypisanych do sytuacji. Wszystkie teksty możesz edytować poniżej.</p><div class="dt-avatar-admin-list">';
+        echo '<section class="dt-card"><span class="dt-eyebrow">POMOCNIK TYPERA</span><h2>Teksty w chmurkach</h2><p class="dt-muted">Artur losuje jedną z odpowiedzi przypisanych do sytuacji. Wszystkie teksty możesz edytować poniżej.</p><div class="dt-avatar-admin-list">';
         foreach ($messages as $key=>$item) {
-            echo '<details class="dt-avatar-admin-row"><summary><img src="'.esc_url($item['url']).'" alt=""><span><strong>'.esc_html($item['label']).'</strong><small>15 edytowalnych odpowiedzi</small></span></summary><div class="dt-avatar-message-grid">';
+            echo '<details class="dt-avatar-admin-row"><summary><img src="'.esc_url($item['url']).'" alt=""><span><strong>'.esc_html($item['label']).'</strong><small>'.count($item['texts']).' edytowalnych odpowiedzi</small></span></summary><div class="dt-avatar-message-grid">';
             foreach ($item['texts'] as $index=>$text) echo '<label><span>Odpowiedź '.($index+1).'</span><input name="messages['.esc_attr($key).']['.(int)$index.']" maxlength="180" value="'.esc_attr($text).'"></label>';
             echo '</div></details>';
         }
