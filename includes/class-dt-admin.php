@@ -144,7 +144,9 @@ class DT_Admin {
              WHERE r.season=%s $leagueSql GROUP BY r.id ORDER BY r.league_key,r.group_key,r.round_no", $s['season']
         ));
         self::shell('Kolejki','Tylko kolejka otwarta przez administratora jest dostępna do nowych typów.');
-        echo '<div class="dt-toolbar"><form method="get"><input type="hidden" name="page" value="decka-typer-rounds"><select name="league" onchange="this.form.submit()"><option value="all">Wszystkie ligi</option><option value="plk" '.selected($league,'plk',false).'>PLK</option><option value="1lm" '.selected($league,'1lm',false).'>1LM</option><option value="2lm" '.selected($league,'2lm',false).'>2LM</option></select></form><button class="button button-primary dt-button" data-dt-open="dt-round-modal"><span class="dashicons dashicons-plus-alt2"></span> Dodaj kolejkę</button></div>';
+        echo '<div class="dt-toolbar">';
+        self::league_tabs('decka-typer-rounds',$league);
+        echo '<button class="button button-primary dt-button" data-dt-open="dt-round-modal"><span class="dashicons dashicons-plus-alt2"></span> Dodaj kolejkę</button></div>';
         echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Kolejka</th><th>Termin meczów</th><th>Mecze</th><th>Kupony</th><th>Status</th><th>Zamknięcie typowania</th><th>Źródło</th><th>Akcje</th></tr></thead><tbody>';
         foreach ($rows as $r) {
             $range = $r->first_match ? substr(self::date_pl($r->first_match),0,10) . ' – ' . substr(self::date_pl($r->last_match),0,10) : '—';
@@ -164,9 +166,11 @@ class DT_Admin {
             } else {
                 echo '<button type="button" class="button dt-open-round" data-round="' . esc_attr(wp_json_encode($openData)) . '">Otwórz typowanie</button>';
             }
+            $matchesUrl = add_query_arg(['page'=>'decka-typer-matches','league'=>$r->league_key,'round_id'=>(int)$r->id],admin_url('admin.php'));
+            echo ' <a class="button" href="'.esc_url($matchesUrl).'">Przejdź do kolejki</a>';
             echo '</td></tr>';
         }
-        if (!$rows) echo '<tr><td colspan="8" class="dt-empty">Brak kolejek. Uruchom synchronizację 1LM.</td></tr>';
+        if (!$rows) echo '<tr><td colspan="8" class="dt-empty">Brak kolejek. Uruchom synchronizację danych PZKosz.</td></tr>';
         echo '</tbody></table></section>';
 
         echo '<dialog id="dt-round-modal" class="dt-modal"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><button type="button" class="dt-modal-x" data-dt-close>×</button><span class="dt-eyebrow">NOWA KOLEJKA</span><h2>Dodaj kolejkę ręcznie</h2><input type="hidden" name="action" value="dt_add_round">';
@@ -183,16 +187,33 @@ class DT_Admin {
     public static function matches(): void {
         global $wpdb;
         $s = DT_DB::settings();
+        $league = sanitize_key($_GET['league'] ?? 'all');
+        if (!in_array($league,['all','plk','1lm','2lm'],true)) $league='all';
         $roundId = (int)($_GET['round_id'] ?? 0);
-        $rounds = $wpdb->get_results($wpdb->prepare('SELECT * FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY league_key,group_key,round_no', $s['season']));
+        $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND league_key=%s ', $league) : '';
+        $rounds = $wpdb->get_results($wpdb->prepare('SELECT * FROM ' . DT_DB::table('rounds') . " WHERE season=%s $leagueSql ORDER BY league_key,group_key,round_no", $s['season']));
+        $roundIds = array_map('intval',wp_list_pluck($rounds,'id'));
+        if ($roundId && !in_array($roundId,$roundIds,true)) $roundId=0;
         if (!$roundId && $rounds) $roundId = (int)$rounds[0]->id;
+        $currentRound = $roundId ? $wpdb->get_row($wpdb->prepare('SELECT * FROM '.DT_DB::table('rounds').' WHERE id=%d',$roundId)) : null;
+        $dtPage = max(1,(int)($_GET['dt_paged'] ?? 1));
+        $perPage = 25;
+        $total = $roundId ? (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM '.DT_DB::table('matches').' WHERE round_id=%d',$roundId)) : 0;
         $rows = $roundId ? $wpdb->get_results($wpdb->prepare(
-            'SELECT m.*,h.name home_name,a.name away_name FROM ' . DT_DB::table('matches') . ' m JOIN ' . DT_DB::table('teams') . ' h ON h.id=m.home_team_id JOIN ' . DT_DB::table('teams') . ' a ON a.id=m.away_team_id WHERE m.round_id=%d ORDER BY m.starts_at,m.id', $roundId
+            'SELECT m.*,h.name home_name,a.name away_name FROM ' . DT_DB::table('matches') . ' m JOIN ' . DT_DB::table('teams') . ' h ON h.id=m.home_team_id JOIN ' . DT_DB::table('teams') . ' a ON a.id=m.away_team_id WHERE m.round_id=%d ORDER BY m.starts_at,m.id LIMIT %d OFFSET %d', $roundId,$perPage,($dtPage-1)*$perPage
         )) : [];
         self::shell('Mecze','Wynik meczu służy wyłącznie do rozliczenia wskazanego zwycięzcy.');
-        echo '<div class="dt-toolbar"><form method="get"><input type="hidden" name="page" value="decka-typer-matches"><select name="round_id" onchange="this.form.submit()">';
-        foreach ($rounds as $r) echo '<option value="' . (int)$r->id . '" ' . selected($roundId,$r->id,false) . '>' . esc_html($r->title) . '</option>';
-        echo '</select></form><button class="button button-primary dt-button" data-dt-open="dt-add-match"><span class="dashicons dashicons-plus-alt2"></span> Dodaj mecz</button></div>';
+        echo '<div class="dt-toolbar">'; self::league_tabs('decka-typer-matches',$league); echo '<button class="button button-primary dt-button" data-dt-open="dt-add-match"><span class="dashicons dashicons-plus-alt2"></span> Dodaj mecz</button></div>';
+        if ($rounds) {
+            echo '<nav class="dt-round-tabs" aria-label="Wybór kolejki">';
+            foreach ($rounds as $r) {
+                $label = ($r->group_key ? 'Grupa '.strtoupper((string)$r->group_key).' · ' : '').$r->title;
+                $url=add_query_arg(['page'=>'decka-typer-matches','league'=>$league,'round_id'=>(int)$r->id],admin_url('admin.php'));
+                echo '<a class="dt-round-tab '.($roundId===(int)$r->id?'is-active':'').'" href="'.esc_url($url).'">'.esc_html($label).'</a>';
+            }
+            echo '</nav>';
+        }
+        if ($currentRound) echo '<div class="dt-list-context"><strong>'.esc_html(strtoupper((string)$currentRound->league_key).($currentRound->group_key?' · grupa '.strtoupper((string)$currentRound->group_key):'')).'</strong><span>'.esc_html($currentRound->title).' · '.(int)$total.' meczów</span></div>';
         echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Mecz</th><th>Start</th><th>Wynik</th><th>Status</th><th>Synchronizacja</th><th></th></tr></thead><tbody>';
         foreach ($rows as $m) {
             $score = $m->score_home === null ? '—' : (int)$m->score_home . ' : ' . (int)$m->score_away;
@@ -201,6 +222,7 @@ class DT_Admin {
         }
         if (!$rows) echo '<tr><td colspan="6" class="dt-empty">Brak meczów w tej kolejce.</td></tr>';
         echo '</tbody></table></section>';
+        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-matches','league'=>$league,'round_id'=>$roundId]);
         self::match_modal('dt-match-modal',false,$roundId);
         self::match_modal('dt-add-match',true,$roundId);
         self::end_shell();
@@ -217,8 +239,28 @@ class DT_Admin {
             echo '<div class="dt-form-2"><label>Gospodarz<select name="home_team_id">'; foreach($teams as $t) echo '<option value="' . (int)$t->id . '">' . esc_html($t->name) . '</option>'; echo '</select></label><label>Gość<select name="away_team_id">'; foreach($teams as $t) echo '<option value="' . (int)$t->id . '">' . esc_html($t->name) . '</option>'; echo '</select></label></div>';
         }
         echo '<label>Data i godzina<input type="datetime-local" name="starts_at" data-field="starts_at" required></label><div class="dt-form-2"><label>Wynik gospodarzy<input type="number" name="score_home" data-field="home_score" min="0" max="250"></label><label>Wynik gości<input type="number" name="score_away" data-field="away_score" min="0" max="250"></label></div>';
-        if (!$add) echo '<label class="dt-check"><input type="checkbox" name="manual_lock" value="1" data-field="manual_lock"><span><strong>Chroń przed synchronizacją 1LM</strong><small>Automatyczny import nie nadpisze ręcznie poprawionego terminu ani wyniku.</small></span></label>';
+        if (!$add) echo '<label class="dt-check"><input type="checkbox" name="manual_lock" value="1" data-field="manual_lock"><span><strong>Chroń przed synchronizacją danych PZKosz</strong><small>Automatyczny import nie nadpisze ręcznie poprawionego terminu ani wyniku.</small></span></label>';
         echo '<button class="button button-primary dt-button">Zapisz mecz</button></form></dialog>';
+    }
+
+    private static function league_tabs(string $page, string $active): void {
+        echo '<nav class="dt-league-tabs" aria-label="Wybór ligi">';
+        foreach (['all'=>'Wszystkie','plk'=>'PLK','1lm'=>'1LM','2lm'=>'2LM'] as $key=>$label) {
+            $url=add_query_arg(['page'=>$page,'league'=>$key],admin_url('admin.php'));
+            echo '<a class="dt-league-tab '.($active===$key?'is-active':'').'" href="'.esc_url($url).'">'.esc_html($label).'</a>';
+        }
+        echo '</nav>';
+    }
+
+    private static function pagination(int $total, int $perPage, int $current, array $args): void {
+        $pages=(int)ceil($total/$perPage);
+        if ($pages<2) return;
+        echo '<nav class="dt-pagination" aria-label="Stronicowanie">';
+        for ($page=1;$page<=$pages;$page++) {
+            $url=add_query_arg(array_merge($args,['dt_paged'=>$page]),admin_url('admin.php'));
+            echo '<a class="'.($page===$current?'is-active':'').'" href="'.esc_url($url).'">'.(int)$page.'</a>';
+        }
+        echo '</nav>';
     }
 
     public static function predictions(): void {
