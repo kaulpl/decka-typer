@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.14 — 2026-08-21
+
+- zakotwiczono Artura przy prawej krawędzi maksymalnego bloku treści zamiast przy krawędzi ekranu,
+- dodano Artura na landing page w rozmiarze większym o 40%,
+- dodano akcję „Powitanie nowych kibiców” z 20 edytowalnymi i losowanymi wiadomościami,
+- ustawiono pojawienie się powitania po 2,8 sekundy i standardowe zniknięcie po 6,5 sekundy,
+- zachowano wszystkie komunikaty Artura zapisane wcześniej przez administratora.
+
 ## 0.5.13 — 2026-08-21
 
 - powiększono grafikę Bota Artura o kolejne około 15% na komputerach i urządzeniach mobilnych,
