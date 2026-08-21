@@ -14,7 +14,9 @@ class DT_Plugin {
         if ((string) get_option('dt_db_version', '') !== DT_VERSION) {
             DT_DB::activate();
         }
-        DT_DB::close_expired_rounds();
+        // Recompute opening and closing on every request. This also guarantees
+        // an exact submission lock even when WP-Cron itself is delayed.
+        DT_DB::sync_round_availability();
         DT_DB::ensure_cron();
         DT_Sync::register();
         DT_OAuth::register();

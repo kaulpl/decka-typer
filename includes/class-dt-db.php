@@ -251,13 +251,46 @@ class DT_DB {
         }
     }
 
-    public static function close_expired_rounds(): void {
+    /**
+     * Recalculate every round from its earliest match with a confirmed tip-off.
+     * The database status is useful for lists, while opens_at/closes_at make the
+     * rule auditable and let submission endpoints enforce the deadline exactly.
+     */
+    public static function sync_round_availability(): int {
         global $wpdb;
         $now = current_time('mysql');
-        $wpdb->query($wpdb->prepare(
-            "UPDATE " . self::table('rounds') . " SET status='closed', updated_at=%s WHERE status='open' AND closes_at IS NOT NULL AND closes_at<=%s",
-            $now, $now
+        $rounds = self::table('rounds');
+        $matches = self::table('matches');
+        $updated = $wpdb->query($wpdb->prepare(
+            "UPDATE `$rounds` r
+             JOIN (
+                 SELECT round_id, MIN(starts_at) AS first_match
+                 FROM `$matches`
+                 WHERE start_time_known=1 AND starts_at IS NOT NULL
+                 GROUP BY round_id
+             ) schedule ON schedule.round_id=r.id
+             SET r.opens_at=DATE_SUB(schedule.first_match, INTERVAL 7 DAY),
+                 r.closes_at=schedule.first_match,
+                 r.status=CASE
+                     WHEN %s>=schedule.first_match THEN 'closed'
+                     WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
+                     ELSE 'draft'
+                 END,
+                 r.updated_at=%s
+             WHERE COALESCE(r.opens_at,'')<>DATE_SUB(schedule.first_match, INTERVAL 7 DAY)
+                OR COALESCE(r.closes_at,'')<>schedule.first_match
+                OR r.status<>CASE
+                    WHEN %s>=schedule.first_match THEN 'closed'
+                    WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
+                    ELSE 'draft'
+                END",
+            $now, $now, $now, $now, $now
         ));
+        return max(0, (int)$updated);
+    }
+
+    public static function close_expired_rounds(): void {
+        self::sync_round_availability();
     }
 
     public static function deactivate(): void {
