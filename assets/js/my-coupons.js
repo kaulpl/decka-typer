@@ -13,6 +13,7 @@
   const fmtBonus=v=>Number.isInteger(Number(v||0))?String(Number(v||0)):Number(v||0).toFixed(1).replace('.',',');
 
   let lastHistory=[];
+  let activeLeague='all',activeGroup='';
   let rendering=false;
   let refreshTimer=null;
 
@@ -94,7 +95,12 @@
     if(!lastHistory.length){
       box.innerHTML='<div class="dt-empty-front">Nie masz jeszcze zapisanych typów.</div>';
     }else{
-      box.innerHTML=groupHistory(lastHistory).map(coupon).join('');
+      const leagues=[...new Set(lastHistory.map(x=>String(x.league_key||'1lm')))];
+      if(activeLeague!=='all'&&!leagues.includes(activeLeague))activeLeague='all';
+      const groups=[...new Set(lastHistory.filter(x=>String(x.league_key)==='2lm').map(x=>String(x.group_key||'')).filter(Boolean))];
+      const filtered=lastHistory.filter(x=>(activeLeague==='all'||String(x.league_key||'1lm')===activeLeague)&&(activeLeague!=='2lm'||!activeGroup||String(x.group_key||'')===activeGroup));
+      const labels={all:'Wszystkie',plk:'PLK','1lm':'1LM','2lm':'2LM'};
+      box.innerHTML=`<div class="dt-coupon-filters"><div class="dt-filter-segmented">${['all',...leagues].map(l=>`<button type="button" data-coupon-league="${esc(l)}" class="${activeLeague===l?'is-active':''}">${esc(labels[l]||l)}</button>`).join('')}</div>${activeLeague==='2lm'?`<div class="dt-filter-segmented dt-filter-groups">${groups.map(g=>`<button type="button" data-coupon-group="${esc(g)}" class="${activeGroup===g?'is-active':''}">Grupa ${esc(g)}</button>`).join('')}</div>`:''}</div>${groupHistory(filtered).map(coupon).join('')||'<div class="dt-empty-front">Brak typów dla wybranego zakresu.</div>'}`;
     }
     box.dataset.couponView='1';
     queueMicrotask(()=>{rendering=false;});
@@ -116,6 +122,8 @@
   root.addEventListener('click',e=>{
     const tab=e.target.closest('[data-tab="mine"]');
     if(tab)setTimeout(refresh,0);
+    const league=e.target.closest('[data-coupon-league]');if(league){activeLeague=league.dataset.couponLeague||'all';activeGroup='';render(lastHistory);return;}
+    const group=e.target.closest('[data-coupon-group]');if(group){activeGroup=group.dataset.couponGroup||'';render(lastHistory);}
   });
 
   refresh();
