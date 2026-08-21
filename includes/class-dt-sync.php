@@ -261,7 +261,8 @@ class DT_Sync {
         $logo = '';
         $img = $xp->query('.//img', $anchor)->item(0);
         if ($img instanceof DOMElement) {
-            $src = $img->getAttribute('data-src') ?: $img->getAttribute('src');
+            $src = $img->getAttribute('data-src') ?: ($img->getAttribute('data-original') ?: ($img->getAttribute('data-lazy-src') ?: $img->getAttribute('src')));
+            if (!$src && $img->getAttribute('srcset')) $src=trim(explode(' ',trim($img->getAttribute('srcset')))[0]??'');
             if ($src) $logo = self::absolute_url($src, $baseUrl);
         }
         return [
