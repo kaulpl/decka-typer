@@ -11,4 +11,4 @@
 .tk-hero-tagline{margin:0!important;color:#5b687d!important;font-size:14px!important;line-height:1.45!important;font-weight:750!important;letter-spacing:.15px!important}
 .dt-live-pill{display:none!important}
 .dt-login-wrap,.dt-app-main{margin-top:0!important}
-@media(max-width:760px){.dt-front-hero{height:176px!important;margin-bottom:22px!important}.dt-hero-inner,.tk-hero-inner{padding:20px 0 25px!important}.dt-brand img,.tk-hero-logo{width:min(390px,88vw)!important;max-height:78px!important}.tk-hero-tagline{font-size:11px!important;max-width:92vw}}
+@media(max-width:760px){.dt-front-hero{height:176px!important;margin-bottom:22px!important}.dt-hero-inner,.tk-hero-inner{padding:20px 0 25px!important}.dt-brand img,.tk-hero-logo{width:min(390px,88vw)!important;max-height:78px!important}.tk-hero-tagline{font-size:14px!important;max-width:92vw}}
