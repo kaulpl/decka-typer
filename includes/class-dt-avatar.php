@@ -3,7 +3,6 @@ if (!defined('ABSPATH')) exit;
 
 class DT_Avatar {
     private const OPTION = 'dt_avatar_messages';
-    private const MESSAGE_COUNT = 15;
 
     public static function defaults(): array {
         return [
@@ -34,6 +33,9 @@ class DT_Avatar {
             'favorite' => ['image'=>'01-powitanie.png','label'=>'Wybór ulubionej drużyny','texts'=>[
                 'Ulubiona drużyna wybrana! Od teraz jej mecze będą miały specjalne oznaczenie.', 'Dobry wybór! Artur już szykuje szalik Twojej drużyny.', 'Mamy to! Twoja ulubiona drużyna dostała miejsce w pierwszym składzie.', 'Serce wybrało. Od teraz łatwiej odnajdziesz mecze swojej drużyny.', 'Ulubiony klub zapisany. Kibicowski tryb właśnie został włączony.', 'Drużyna wybrana! Artur obiecuje trzymać kciuki razem z Tobą.', 'Barwy wybrane, emocje gotowe. Teraz pozostaje dobrze typować.', 'Twój klub jest już zapisany. Jego mecze nie umkną Ci w terminarzu.', 'Ulubiona drużyna ustawiona. To się nazywa transfer do serca kibica.', 'Wybór zapisany! Artur wpisuje Twoją drużynę do wyjściowej piątki.', 'Od teraz gramy w tych samych barwach. No, przynajmniej podczas jej meczów.', 'Klub wybrany. Kibicowska lojalność zaliczona bez dogrywki.', 'Twoja drużyna ma teraz specjalne miejsce w Typerze.', 'Gotowe! Mecze ulubionej drużyny będą wyróżnione jak gwiazda kolejki.', 'Ulubiona drużyna zapisana. Artur mówi: dobrego wyboru się nie kwestionuje.',
             ]],
+            'landing_welcome' => ['image'=>'01-powitanie.png','label'=>'Powitanie nowych kibiców','texts'=>[
+                'Cześć! Witaj w TypujKosza.pl — miejscu, gdzie koszykarska wiedza zamienia się w punkty.', 'Hej, nowy kibicu! Wybieraj zwycięzców i sprawdź, jak dobrze znasz basket.', 'Witaj na naszym parkiecie! Załóż konto i rozpocznij swoją pierwszą kolejkę.', 'Artur z tej strony. Pokaż nam, kto naprawdę zna się na koszykówce!', 'Lubisz basket? Świetnie trafiłeś. Tutaj każdy dobry typ ma znaczenie.', 'Witaj! Bez stawek i bez zakładów — tylko koszykówka, zabawa i ranking kibiców.', 'Nowy kibic na trybunach! Zaloguj się i ruszaj do typowania.', 'Cześć! Jedno kliknięcie wystarczy, żeby wybrać zwycięzcę meczu.', 'Gotowy na koszykarskie wyzwanie? Artur już czeka na Twoje pierwsze typy.', 'Witaj w grze! Typuj kolejki, zdobywaj punkty i wspinaj się w rankingu.', 'Tutaj zaczyna się Twoja droga na szczyt tabeli typerów. Powodzenia!', 'Hej! Sprawdź, czy Twoja intuicja jest równie dobra jak rzut za trzy.', 'Witamy w TypujKosza.pl! Każda kolejka to nowa szansa na zwycięstwo.', 'Artur melduje: mamy wolne miejsce w drużynie typerów. Dołączasz?', 'Cześć! Wskaż zwycięzców i porównaj swoją wiedzę z innymi kibicami.', 'Pierwszy raz tutaj? Spokojnie — wybierasz drużyny, zapisujesz kupon i grasz!', 'Witaj, trenerze! Czas rozpisać swoją pierwszą typerską taktykę.', 'Koszykarskie emocje zaczynają się przed pierwszym gwizdkiem. Zacznij typować!', 'Hej! Ranking czeka na nowe nazwisko. Może właśnie na Twoje?', 'Rozgość się! Artur pokaże Ci, jak zamienić koszykarskie przeczucia w punkty.',
+            ]],
         ];
     }
 
@@ -45,7 +47,7 @@ class DT_Avatar {
             $custom = $saved[$key] ?? [];
             if (is_string($custom)) $custom = [$custom];
             if (is_array($custom)) {
-                for ($i = 0; $i < self::MESSAGE_COUNT; $i++) {
+                for ($i = 0, $count = count($texts); $i < $count; $i++) {
                     $value = sanitize_text_field((string)($custom[$i] ?? ''));
                     if ($value !== '') $texts[$i] = $value;
                 }
@@ -64,7 +66,7 @@ class DT_Avatar {
             $values = $input[$key] ?? [];
             if (!is_array($values)) $values = [$values];
             $clean[$key] = [];
-            for ($i = 0; $i < self::MESSAGE_COUNT; $i++) {
+            for ($i = 0, $count = count($item['texts']); $i < $count; $i++) {
                 $value = sanitize_text_field(wp_unslash((string)($values[$i] ?? '')));
                 $clean[$key][$i] = $value !== '' ? $value : $item['texts'][$i];
             }
