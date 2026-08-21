@@ -82,7 +82,7 @@ class DT_Frontend {
             'nonce'=>is_user_logged_in() ? wp_create_nonce('wp_rest') : '',
             'loggedIn'=>is_user_logged_in(),
             'season'=>$settings['season'],
-            'leagueName'=>$settings['league_name'],
+            'leagueName'=>'PLK · 1LM · 2LM',
             'timezone'=>wp_timezone_string() ?: 'Europe/Warsaw',
             'logo'=>DT_URL . 'assets/img/decka-logo.png',
             'colors'=>[
@@ -118,7 +118,7 @@ class DT_Frontend {
     private static function hero(array $settings): void {
         echo '<header class="dt-front-hero"><div class="dt-hero-glow"></div><div class="dt-front-inner dt-hero-inner">';
         echo '<a class="dt-brand" href="' . esc_url(home_url('/')) . '" aria-label="TypujKosza.pl — strona główna"><img src="' . esc_url(DT_URL . 'assets/img/decka-logo.png') . '" alt="Decka Pelplin"><div><span>DECKA PELPLIN</span><strong>TYPER <em>' . esc_html($settings['season']) . '</em></strong></div></a>';
-        echo '<div class="dt-live-pill"><i></i>' . esc_html($settings['league_name']) . '</div>';
+        echo '<div class="dt-live-pill"><i></i>PLK · 1LM · 2LM</div>';
         echo '</div></header>';
     }
 
@@ -148,9 +148,9 @@ class DT_Frontend {
     private static function app_shell(): void {
         echo '<main class="dt-front-inner dt-app-main">';
         echo '<div class="dt-app-top"><nav class="dt-tabs" aria-label="Typer"><button class="is-active" data-tab="picks">' . self::icon('target') . '<span>Typuj</span></button><button data-tab="ranking">' . self::icon('trophy') . '<span>Ranking</span></button><button data-tab="mine">' . self::icon('history') . '<span>Moje typy</span></button><button data-tab="settings"><span>Moje konto</span></button></nav><div class="dt-user-chip" id="dt-user-chip"><span class="dt-skeleton dt-sk-avatar"></span><span><b class="dt-skeleton dt-sk-text"></b><small>Ładowanie…</small></span></div></div>';
-        echo '<div class="dt-achievement-controls"><strong>Moje osiągnięcia</strong><select id="dt-achievement-scope"><option value="all">Wszechczasów</option><option value="season">Sezon</option></select><select id="dt-achievement-league"><option value="all">Wszystkie ligi</option><option value="plk">PLK</option><option value="1lm">1LM</option><option value="2lm">2LM</option></select></div><section class="dt-user-stats" id="dt-user-stats"><div class="dt-stat"><span>' . self::icon('trophy') . 'Miejsce</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('star') . 'Punkty</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('check') . 'Trafienia</span><strong>—</strong></div></section>';
+        echo '<div class="dt-achievement-controls"><strong>Moje osiągnięcia</strong><div class="dt-mini-segments" id="dt-achievement-scope"><button type="button" data-value="all" class="is-active">Wszechczasów</button><button type="button" data-value="season">Sezon</button></div><div class="dt-mini-segments" id="dt-achievement-league"><button type="button" data-value="all" class="is-active">Wszystkie</button><button type="button" data-value="plk">PLK</button><button type="button" data-value="1lm">1LM</button><button type="button" data-value="2lm">2LM</button></div></div><section class="dt-user-stats" id="dt-user-stats"><div class="dt-stat"><span>' . self::icon('trophy') . 'Miejsce</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('star') . 'Punkty</span><strong>—</strong></div><div class="dt-stat"><span>' . self::icon('check') . 'Trafienia</span><strong>—</strong></div></section>';
 
-        echo '<div class="dt-tab-panel is-active" data-panel="picks"><div id="dt-league-rounds" class="dt-league-accordion"></div><div class="dt-panel-head"><div><span class="dt-front-kicker">KOLEJKA</span><h1 id="dt-round-title">Ładowanie…</h1></div><div class="dt-round-nav"><button id="dt-prev-round" aria-label="Poprzednia kolejka">' . self::icon('chev-left') . '</button><select id="dt-round-select" aria-label="Wybierz kolejkę"></select><button id="dt-next-round" aria-label="Następna kolejka">' . self::icon('chev-right') . '</button></div></div><div id="dt-round-meta" class="dt-round-meta"></div><div id="dt-matches" class="dt-matches"><div class="dt-loading-card"></div><div class="dt-loading-card"></div></div>';
+        echo '<div class="dt-tab-panel is-active" data-panel="picks"><div id="dt-league-rounds" class="dt-league-picker"></div><div class="dt-panel-head"><div><span class="dt-front-kicker">KOLEJKA</span><h1 id="dt-round-title">Ładowanie…</h1></div></div><div class="dt-round-nav dt-round-nav-wide"><button id="dt-prev-round" aria-label="Poprzednia kolejka">' . self::icon('chev-left') . '</button><select id="dt-round-select" aria-label="Wybierz kolejkę"></select><button id="dt-next-round" aria-label="Następna kolejka">' . self::icon('chev-right') . '</button></div><div id="dt-round-meta" class="dt-round-meta"></div><div id="dt-matches" class="dt-matches"><div class="dt-loading-card"></div><div class="dt-loading-card"></div></div>';
         echo '<div class="dt-save-dock" id="dt-save-dock"><div><strong id="dt-save-count">Wybierz zwycięzców</strong><span>Po zapisaniu kuponu nie będzie można go edytować.</span></div><button id="dt-save-all" disabled>' . self::icon('save') . '<span>Zapisz typy</span></button></div></div>';
 
         echo '<div class="dt-tab-panel" data-panel="ranking"><div class="dt-panel-head"><div><span class="dt-front-kicker">KLASYFIKACJA</span><h1>Ranking sezonu</h1></div><div class="dt-ranking-toggle"><button class="is-active" data-rank="season">Sezon</button><button data-rank="round">Kolejka</button></div></div><div id="dt-ranking" class="dt-ranking-list"></div></div>';
