@@ -23,7 +23,9 @@
   let avatarTimer;
   const avatar=(key,duration=6500)=>{
     const helper=$('#dt-avatar-helper'),item=cfg.avatar?.[key];if(!helper||!item)return;
-    helper.querySelector('img').src=item.url||'';helper.querySelector('.dt-avatar-bubble').textContent=item.text||'';
+    const texts=Array.isArray(item.texts)?item.texts.filter(Boolean):[item.text].filter(Boolean);
+    const message=texts.length?texts[Math.floor(Math.random()*texts.length)]:(item.text||'');
+    helper.querySelector('img').src=item.url||'';helper.querySelector('.dt-avatar-bubble').textContent=message;
     helper.hidden=false;helper.classList.add('is-show');clearTimeout(avatarTimer);
     avatarTimer=setTimeout(()=>{helper.classList.remove('is-show');setTimeout(()=>helper.hidden=true,220);},duration);
   };
@@ -195,7 +197,7 @@
   };
   const renderRanking=rows=>{
     const box=$('#dt-ranking');if(!box)return;const me=state.boot?.me?.user_id;
-    box.innerHTML=rows.length?rows.map(r=>`<div class="dt-rank-row ${Number(r.user_id)===Number(me)?'is-me':''}"><div class="dt-rank-pos">${r.rank}</div><div class="dt-rank-person"><div class="dt-rank-avatar">${esc(initials(r.display_name))}</div><span><strong>${esc(r.display_name)}</strong><small>${r.predictions} typów</small></span></div><div class="dt-rank-points">${Number(r.points).toFixed(0)} pkt</div><div class="dt-rank-exact">${r.winner_hits||0} trafień</div></div>`).join(''):'<div class="dt-empty-front">Ranking pojawi się po rozliczeniu pierwszych typów.</div>';
+    box.innerHTML=rows.length?rows.map(r=>`<div class="dt-rank-row ${Number(r.user_id)===Number(me)?'is-me':''} ${r.is_expert?'is-expert':''}"><div class="dt-rank-pos">${r.rank}</div><div class="dt-rank-person"><div class="dt-rank-avatar">${esc(initials(r.display_name))}</div><span><strong>${esc(r.display_name)}${r.is_expert?' <span class="dt-expert-badge">EKSPERT!</span>':''}</strong><small>${r.predictions} typów</small></span></div><div class="dt-rank-points">${Number(r.points).toFixed(0)} pkt</div><div class="dt-rank-exact">${r.winner_hits||0} trafień</div></div>`).join(''):'<div class="dt-empty-front">Ranking pojawi się po rozliczeniu pierwszych typów.</div>';
   };
   const loadRanking=async mode=>{
     state.rankMode=mode;$$('[data-rank]').forEach(b=>b.classList.toggle('is-active',b.dataset.rank===mode));$('#dt-ranking').innerHTML='<div class="dt-empty-front">Ładowanie rankingu…</div>';
