@@ -50,6 +50,7 @@ body.decka-typer-standalone{background:#f4f7fb!important}
 .tk-footer p strong{color:#fff}
 .tk-footer small{font-size:14px;color:#7f91aa;white-space:nowrap}
 .tk-footer-links{grid-column:2/4;display:flex;flex-wrap:wrap;gap:10px 20px}.tk-footer-links a{color:#fff;text-decoration:none;font-size:14px;font-weight:800}.tk-footer-links a:hover{text-decoration:underline}
+.tk-facebook-link{display:inline-flex;align-items:center;gap:7px}.tk-facebook-link svg{width:20px;height:20px;flex:none;color:#fff}.tk-facebook-link:hover svg{color:#9fc2ff}
 
 @media(max-width:760px){
   .dt-front-hero{height:154px}
