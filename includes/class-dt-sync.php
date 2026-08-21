@@ -2,6 +2,8 @@
 if (!defined('ABSPATH')) exit;
 
 class DT_Sync {
+    private const TWO_LM_TEAMS_URL = 'https://rozgrywki.pzkosz.pl/liga/4/druzyny.html';
+
     public static function register(): void {
         add_action('dt_sync_schedule', [__CLASS__, 'cron']);
     }
@@ -13,7 +15,7 @@ class DT_Sync {
 
     public static function run(bool $manual = false): array {
         $settings = DT_DB::settings();
-        $out = ['ok'=>false, 'rounds'=>0, 'matches_new'=>0, 'matches_updated'=>0, 'matches_skipped'=>0, 'scores'=>0, 'warnings'=>[], 'leagues'=>[]];
+        $out = ['ok'=>false, 'rounds'=>0, 'matches_new'=>0, 'matches_updated'=>0, 'matches_skipped'=>0, 'scores'=>0, 'logos_2lm'=>0, 'rounds_scheduled'=>0, 'warnings'=>[], 'leagues'=>[]];
         $sources = [
             ['key'=>'plk','group'=>'','url'=>(string)$settings['source_plk_url'],'parser'=>'plk'],
             ['key'=>'1lm','group'=>'','url'=>(string)$settings['source_1lm_url'],'parser'=>'pzkosz'],
@@ -31,12 +33,74 @@ class DT_Sync {
             foreach (['rounds','matches_new','matches_updated','matches_skipped','scores'] as $key) $out[$key] += (int)($result[$key] ?? 0);
             $out['warnings'] = array_merge($out['warnings'], (array)($result['warnings'] ?? []));
         }
+        $logos = self::sync_2lm_team_logos();
+        $out['logos_2lm'] = (int)($logos['updated'] ?? 0);
+        if (empty($logos['ok'])) $out['warnings'][] = '2LM logotypy: ' . ($logos['error'] ?? 'nieznany błąd');
+
+        $out['rounds_scheduled'] = DT_DB::sync_round_availability();
         $out['warnings'] = array_values(array_unique($out['warnings']));
         $out['ok'] = $successes === count($sources);
         if (!$successes) $out['error'] = 'Żadne oficjalne źródło nie zostało zsynchronizowane.';
         update_option('dt_last_sync', ['at'=>current_time('mysql'), 'result'=>$out]);
         DT_Logger::log($out['ok']?'sync_complete':'sync_partial', 'Synchronizacja danych PZKosz zakończona.', $out, $out['ok'] ? ($manual ? 'notice' : 'info') : 'warning');
         return $out;
+    }
+
+    public static function sync_2lm_team_logos(): array {
+        $response = wp_remote_get(self::TWO_LM_TEAMS_URL, [
+            'timeout'=>25,
+            'redirection'=>5,
+            'headers'=>['User-Agent'=>'TypujKosza/' . DT_VERSION . ' (+' . home_url('/') . ')'],
+        ]);
+        if (is_wp_error($response)) return ['ok'=>false, 'error'=>$response->get_error_message(), 'updated'=>0];
+        $code = (int)wp_remote_retrieve_response_code($response);
+        $html = (string)wp_remote_retrieve_body($response);
+        if ($code !== 200 || strlen($html) < 500) return ['ok'=>false, 'error'=>'Źródło zwróciło HTTP ' . $code . '.', 'updated'=>0];
+
+        $teams = self::parse_2lm_team_logos($html, self::TWO_LM_TEAMS_URL);
+        if (count($teams) < 40) return ['ok'=>false, 'error'=>'Odczytano zbyt mało logotypów 2LM.', 'updated'=>0, 'parsed'=>count($teams)];
+
+        $updated = 0;
+        $now = current_time('mysql');
+        foreach ($teams as $team) {
+            if (empty($team['logo_url'])) continue;
+            $id = self::upsert_team($team, $now);
+            if ($id) $updated++;
+        }
+        DT_Logger::log('sync_2lm_logos', 'Zaktualizowano oficjalne logotypy drużyn 2LM.', ['parsed'=>count($teams), 'updated'=>$updated]);
+        return ['ok'=>true, 'parsed'=>count($teams), 'updated'=>$updated];
+    }
+
+    public static function parse_2lm_team_logos(string $html, string $baseUrl): array {
+        if (!class_exists('DOMDocument')) return [];
+        $previous = libxml_use_internal_errors(true);
+        $dom = new DOMDocument();
+        $loaded = $dom->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_NOWARNING | LIBXML_NOERROR);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (!$loaded) return [];
+
+        $xp = new DOMXPath($dom);
+        $out = [];
+        foreach ($xp->query('//section[@id="teams-list"]//a[contains(@href,"/druzyny/d/")][.//img]') as $anchor) {
+            if (!($anchor instanceof DOMElement)) continue;
+            $img = $xp->query('.//img', $anchor)->item(0);
+            if (!($img instanceof DOMElement)) continue;
+            $href = trim($anchor->getAttribute('href'));
+            $name = trim(preg_replace('/\s+/u', ' ', $img->getAttribute('alt') ?: $img->getAttribute('title')));
+            $src = trim($img->getAttribute('data-src') ?: $img->getAttribute('src'));
+            if ($name === '' || $href === '') continue;
+            $externalId = '';
+            if (preg_match('~/d/(\d+)(?:/|$)~', $href, $match)) $externalId = $match[1];
+            $key = $externalId ?: self::norm($name);
+            $out[$key] = [
+                'name'=>$name,
+                'external_id'=>$externalId,
+                'source_url'=>self::absolute_url($href, $baseUrl),
+                'logo_url'=>$src !== '' ? self::absolute_url($src, $baseUrl) : '',
+            ];
+        }
+        return array_values($out);
     }
 
     private static function sync_source(array $source, string $season): array {

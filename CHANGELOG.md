@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.8 — 2026-08-21
+
+- Dodano synchronizację miejsc drużyn PLK z oficjalnej tabeli PLK.
+- Dodano pełne odświeżanie oficjalnych logotypów wszystkich drużyn 2LM.
+- Kolejki otwierają się automatycznie 7 dni przed najwcześniejszym meczem ze znaną godziną.
+- Typowanie kolejki zamyka się dokładnie w chwili rozpoczęcia jej najwcześniejszego meczu.
+- Każda synchronizacja terminarza ponownie przelicza terminy otwarcia i zamknięcia kolejek.
+
 ## 0.5.7 — 2026-08-21
 
 - Przeniesiono sekcję „Moje osiągnięcia” do zakładki „Moje konto”.

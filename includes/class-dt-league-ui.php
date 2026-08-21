@@ -11,6 +11,7 @@ if (!defined('ABSPATH')) exit;
  */
 class DT_League_UI {
     private const STANDINGS_URL = 'https://1lm.pzkosz.pl/tabele.html';
+    private const PLK_STANDINGS_URL = 'https://plk.pl/tabele';
     private const CACHE_OPTION = 'dt_1lm_standings_cache';
     private const CACHE_TTL = 1800;
     private const CONTEXT_CACHE_TTL = 43200;
@@ -87,33 +88,26 @@ class DT_League_UI {
     }
 
     public static function sync_standings(bool $force = false): array {
-        $lockKey = 'dt_1lm_standings_refresh_lock';
+        $lockKey = 'dt_league_standings_refresh_lock';
         if (!$force && get_transient($lockKey)) return ['ok'=>false, 'locked'=>true];
         set_transient($lockKey, 1, 60);
 
         try {
-            $response = wp_remote_get(self::STANDINGS_URL, [
-                'timeout'=>10,
-                'redirection'=>4,
-                'headers'=>['User-Agent'=>'DeckaTyper/' . DT_VERSION . ' (+' . home_url('/') . ')'],
-            ]);
-            if (is_wp_error($response)) {
-                self::log('standings_sync_error', $response->get_error_message(), ['url'=>self::STANDINGS_URL], 'warning');
-                return ['ok'=>false, 'error'=>$response->get_error_message()];
-            }
-            $code = (int)wp_remote_retrieve_response_code($response);
-            $html = (string)wp_remote_retrieve_body($response);
-            if ($code !== 200 || strlen($html) < 300) {
-                $message = 'Tabela 1LM zwróciła HTTP ' . $code . '.';
-                self::log('standings_sync_error', $message, ['bytes'=>strlen($html)], 'warning');
-                return ['ok'=>false, 'error'=>$message];
-            }
-
-            $entries = self::parse_standings($html);
-            if (count($entries) < 8) {
-                $message = 'Nie udało się wiarygodnie odczytać tabeli 1LM.';
-                self::log('standings_parse_error', $message, ['entries'=>count($entries)], 'warning');
-                return ['ok'=>false, 'error'=>$message];
+            $positions = [];
+            $sources = ['1lm'=>self::STANDINGS_URL, 'plk'=>self::PLK_STANDINGS_URL];
+            foreach ($sources as $leagueKey=>$url) {
+                $response = wp_remote_get($url, [
+                    'timeout'=>15,
+                    'redirection'=>4,
+                    'headers'=>['User-Agent'=>'DeckaTyper/' . DT_VERSION . ' (+' . home_url('/') . ')'],
+                ]);
+                if (is_wp_error($response)) return ['ok'=>false, 'error'=>strtoupper($leagueKey) . ': ' . $response->get_error_message()];
+                $code = (int)wp_remote_retrieve_response_code($response);
+                $html = (string)wp_remote_retrieve_body($response);
+                if ($code !== 200 || strlen($html) < 300) return ['ok'=>false, 'error'=>strtoupper($leagueKey) . ' zwróciła HTTP ' . $code . '.'];
+                $entries = $leagueKey === 'plk' ? self::parse_plk_standings($html) : self::parse_standings($html);
+                if (count($entries) < 8) return ['ok'=>false, 'error'=>'Nie udało się wiarygodnie odczytać tabeli ' . strtoupper($leagueKey) . '.'];
+                $positions[$leagueKey] = $entries;
             }
 
             $settings = DT_DB::settings();
@@ -121,15 +115,30 @@ class DT_League_UI {
                 'fetched_at'=>time(),
                 'fetched_at_mysql'=>current_time('mysql'),
                 'season'=>(string)($settings['season'] ?? ''),
-                'source'=>self::STANDINGS_URL,
-                'positions'=>$entries,
+                'sources'=>$sources,
+                'positions_by_league'=>$positions,
+                'positions'=>$positions['1lm'],
             ];
             update_option(self::CACHE_OPTION, $payload, false);
-            self::log('standings_synced', 'Zaktualizowano miejsca drużyn w tabeli 1LM.', ['teams'=>count($entries)], 'info');
-            return ['ok'=>true, 'teams'=>count($entries)];
+            self::log('standings_synced', 'Zaktualizowano miejsca drużyn w tabelach 1LM i PLK.', ['teams_1lm'=>count($positions['1lm']), 'teams_plk'=>count($positions['plk'])], 'info');
+            return ['ok'=>true, 'teams'=>count($positions['1lm']) + count($positions['plk'])];
         } finally {
             delete_transient($lockKey);
         }
+    }
+
+    public static function parse_plk_standings(string $html): array {
+        $decoded = str_replace(['\\"','\\/'], ['"','/'], $html);
+        $out = [];
+        if (preg_match_all('/"position":(\d{1,2}),"teamId":\d+,"teamName":"([^"]+)"/u', $decoded, $rows, PREG_SET_ORDER)) {
+            foreach ($rows as $row) {
+                $position = (int)$row[1];
+                $name = trim(html_entity_decode($row[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($position < 1 || $position > 40 || $name === '') continue;
+                $out[self::club_key($name)] = ['position'=>$position, 'name'=>$name];
+            }
+        }
+        return $out;
     }
 
     private static function parse_standings(string $html): array {
@@ -187,7 +196,7 @@ class DT_League_UI {
         $cache = (array)get_option(self::CACHE_OPTION, []);
         return [
             'version'=>DT_VERSION,
-            'teams'=>self::team_payload([]),
+            'teams'=>self::team_payload([], '1lm'),
             'contextUrl'=>esc_url_raw(rest_url('decka-typer/v1/league-context')),
             'standingsUpdatedAt'=>(string)($cache['fetched_at_mysql'] ?? ''),
             'standingsSource'=>self::STANDINGS_URL,
@@ -209,7 +218,7 @@ class DT_League_UI {
         if ($roundId < 1) return new WP_Error('invalid_round', 'Nie wybrano kolejki.', ['status'=>422]);
 
         $round = $wpdb->get_row($wpdb->prepare(
-            "SELECT id,season,round_no,status,closes_at,updated_at FROM " . DT_DB::table('rounds') . " WHERE id=%d",
+            "SELECT id,season,league_key,round_no,status,closes_at,updated_at FROM " . DT_DB::table('rounds') . " WHERE id=%d",
             $roundId
         ), ARRAY_A);
         if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
@@ -228,7 +237,7 @@ class DT_League_UI {
             'round_no'=>(int)$round['round_no'],
             'cutoff'=>$cutoff,
             'cutoff_iso'=>self::iso_datetime($cutoff),
-            'teams'=>self::team_payload($forms),
+            'teams'=>self::team_payload($forms, (string)$round['league_key']),
             'cache'=>'miss',
         ];
         set_transient($cacheKey, $payload, self::CONTEXT_CACHE_TTL);
@@ -304,10 +313,13 @@ class DT_League_UI {
         return $forms;
     }
 
-    private static function team_payload(array $forms): array {
+    private static function team_payload(array $forms, string $leagueKey): array {
         global $wpdb;
         $cache = (array)get_option(self::CACHE_OPTION, []);
-        $positions = is_array($cache['positions'] ?? null) ? $cache['positions'] : [];
+        $byLeague = is_array($cache['positions_by_league'] ?? null) ? $cache['positions_by_league'] : [];
+        $positions = is_array($byLeague[$leagueKey] ?? null)
+            ? $byLeague[$leagueKey]
+            : ($leagueKey === '1lm' && is_array($cache['positions'] ?? null) ? $cache['positions'] : []);
         $teams = $wpdb->get_results("SELECT id,name,logo_url FROM " . DT_DB::table('teams'), ARRAY_A);
         if (!is_array($teams)) $teams = [];
 
