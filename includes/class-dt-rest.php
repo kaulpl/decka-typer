@@ -381,12 +381,14 @@ class DT_REST {
         foreach ($history as &$item) {
             $selected = (int) $item['selected_team_id'];
             $item['round_no'] = (int) $item['round_no'];
+            $item['home_team_id'] = (int) $item['home_team_id'];
+            $item['away_team_id'] = (int) $item['away_team_id'];
             $item['selected_team_id'] = $selected;
             $item['selected_team_name'] = $selected === (int) $item['home_team_id'] ? $item['home_name'] : $item['away_name'];
             $item['points'] = (float) $item['points'];
             $item['result_known'] = $item['score_home'] !== null && $item['score_away'] !== null;
             $item['starts_at_iso'] = self::iso_datetime($item['starts_at'] ?? null);
-            unset($item['home_team_id'], $item['away_team_id'], $item['score_home'], $item['score_away']);
+            unset($item['score_home'], $item['score_away']);
         }
         unset($item);
 

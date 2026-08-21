@@ -90,6 +90,7 @@ class DT_Frontend {
                 'accent'=>$settings['brand_accent'],
                 'surface'=>$settings['brand_surface'],
             ],
+            'avatar'=>class_exists('DT_Avatar') ? DT_Avatar::messages() : [],
         ]);
     }
 
@@ -158,6 +159,7 @@ class DT_Frontend {
         echo '</main>';
 
         echo '<dialog id="dt-submit-modal" class="dt-front-modal"><div class="dt-front-modal-body"><button class="dt-front-modal-x" type="button" data-modal-close aria-label="Zamknij">×</button><div class="dt-modal-icon">' . self::icon('lock') . '</div><span class="dt-front-kicker">OSTATECZNY ZAPIS</span><h2>Zapisać typy?</h2><p>Po zatwierdzeniu kuponu tej kolejki <strong>nie będzie można zmienić żadnego typu</strong>.</p><div class="dt-modal-actions"><button type="button" class="dt-modal-cancel" data-modal-close>Wróć</button><button type="button" class="dt-modal-confirm" id="dt-confirm-submit">Tak, zapisz kupon</button></div></div></dialog>';
+        echo '<aside id="dt-avatar-helper" class="dt-avatar-helper" aria-live="polite" hidden><button type="button" class="dt-avatar-close" aria-label="Zamknij">×</button><div class="dt-avatar-bubble"></div><img alt="Avatar pomocnika TypujKosza.pl"></aside>';
     }
 
     private static function icon(string $name): string {

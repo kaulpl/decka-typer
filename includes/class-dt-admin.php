@@ -7,7 +7,7 @@ class DT_Admin {
         add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
         foreach ([
             'sync_now','save_settings','save_match','add_match','add_round','adjust_points',
-            'open_round','close_round'
+            'open_round','close_round','reset_typer_data','save_avatar'
         ] as $action) {
             add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
         }
@@ -25,6 +25,7 @@ class DT_Admin {
             ['decka-typer-stats','Statystyki','stats'],
             ['decka-typer-sync','Synchronizacja danych PZKosz','sync'],
             ['decka-typer-logs','Historia','logs'],
+            ['decka-typer-avatar','AVATAR','avatar'],
             ['decka-typer-settings','Ustawienia','settings'],
         ];
         foreach ($items as [$slug,$label,$method]) {
@@ -408,6 +409,20 @@ class DT_Admin {
         self::provider_fields('Facebook',[['facebook_app_id','App ID','text'],['facebook_app_secret','App Secret','password']],DT_OAuth::callback_url('facebook'),$s);
         echo '<section class="dt-card"><span class="dt-eyebrow">WYGLĄD</span><h2>Kolory interfejsu</h2><div class="dt-form-3"><label>Niebieski<input type="color" name="brand_primary" value="' . esc_attr($s['brand_primary']) . '"></label><label>Akcent<input type="color" name="brand_accent" value="' . esc_attr($s['brand_accent']) . '"></label><label>Tło<input type="color" name="brand_surface" value="' . esc_attr($s['brand_surface']) . '"></label></div></section>';
         echo '<div class="dt-savebar"><div><strong>Decka Typer ' . esc_html(DT_VERSION) . '</strong><span>Zmiany ustawień obowiązują od razu.</span></div><button class="button button-primary dt-button">Zapisz ustawienia</button></div></form>';
+        echo '<section class="dt-card dt-danger-zone"><span class="dt-eyebrow">NARZĘDZIA TESTOWE</span><h2>Wyczyść dane Typera</h2><p>Usuwa wszystkie typy, zapisane kupony, korekty punktów i ustawienia profilowe Typera. Konta WordPress oraz ich logowanie pozostają bez zmian.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Usunąć bezpowrotnie wszystkie dane typerskie? Konta użytkowników pozostaną.\')"><input type="hidden" name="action" value="dt_reset_typer_data">';
+        wp_nonce_field('dt_reset_typer_data');
+        echo '<label>Wpisz <strong>WYCZYŚĆ</strong>, aby potwierdzić<input name="confirmation" autocomplete="off" required></label><p><button class="button dt-danger-button"><span class="dashicons dashicons-trash"></span> Usuń wszystkie typowania</button></p></form></section>';
+        self::end_shell();
+    }
+
+    public static function avatar(): void {
+        $messages = DT_Avatar::messages();
+        self::shell('AVATAR','Komunikaty pomocnika wyświetlane użytkownikom w odpowiednich momentach.');
+        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" class="dt-settings"><input type="hidden" name="action" value="dt_save_avatar">';
+        wp_nonce_field('dt_save_avatar');
+        echo '<section class="dt-card"><span class="dt-eyebrow">POMOCNIK TYPERA</span><h2>Teksty w chmurkach</h2><p class="dt-muted">Każdy komunikat jest w osobnym wierszu. Krótko działa najlepiej — Artur nie prowadzi tu konferencji prasowej.</p><div class="dt-avatar-admin-list">';
+        foreach ($messages as $key=>$item) echo '<div class="dt-avatar-admin-row"><img src="'.esc_url($item['url']).'" alt=""><label><strong>'.esc_html($item['label']).'</strong><input name="messages['.esc_attr($key).']" maxlength="180" value="'.esc_attr($item['text']).'"></label></div>';
+        echo '</div></section><div class="dt-savebar"><div><strong>Komunikaty avatara</strong><span>Zmiany będą widoczne od razu po odświeżeniu aplikacji.</span></div><button class="button button-primary dt-button">Zapisz komunikaty</button></div></form>';
         self::end_shell();
     }
 
@@ -477,8 +492,7 @@ class DT_Admin {
         if ($firstDt && $firstDt <= $now) self::redirect('decka-typer-rounds','Nie można otworzyć kolejki po rozpoczęciu pierwszego meczu.','error');
 
         $nowSql = current_time('mysql');
-        $wpdb->query($wpdb->prepare("UPDATE " . DT_DB::table('rounds') . " SET status='closed',closes_at=CASE WHEN closes_at IS NULL OR closes_at>%s THEN %s ELSE closes_at END,updated_at=%s WHERE season=%s AND league_key=%s AND group_key=%s AND status='open' AND id<>%d",$nowSql,$nowSql,$nowSql,$round->season,$round->league_key,$round->group_key,$id));
-        $wpdb->update(DT_DB::table('rounds'),['status'=>'open','opens_at'=>$nowSql,'closes_at'=>$close,'updated_at'=>$nowSql],['id'=>$id],['%s','%s','%s','%s'],['%d']);
+        $wpdb->update(DT_DB::table('rounds'),['status'=>'open','manual_availability'=>1,'opens_at'=>$nowSql,'closes_at'=>$close,'updated_at'=>$nowSql],['id'=>$id],['%s','%d','%s','%s','%s'],['%d']);
         DT_Logger::log('round_opened','Administrator otworzył kolejkę do typowania.',['round_id'=>$id,'closes_at'=>$close], 'notice', get_current_user_id());
         self::redirect('decka-typer-rounds','Typowanie kolejki zostało otwarte do ' . self::date_pl($close) . '.');
     }
@@ -488,7 +502,7 @@ class DT_Admin {
         global $wpdb;
         $id = (int)($_POST['round_id'] ?? 0);
         $now = current_time('mysql');
-        $ok = $wpdb->query($wpdb->prepare("UPDATE " . DT_DB::table('rounds') . " SET status='closed',closes_at=CASE WHEN closes_at IS NULL OR closes_at>%s THEN %s ELSE closes_at END,updated_at=%s WHERE id=%d",$now,$now,$now,$id));
+        $ok = $wpdb->query($wpdb->prepare("UPDATE " . DT_DB::table('rounds') . " SET status='closed',manual_availability=1,closes_at=CASE WHEN closes_at IS NULL OR closes_at>%s THEN %s ELSE closes_at END,updated_at=%s WHERE id=%d",$now,$now,$now,$id));
         DT_Logger::log('round_closed','Administrator zamknął typowanie kolejki.',['round_id'=>$id], 'notice', get_current_user_id());
         self::redirect('decka-typer-rounds',$ok !== false ? 'Typowanie kolejki zamknięte.' : 'Nie udało się zamknąć kolejki.',$ok !== false?'success':'error');
     }
@@ -526,6 +540,37 @@ class DT_Admin {
         $wpdb->insert(DT_DB::table('point_adjustments'),['user_id'=>$uid,'season'=>$s['season'],'points'=>$points,'reason'=>$reason,'admin_user_id'=>get_current_user_id(),'created_at'=>current_time('mysql')]);
         DT_Logger::log('points_adjusted','Administrator skorygował punkty.',['target_user'=>$uid,'points'=>$points,'reason'=>$reason],'notice',get_current_user_id());
         self::redirect('decka-typer-users','Korekta punktów zapisana.');
+    }
+
+    public static function save_avatar(): void {
+        self::guard('dt_save_avatar');
+        DT_Avatar::save((array)($_POST['messages'] ?? []));
+        DT_Logger::log('avatar_messages_saved','Zapisano komunikaty avatara.',[], 'notice', get_current_user_id());
+        self::redirect('decka-typer-avatar','Komunikaty avatara zostały zapisane.');
+    }
+
+    public static function reset_typer_data(): void {
+        self::guard('dt_reset_typer_data');
+        if (trim((string)wp_unslash($_POST['confirmation'] ?? '')) !== 'WYCZYŚĆ') {
+            self::redirect('decka-typer-settings','Nie wpisano prawidłowego potwierdzenia WYCZYŚĆ.','error');
+        }
+        global $wpdb;
+        $wpdb->query('START TRANSACTION');
+        try {
+            foreach (['predictions','round_submissions','point_adjustments'] as $table) {
+                if ($wpdb->query('DELETE FROM '.DT_DB::table($table)) === false) throw new RuntimeException($wpdb->last_error ?: 'Błąd czyszczenia tabeli '.$table);
+            }
+            if ($wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->usermeta} WHERE meta_key IN (%s,%s)",'dt_ranking_name','dt_favorite_team_id')) === false) {
+                throw new RuntimeException($wpdb->last_error ?: 'Błąd czyszczenia ustawień użytkowników');
+            }
+            $wpdb->query('COMMIT');
+        } catch (Throwable $e) {
+            $wpdb->query('ROLLBACK');
+            DT_Logger::log('typer_reset_failed',$e->getMessage(),[], 'error', get_current_user_id());
+            self::redirect('decka-typer-settings','Nie udało się wyczyścić danych Typera.','error');
+        }
+        DT_Logger::log('typer_data_reset','Administrator usunął wszystkie dane typerskie. Konta użytkowników zachowano.',[], 'warning', get_current_user_id());
+        self::redirect('decka-typer-settings','System typerski został wyczyszczony. Konta i logowanie zachowano.');
     }
 
     private static function nullable_int($value): ?int {
