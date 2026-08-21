@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.6 — 2026-08-21
+
+- Ustawiono kolejność lig 1LM, PLK, 2LM w typowaniu i rankingu.
+- Zmieniono nazwy grup rankingu 2LM na format „GRUPA A”.
+- Dopasowano szerokości filtrów rankingu do szerokości aplikacji.
+- Dodano w „Moich typach” stałe filtry Wszystkie, 1LM, PLK, 2LM oraz grupy 2LM.
+
 ## 0.5.5 — 2026-08-21
 
 - Usunięto podwójne wyświetlanie grupy 2LM w nazwie kolejki i pełnym scrollerze.
