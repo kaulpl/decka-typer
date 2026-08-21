@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.13 — 2026-08-21
+
+- powiększono grafikę Bota Artura o kolejne około 15% na komputerach i urządzeniach mobilnych,
+- dopasowano szerokość kontenera pomocnika, aby zachować czytelność dymku z wiadomością.
+
 ## 0.5.12 — 2026-08-21
 
 - zabezpieczono własne komunikaty Artura zapisane w bazie przed nadpisaniem podczas aktualizacji wtyczki,
