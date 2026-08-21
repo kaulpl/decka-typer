@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.4 — 2026-08-21
+
+- Poprawiono aktywne podświetlenie przycisków grup 2LM w panelu Mecze.
+- Wyśrodkowano ikony we wszystkich głównych przyciskach panelu administratora.
+- Ujednolicono nazwy grup 2LM w aplikacji użytkownika do formatu „GRUPA A”.
+- Rozszerzono selektor kolejki o ligę, grupę, sezon oraz jednoznaczny status „OTWARTA” lub „ZAMKNIĘTA”.
+
 ## 0.5.3 — 2026-08-21
 
 - Dwupoziomowe filtrowanie 2LM według ligi i grupy w panelu administratora.
