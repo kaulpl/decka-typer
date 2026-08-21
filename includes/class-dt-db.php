@@ -162,6 +162,7 @@ class DT_DB {
         update_option('dt_db_version', DT_VERSION);
 
         self::ensure_page();
+        if (class_exists('DT_Legal')) DT_Legal::ensure_pages();
         self::ensure_cron();
         flush_rewrite_rules();
     }
@@ -344,6 +345,9 @@ class DT_DB {
             'google_client_secret' => '',
             'facebook_app_id' => '',
             'facebook_app_secret' => '',
+            'contact_email' => get_option('admin_email', ''),
+            'privacy_page_id' => 0,
+            'contact_page_id' => 0,
             'typer_page_id' => 0,
         ];
     }
