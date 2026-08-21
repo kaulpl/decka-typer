@@ -24,7 +24,7 @@ class DT_Admin {
             ['decka-typer-ranking','Ranking','ranking'],
             ['decka-typer-users','Użytkownicy','users'],
             ['decka-typer-stats','Statystyki','stats'],
-            ['decka-typer-sync','Synchronizacja 1LM','sync'],
+            ['decka-typer-sync','Synchronizacja danych PZKosz','sync'],
             ['decka-typer-logs','Historia','logs'],
             ['decka-typer-settings','Ustawienia','settings'],
         ];
@@ -123,7 +123,7 @@ class DT_Admin {
         } else {
             echo '<p class="dt-muted">Otwórz kolejkę w module „Kolejki” i ustaw dokładny termin zamknięcia kuponów.</p><a class="button dt-button" href="' . esc_url(admin_url('admin.php?page=decka-typer-rounds')) . '">Otwórz kolejkę</a>';
         }
-        echo '</section><section class="dt-card"><span class="dt-eyebrow">STAN SYSTEMU</span><h2>Kontrola</h2><div class="dt-health"><div><span>Ostatnia synchronizacja</span><strong>' . esc_html($last['at'] ?? 'jeszcze nie wykonano') . '</strong></div><div><span>Źródło</span><strong>1lm.pzkosz.pl</strong></div><div><span>Tryb typowania</span><strong>Zwycięzca meczu</strong></div><div><span>Edycja kuponu</span><strong>Wyłączona po zapisie</strong></div></div></section></div>';
+        echo '</section><section class="dt-card"><span class="dt-eyebrow">STAN SYSTEMU</span><h2>Kontrola</h2><div class="dt-health"><div><span>Ostatnia synchronizacja</span><strong>' . esc_html($last['at'] ?? 'jeszcze nie wykonano') . '</strong></div><div><span>Źródła</span><strong>PLK · PZKosz 1LM · PZKosz 2LM</strong></div><div><span>Tryb typowania</span><strong>Zwycięzca meczu</strong></div><div><span>Edycja kuponu</span><strong>Wyłączona po zapisie</strong></div></div></section></div>';
         echo '<section class="dt-card dt-section"><span class="dt-eyebrow">TOP 5</span><h2>Liderzy klasyfikacji</h2>';
         self::ranking_table(DT_Scoring::ranking($season,5));
         echo '</section>';
@@ -155,7 +155,7 @@ class DT_Admin {
                 'first_match'=>self::date_pl($r->first_known_match ?: $r->first_match),
             ];
             $leagueLabel = strtoupper((string)$r->league_key) . ($r->group_key ? ' · grupa '.(string)$r->group_key : '');
-            echo '<tr><td><small class="dt-muted">'.esc_html($leagueLabel).'</small><br><strong>' . esc_html($r->title) . '</strong></td><td>' . esc_html($range) . '</td><td>' . (int)$r->matches . '</td><td>' . (int)$r->submissions . '</td><td>' . self::round_badge((string)$r->status) . '</td><td><strong>' . esc_html(self::date_pl($r->closes_at)) . '</strong></td><td>' . self::badge($r->source === '1lm' ? 'Auto 1LM' : 'Ręcznie', $r->source === '1lm' ? 'blue' : 'orange') . '</td><td>';
+            echo '<tr><td><small class="dt-muted">'.esc_html($leagueLabel).'</small><br><strong>' . esc_html($r->title) . '</strong></td><td>' . esc_html($range) . '</td><td>' . (int)$r->matches . '</td><td>' . (int)$r->submissions . '</td><td>' . self::round_badge((string)$r->status) . '</td><td><strong>' . esc_html(self::date_pl($r->closes_at)) . '</strong></td><td>' . self::badge($r->source === 'manual' ? 'Ręcznie' : 'Auto PZKosz', $r->source === 'manual' ? 'orange' : 'blue') . '</td><td>';
             if ($r->status === 'open') {
                 echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline">';
                 echo '<input type="hidden" name="action" value="dt_close_round"><input type="hidden" name="round_id" value="' . (int)$r->id . '">';
@@ -197,7 +197,7 @@ class DT_Admin {
         foreach ($rows as $m) {
             $score = $m->score_home === null ? '—' : (int)$m->score_home . ' : ' . (int)$m->score_away;
             $data = ['id'=>(int)$m->id,'home'=>$m->home_name,'away'=>$m->away_name,'starts_at'=>self::html_datetime($m->starts_at),'home_score'=>$m->score_home,'away_score'=>$m->score_away,'manual_lock'=>(int)$m->manual_lock];
-            echo '<tr><td><strong>' . esc_html($m->home_name) . '</strong><span class="dt-versus">vs</span><strong>' . esc_html($m->away_name) . '</strong></td><td>' . esc_html(self::date_pl($m->starts_at)) . '</td><td><span class="dt-score">' . esc_html($score) . '</span></td><td>' . self::badge($m->status === 'finished' ? 'Zakończony':'Zaplanowany',$m->status === 'finished' ? 'green':'neutral') . '</td><td>' . ((int)$m->manual_lock ? self::badge('Ręczny · chroniony','orange') : self::badge('Auto 1LM','blue')) . '</td><td><button type="button" class="button dt-edit-match" data-match="' . esc_attr(wp_json_encode($data)) . '">Edytuj</button></td></tr>';
+            echo '<tr><td><strong>' . esc_html($m->home_name) . '</strong><span class="dt-versus">vs</span><strong>' . esc_html($m->away_name) . '</strong></td><td>' . esc_html(self::date_pl($m->starts_at)) . '</td><td><span class="dt-score">' . esc_html($score) . '</span></td><td>' . self::badge($m->status === 'finished' ? 'Zakończony':'Zaplanowany',$m->status === 'finished' ? 'green':'neutral') . '</td><td>' . ((int)$m->manual_lock ? self::badge('Ręczny · chroniony','orange') : self::badge('Auto PZKosz','blue')) . '</td><td><button type="button" class="button dt-edit-match" data-match="' . esc_attr(wp_json_encode($data)) . '">Edytuj</button></td></tr>';
         }
         if (!$rows) echo '<tr><td colspan="6" class="dt-empty">Brak meczów w tej kolejce.</td></tr>';
         echo '</tbody></table></section>';
@@ -301,8 +301,8 @@ class DT_Admin {
     public static function sync(): void {
         $s = DT_DB::settings();
         $last = get_option('dt_last_sync');
-        self::shell('Synchronizacja 1LM','Terminarz i wyniki z oficjalnego źródła');
-        echo '<section class="dt-card"><span class="dt-eyebrow">ŹRÓDŁO</span><h2>1lm.pzkosz.pl</h2><p><code>' . esc_html($s['source_url']) . '</code></p><div class="dt-sync-state"><span class="dt-dot ' . (!empty($s['sync_enabled'])?'is-on':'') . '"></span><div><strong>' . (!empty($s['sync_enabled'])?'Synchronizacja automatyczna aktywna':'Synchronizacja automatyczna wyłączona') . '</strong><small>Ostatnio: ' . esc_html($last['at'] ?? 'nigdy') . '</small></div></div><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_sync_now">'; wp_nonce_field('dt_sync_now'); echo '<button class="button button-primary dt-button"><span class="dashicons dashicons-update"></span> Synchronizuj teraz</button></form></section>';
+        self::shell('Synchronizacja danych PZKosz','Terminarze, wyniki i drużyny z PLK, 1LM oraz grup A–D 2LM');
+        echo '<section class="dt-card"><span class="dt-eyebrow">OFICJALNE ŹRÓDŁA</span><h2>PLK i rozgrywki PZKosz</h2><div class="dt-health"><div><span>PLK</span><strong>'.esc_html($s['source_plk_url']).'</strong></div><div><span>1 Liga Mężczyzn</span><strong>'.esc_html($s['source_1lm_url']).'</strong></div><div><span>2 Liga Mężczyzn</span><strong>'.esc_html($s['source_2lm_url']).'</strong></div></div><div class="dt-sync-state"><span class="dt-dot ' . (!empty($s['sync_enabled'])?'is-on':'') . '"></span><div><strong>' . (!empty($s['sync_enabled'])?'Synchronizacja automatyczna aktywna':'Synchronizacja automatyczna wyłączona') . '</strong><small>Ostatnio: ' . esc_html($last['at'] ?? 'nigdy') . '</small></div></div><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_sync_now">'; wp_nonce_field('dt_sync_now'); echo '<button class="button button-primary dt-button"><span class="dashicons dashicons-update"></span> Synchronizuj wszystkie ligi</button></form></section>';
         if (!empty($last['result'])) echo '<section class="dt-card dt-section"><span class="dt-eyebrow">OSTATNI IMPORT</span><h2>Podsumowanie</h2><pre style="white-space:pre-wrap">' . esc_html(wp_json_encode($last['result'],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)) . '</pre></section>';
         self::end_shell();
     }
@@ -328,7 +328,7 @@ class DT_Admin {
         echo '</div></section>';
         echo '<section class="dt-card"><span class="dt-eyebrow">ROZGRYWKI</span><h2>Ligi i sezon</h2><div class="dt-form-2"><label>Sezon<input name="season" value="' . esc_attr($s['season']) . '"></label><label>Domyślna nazwa ligi<input name="league_name" value="' . esc_attr($s['league_name']) . '"></label></div><div class="dt-form-3">';
         foreach (['plk'=>'PLK','1lm'=>'1 Liga Mężczyzn','2lm'=>'2 Liga Mężczyzn'] as $key=>$label) echo '<label class="dt-check"><input type="checkbox" name="leagues[]" value="'.esc_attr($key).'" '.checked(!empty(($s['leagues']??[])[$key]),true,false).'><span><strong>'.esc_html($label).'</strong><small>Aktywna w typowaniu i rankingach</small></span></label>';
-        echo '</div><label>Adres terminarza 1LM<input type="url" name="source_url" value="' . esc_attr($s['source_url']) . '"></label><label class="dt-check"><input type="checkbox" name="sync_enabled" value="1" ' . checked(!empty($s['sync_enabled']),true,false) . '><span><strong>Automatyczna synchronizacja 1LM</strong><small>Pobieraj terminarz i wyniki co godzinę.</small></span></label></section>';
+        echo '</div><div class="dt-form-3"><label>Adres terminarza PLK<input type="url" name="source_plk_url" value="' . esc_attr($s['source_plk_url']) . '"></label><label>Adres terminarza 1LM<input type="url" name="source_1lm_url" value="' . esc_attr($s['source_1lm_url']) . '"></label><label>Adres terminarza 2LM<input type="url" name="source_2lm_url" value="' . esc_attr($s['source_2lm_url']) . '"></label></div><label class="dt-check"><input type="checkbox" name="sync_enabled" value="1" ' . checked(!empty($s['sync_enabled']),true,false) . '><span><strong>Automatyczna synchronizacja danych PZKosz</strong><small>Pobieraj terminarze, wyniki i drużyny PLK, 1LM oraz wszystkich grup 2LM co godzinę.</small></span></label></section>';
         echo '<section class="dt-card"><span class="dt-eyebrow">PUNKTACJA</span><h2>Zasady Typera</h2><div class="dt-form-2"><label>Punkty za poprawnego zwycięzcę<input type="number" name="points_winner" step="1" value="' . esc_attr($s['points_winner']) . '"></label><label>Bonus za perfekcyjną kolejkę<input type="number" name="perfect_round_bonus" step="1" value="' . esc_attr($s['perfect_round_bonus']) . '"></label></div><p class="dt-muted">Użytkownik wybiera wyłącznie zwycięzcę. Dokładny wynik nie jest typowany.</p></section>';
         self::provider_fields('Google',[['google_client_id','Client ID','text'],['google_client_secret','Client Secret','password']],DT_OAuth::callback_url('google'),$s);
         self::provider_fields('Facebook',[['facebook_app_id','App ID','text'],['facebook_app_secret','App Secret','password']],DT_OAuth::callback_url('facebook'),$s);
@@ -353,9 +353,9 @@ class DT_Admin {
         self::guard('dt_save_settings');
         $old = DT_DB::settings();
         $new = $old;
-        foreach (['season','league_name','source_url','google_client_id','google_client_secret','facebook_app_id','facebook_app_secret'] as $k) {
+        foreach (['season','league_name','source_url','source_plk_url','source_1lm_url','source_2lm_url','google_client_id','google_client_secret','facebook_app_id','facebook_app_secret'] as $k) {
             $v = wp_unslash($_POST[$k] ?? '');
-            $new[$k] = $k === 'source_url' ? esc_url_raw($v) : sanitize_text_field($v);
+            $new[$k] = str_contains($k, 'source_') || $k === 'source_url' ? esc_url_raw($v) : sanitize_text_field($v);
         }
         foreach (['points_winner','perfect_round_bonus'] as $k) $new[$k] = (float)($_POST[$k] ?? 0);
         foreach (['brand_primary','brand_accent','brand_surface'] as $k) $new[$k] = sanitize_hex_color($_POST[$k] ?? '') ?: $old[$k];

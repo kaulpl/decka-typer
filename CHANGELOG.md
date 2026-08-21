@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 — 2026-08-21
+
+- dodano rzeczywistą synchronizację PLK, 1LM oraz wszystkich grup 2LM,
+- importer zapisuje ligę i grupę przy każdej kolejce oraz chroni ręcznie poprawione mecze,
+- źródła PLK, 1LM i 2LM można konfigurować osobno,
+- moduł „Synchronizacja 1LM” zmieniono na „Synchronizacja danych PZKosz”.
+
 ## 0.4.20 — 2026-08-20
 
 - ustawiono bazową wielkość tekstu landing page na minimum `12px`,
