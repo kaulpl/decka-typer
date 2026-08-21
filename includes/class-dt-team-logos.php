@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) exit;
 
 class DT_Team_Logos {
-    private const ASSET_VERSION = '0.2.3';
+    private const ASSET_VERSION = '0.5.3';
 
     public static function register(): void {
         add_filter('rest_request_after_callbacks', [__CLASS__, 'decorate_rest_response'], 10, 3);
@@ -50,7 +50,7 @@ class DT_Team_Logos {
             if ($wpdb->update($table,['logo_url'=>$url],['id'=>(int)$team->id],['%s'],['%d']) !== false) $applied++;
         }
         update_option('dt_team_logos_version',self::ASSET_VERSION,false);
-        if ($applied) DT_Logger::log('team_logos_applied','Zastosowano lokalne logotypy 1LM.',['teams'=>$applied]);
+        if ($applied) DT_Logger::log('team_logos_applied','Zastosowano skojarzone logotypy klubów.',['teams'=>$applied]);
     }
 
     public static function url_for(string $teamName): ?string {
