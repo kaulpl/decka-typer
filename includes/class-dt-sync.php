@@ -13,40 +13,95 @@ class DT_Sync {
 
     public static function run(bool $manual = false): array {
         $settings = DT_DB::settings();
-        $url = esc_url_raw((string) $settings['source_url']);
-        $out = ['ok'=>false, 'rounds'=>0, 'matches_new'=>0, 'matches_updated'=>0, 'matches_skipped'=>0, 'scores'=>0, 'warnings'=>[]];
-        if (!$url) return array_merge($out, ['error'=>'Brak adresu źródłowego.']);
-
-        $response = wp_remote_get($url, [
-            'timeout'=>25,
-            'redirection'=>5,
-            'headers'=>['User-Agent'=>'DeckaTyper/' . DT_VERSION . ' (+' . home_url('/') . ')'],
-        ]);
-        if (is_wp_error($response)) {
-            DT_Logger::log('sync_error', $response->get_error_message(), ['url'=>$url], 'error');
-            return array_merge($out, ['error'=>$response->get_error_message()]);
+        $out = ['ok'=>false, 'rounds'=>0, 'matches_new'=>0, 'matches_updated'=>0, 'matches_skipped'=>0, 'scores'=>0, 'warnings'=>[], 'leagues'=>[]];
+        $sources = [
+            ['key'=>'plk','group'=>'','url'=>(string)$settings['source_plk_url'],'parser'=>'plk'],
+            ['key'=>'1lm','group'=>'','url'=>(string)$settings['source_1lm_url'],'parser'=>'pzkosz'],
+            ['key'=>'2lm','group'=>'*','url'=>(string)$settings['source_2lm_url'],'parser'=>'pzkosz'],
+        ];
+        $successes = 0;
+        foreach ($sources as $source) {
+            $result = self::sync_source($source, (string)$settings['season']);
+            $out['leagues'][$source['key']] = $result;
+            if (empty($result['ok'])) {
+                $out['warnings'][] = strtoupper($source['key']) . ': ' . ($result['error'] ?? 'nieznany błąd synchronizacji');
+                continue;
+            }
+            $successes++;
+            foreach (['rounds','matches_new','matches_updated','matches_skipped','scores'] as $key) $out[$key] += (int)($result[$key] ?? 0);
+            $out['warnings'] = array_merge($out['warnings'], (array)($result['warnings'] ?? []));
         }
-        $code = wp_remote_retrieve_response_code($response);
-        $html = wp_remote_retrieve_body($response);
-        if ($code !== 200 || strlen($html) < 500) {
-            $message = 'Źródło 1LM zwróciło HTTP ' . $code . '.';
-            DT_Logger::log('sync_error', $message, ['url'=>$url, 'bytes'=>strlen($html)], 'error');
-            return array_merge($out, ['error'=>$message]);
-        }
-
-        $parsed = self::parse_schedule($html, (string) $settings['season'], $url);
-        if (!$parsed['matches']) {
-            $message = 'Nie udało się rozpoznać meczów w terminarzu. Synchronizacja przerwana bez zmian.';
-            DT_Logger::log('sync_parse_empty', $message, ['warnings'=>$parsed['warnings']], 'error');
-            return array_merge($out, ['error'=>$message, 'warnings'=>$parsed['warnings']]);
-        }
-
-        $out = array_merge($out, self::persist($parsed['matches'], (string) $settings['season']));
-        $out['warnings'] = array_values(array_unique(array_merge($out['warnings'], $parsed['warnings'])));
-        $out['ok'] = true;
+        $out['warnings'] = array_values(array_unique($out['warnings']));
+        $out['ok'] = $successes === count($sources);
+        if (!$successes) $out['error'] = 'Żadne oficjalne źródło nie zostało zsynchronizowane.';
         update_option('dt_last_sync', ['at'=>current_time('mysql'), 'result'=>$out]);
-        DT_Logger::log('sync_complete', 'Synchronizacja terminarza zakończona.', $out, $manual ? 'notice' : 'info');
+        DT_Logger::log($out['ok']?'sync_complete':'sync_partial', 'Synchronizacja danych PZKosz zakończona.', $out, $out['ok'] ? ($manual ? 'notice' : 'info') : 'warning');
         return $out;
+    }
+
+    private static function sync_source(array $source, string $season): array {
+        $url = esc_url_raw((string)($source['url'] ?? ''));
+        $empty = ['ok'=>false,'rounds'=>0,'matches_new'=>0,'matches_updated'=>0,'matches_skipped'=>0,'scores'=>0,'warnings'=>[]];
+        if (!$url) return array_merge($empty,['error'=>'Brak adresu źródłowego.']);
+        $response = wp_remote_get($url,['timeout'=>35,'redirection'=>5,'headers'=>['User-Agent'=>'TypujKosza/' . DT_VERSION . ' (+' . home_url('/') . ')']]);
+        if (is_wp_error($response)) return array_merge($empty,['error'=>$response->get_error_message()]);
+        $code=(int)wp_remote_retrieve_response_code($response); $html=(string)wp_remote_retrieve_body($response);
+        if ($code!==200 || strlen($html)<500) return array_merge($empty,['error'=>'Źródło zwróciło HTTP '.$code.'.']);
+        $parsed = ($source['parser'] ?? '') === 'plk'
+            ? self::parse_plk_schedule($html,$season,$url)
+            : self::parse_pzkosz_schedule($html,$season,$url,(string)$source['key']);
+        if (empty($parsed['matches'])) return array_merge($empty,['error'=>'Nie rozpoznano meczów w terminarzu.','warnings'=>$parsed['warnings']??[]]);
+        $saved=self::persist($parsed['matches'],$season,(string)$source['key']);
+        return array_merge($empty,$saved,['ok'=>true,'warnings'=>array_values(array_unique(array_merge($saved['warnings']??[],$parsed['warnings']??[]))),'parsed'=>count($parsed['matches'])]);
+    }
+
+    public static function parse_pzkosz_schedule(string $html, string $season, string $baseUrl, string $leagueKey): array {
+        if (!class_exists('DOMDocument')) return ['matches'=>[],'warnings'=>['Synchronizacja PZKosz wymaga rozszerzenia DOM.']];
+        $previous=libxml_use_internal_errors(true); $dom=new DOMDocument();
+        $loaded=$dom->loadHTML('<?xml encoding="utf-8" ?>'.$html,LIBXML_NOWARNING|LIBXML_NOERROR);
+        libxml_clear_errors(); libxml_use_internal_errors($previous);
+        if(!$loaded)return ['matches'=>[],'warnings'=>['Nie można odczytać dokumentu PZKosz.']];
+        $xp=new DOMXPath($dom); $matches=[]; $warnings=[];
+        foreach($xp->query('//tr[contains(concat(" ",normalize-space(@class)," ")," tt-game ")]') as $row){
+            $teams=$xp->query('.//a[contains(@href,"/druzyny/d/")]', $row);
+            if($teams->length!==2)continue;
+            $round=self::find_round_number($row); if(!$round)continue;
+            $dateRow=$row->nextSibling;
+            while($dateRow && !($dateRow instanceof DOMElement))$dateRow=$dateRow->nextSibling;
+            $date=self::extract_official_date_time($dateRow?(string)$dateRow->textContent:''); if(!$date)continue;
+            $home=self::team_from_anchor($teams->item(0),$xp,$baseUrl); $away=self::team_from_anchor($teams->item(1),$xp,$baseUrl);
+            $score=self::extract_score($row,$xp); $group='';
+            if($leagueKey==='2lm'){
+                for($cursor=$row->parentNode;$cursor;$cursor=$cursor->parentNode){
+                    if($cursor instanceof DOMElement && preg_match('/^grupa_([A-Z0-9-]+)$/i',$cursor->getAttribute('id'),$gm)){ $group=strtoupper($gm[1]); break; }
+                }
+                if($group===''){ $warnings[]='Pominięto mecz 2LM bez rozpoznanej grupy.'; continue; }
+            }
+            $gameAnchor=$xp->query('.//a[contains(@href,"/mecz/")]', $row)->item(0); $gameId='';
+            if($gameAnchor instanceof DOMElement && preg_match('~/mecz/(\d+)~',$gameAnchor->getAttribute('href'),$id))$gameId=$id[1];
+            $key=$gameId ? $leagueKey.'-'.$gameId : sha1($leagueKey.'|'.$group.'|'.$season.'|'.$round.'|'.self::norm($home['name']).'|'.self::norm($away['name']));
+            $matches[]=['season'=>$season,'league_key'=>$leagueKey,'group_key'=>$group,'round_no'=>$round,'home'=>$home,'away'=>$away,'starts_at'=>$date['mysql'],'start_time_known'=>$date['time_known']?1:0,'score_home'=>$score?$score[0]:null,'score_away'=>$score?$score[1]:null,'status'=>$score?'finished':'scheduled','source_url'=>$baseUrl,'external_key'=>$key];
+        }
+        if(count($matches)<8)$warnings[]='Parser '.strtoupper($leagueKey).' odczytał tylko '.count($matches).' meczów.';
+        return ['matches'=>$matches,'warnings'=>$warnings];
+    }
+
+    public static function parse_plk_schedule(string $html, string $season, string $baseUrl): array {
+        $decoded=str_replace(['\\"','\\/'],['"','/'],$html); $matches=[]; $warnings=[];
+        if(!preg_match_all('/\{"id":"(\d+)","seasonId":"\d+","league":\{"id":2,[\s\S]*?"queue":\{"id":\d+,"name":"(\d+) kolejka"\},[\s\S]*?"homeTeamName":"([^"]+)","guestTeamName":"([^"]+)","isFinished":(true|false),"date":"[^"]+","dateLocal":"([^"]+)"[\s\S]*?"homeTeam":\{"id":(\d+),[\s\S]*?"logoUrl":"([^"]*)"[\s\S]*?"guestTeam":\{"id":(\d+),[\s\S]*?"logoUrl":"([^"]*)"[\s\S]*?\}/u',$decoded,$rows,PREG_SET_ORDER)){
+            return ['matches'=>[],'warnings'=>['Nie znaleziono danych terminarza PLK.']];
+        }
+        foreach($rows as $r){
+            $date=self::extract_official_date_time($r[6]); if(!$date)continue;
+            $block=$r[0]; $score=null;
+            if(preg_match('/"homeTeamScore":(\d+)[\s\S]*?"guestTeamScore":(\d+)/',$block,$sm))$score=[(int)$sm[1],(int)$sm[2]];
+            $home=['name'=>$r[3],'external_id'=>'plk-'.$r[7],'source_url'=>$baseUrl,'logo_url'=>$r[8]];
+            $away=['name'=>$r[4],'external_id'=>'plk-'.$r[9],'source_url'=>$baseUrl,'logo_url'=>$r[10]];
+            $matches['plk-'.$r[1]]=['season'=>$season,'league_key'=>'plk','group_key'=>'','round_no'=>(int)$r[2],'home'=>$home,'away'=>$away,'starts_at'=>$date['mysql'],'start_time_known'=>$date['time_known']?1:0,'score_home'=>$score?$score[0]:null,'score_away'=>$score?$score[1]:null,'status'=>$score?'finished':'scheduled','source_url'=>$baseUrl,'external_key'=>'plk-'.$r[1]];
+        }
+        $matches=array_values($matches);
+        if(count($matches)<8)$warnings[]='Parser PLK odczytał tylko '.count($matches).' meczów.';
+        return ['matches'=>$matches,'warnings'=>$warnings];
     }
 
     public static function parse_schedule(string $html, string $season, string $baseUrl): array {
@@ -257,7 +312,7 @@ class DT_Sync {
         return ['matches'=>$matches, 'warnings'=>$warnings];
     }
 
-    private static function persist(array $matches, string $season): array {
+    private static function persist(array $matches, string $season, string $leagueKey = '1lm'): array {
         global $wpdb;
         $now = current_time('mysql');
         $out = ['rounds'=>0, 'matches_new'=>0, 'matches_updated'=>0, 'matches_skipped'=>0, 'scores'=>0, 'warnings'=>[]];
@@ -265,17 +320,21 @@ class DT_Sync {
 
         foreach ($matches as $match) {
             $roundNo = (int) $match['round_no'];
-            if (!isset($roundIds[$roundNo])) {
+            $groupKey = sanitize_key((string)($match['group_key'] ?? ''));
+            $roundMapKey = $leagueKey.'|'.$groupKey.'|'.$roundNo;
+            if (!isset($roundIds[$roundMapKey])) {
                 $roundTable = DT_DB::table('rounds');
-                $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM $roundTable WHERE season=%s AND round_no=%d", $season, $roundNo));
+                $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM $roundTable WHERE season=%s AND league_key=%s AND group_key=%s AND round_no=%d", $season, $leagueKey, $groupKey, $roundNo));
                 if (!$round) {
                     $wpdb->insert($roundTable, [
                         'season'=>$season,
+                        'league_key'=>$leagueKey,
+                        'group_key'=>$groupKey,
                         'round_no'=>$roundNo,
-                        'title'=>$roundNo . '. kolejka',
+                        'title'=>$roundNo . '. kolejka' . ($groupKey ? ' · grupa ' . strtoupper($groupKey) : ''),
                         'status'=>'draft',
-                        'source'=>'1lm',
-                        'external_key'=>sha1($season . '|round|' . $roundNo),
+                        'source'=>'pzkosz',
+                        'external_key'=>sha1($leagueKey . '|' . $groupKey . '|' . $season . '|round|' . $roundNo),
                         'last_synced_at'=>$now,
                         'created_at'=>$now,
                         'updated_at'=>$now,
@@ -286,9 +345,9 @@ class DT_Sync {
                     $roundId = (int) $round->id;
                     $wpdb->update($roundTable, ['last_synced_at'=>$now], ['id'=>$roundId], ['%s'], ['%d']);
                 }
-                $roundIds[$roundNo] = $roundId;
+                $roundIds[$roundMapKey] = $roundId;
             }
-            $roundId = $roundIds[$roundNo];
+            $roundId = $roundIds[$roundMapKey];
 
             $homeId = self::upsert_team($match['home'], $now);
             $awayId = self::upsert_team($match['away'], $now);
