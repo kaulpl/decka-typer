@@ -4,8 +4,8 @@ Umieść w tym katalogu osiem plików PNG z przezroczystym tłem:
 
 1. `01-powitanie.png`
 2. `02-myslenie.png`
-3. `03-kupon-zapisany.png`
-4. `04-idealny-kupon.png`
+3. `03-typowanie-zapisany.png`
+4. `04-idealny-typowanie.png`
 5. `05-ostrzezenie.png`
 6. `06-kolejka-zamknieta.png`
 7. `07-nietrafiony-typ.png`

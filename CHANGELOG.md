@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.10 — 2026-08-21
+
+- zmieniono nazwę grafiki zapisanego typowania na `03-typowanie-zapisany.png`,
+- zmieniono nazwę grafiki idealnego typowania na `04-idealny-typowanie.png`,
+- zaktualizowano odwołania modułu AVATAR oraz dokumentację katalogu grafik.
+
 ## 0.5.9 — 2026-08-21
 
 - ręczne otwarcie kolejki jest trwałym nadpisaniem automatycznego harmonogramu aż do terminu zamknięcia,
