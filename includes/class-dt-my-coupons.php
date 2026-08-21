@@ -25,5 +25,8 @@ class DT_My_Coupons {
             DT_VERSION,
             true
         );
+        wp_localize_script('dt-my-coupons', 'DeckaTyperCoupons', [
+            'favoriteTeamId'=>class_exists('DT_User_Settings') ? DT_User_Settings::favorite_team_id(get_current_user_id()) : 0,
+        ]);
     }
 }

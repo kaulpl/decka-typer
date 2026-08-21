@@ -1,6 +1,8 @@
 /* TypujKosza.pl — admin brand layer */
 .dt-admin{--tk-navy:#07162f;--tk-blue:#055efb;--tk-orange:#fb5d0b}
 .dt-admin-head{border-color:#dce5f3!important;background:linear-gradient(135deg,#fff,#f8fbff)!important}
+.dt-admin-head h1{color:#07162f!important;text-shadow:none!important}
+.dt-admin-head p{color:#53627a!important}
 .dt-admin-head img{width:195px!important;height:auto!important;max-height:58px!important;object-fit:contain!important}
 .dt-admin .dt-kicker,.dt-admin .dt-eyebrow{color:#055efb!important}
 .dt-admin .button-primary.dt-button,.dt-admin .dt-button.button-primary{background:#055efb!important;border-color:#055efb!important;color:#fff!important}
