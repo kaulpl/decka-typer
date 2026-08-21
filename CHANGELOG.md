@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.16 — 2026-08-21
+
+- Dodano komplet metadanych Open Graph i Twitter Cards z głównym logo TypujKosza.pl.
+- Ustawiono zoptymalizowany tytuł, opis meta, polskie hreflang oraz dane strukturalne WebSite/Organization.
+- Dodano dostępną mapę witryny pod adresem `/sitemap.xml` i deklarację mapy w `robots.txt`.
+- Dodano w stopce standardowy odnośnik z ikoną do `facebook.com/TypujKosza`.
+- Poprawiono prezentację linku do landing page po udostępnieniu w mediach społecznościowych.
+
 ## 0.5.15 — 2026-08-21
 
 - Dodano edytowalną stronę „Polityka prywatności” i odnośnik w stopce.
