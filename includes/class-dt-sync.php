@@ -358,6 +358,15 @@ class DT_Sync {
 
             $table = DT_DB::table('matches');
             $existing = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE external_key=%s", $match['external_key']));
+            // Older 1LM imports used a name-based hash instead of the official game ID.
+            // Match by the stable sporting identity as a fallback, so a changed source key
+            // updates the existing row instead of inserting the same game again.
+            if (!$existing) {
+                $existing = $wpdb->get_row($wpdb->prepare(
+                    "SELECT * FROM $table WHERE round_id=%d AND home_team_id=%d AND away_team_id=%d ORDER BY manual_lock DESC,id ASC LIMIT 1",
+                    $roundId, $homeId, $awayId
+                ));
+            }
             if ($existing && (int) $existing->manual_lock === 1) {
                 $wpdb->update($table, ['last_synced_at'=>$now], ['id'=>(int) $existing->id], ['%s'], ['%d']);
                 $out['matches_skipped']++;
@@ -374,6 +383,7 @@ class DT_Sync {
             $hash = sha1(wp_json_encode([$homeId, $awayId, $startsAt, $timeKnown, $match['score_home'], $match['score_away'], $match['status']]));
             $data = [
                 'round_id'=>$roundId,
+                'external_key'=>$match['external_key'],
                 'source_url'=>$match['source_url'],
                 'home_team_id'=>$homeId,
                 'away_team_id'=>$awayId,
@@ -389,7 +399,6 @@ class DT_Sync {
             ];
 
             if (!$existing) {
-                $data['external_key'] = $match['external_key'];
                 $data['manual_lock'] = 0;
                 $data['created_at'] = $now;
                 $wpdb->insert($table, $data);

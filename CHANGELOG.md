@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2 — 2026-08-21
+
+- naprawiono powielanie meczów po przejściu z kluczy tekstowych na oficjalne identyfikatory PZKosz,
+- dodano bezpieczną migrację scalającą duplikaty z zachowaniem typów użytkowników,
+- przebudowano widoki „Kolejki” i „Mecze” w panelu na przyciski lig PLK, 1LM i 2LM,
+- dodano stronicowanie, czytelne oznaczenia lig i grup oraz przejście z kolejki bezpośrednio do jej meczów.
+
 ## 0.5.1 — 2026-08-21
 
 - dodano rzeczywistą synchronizację PLK, 1LM oraz wszystkich grup 2LM,

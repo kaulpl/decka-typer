@@ -151,6 +151,7 @@ class DT_DB {
         if (version_compare($oldVersion, '0.2.0', '<')) self::migrate_to_020();
         if (version_compare($oldVersion, '0.2.5', '<')) self::migrate_to_025();
         if (version_compare($oldVersion, '0.5.0', '<')) self::migrate_to_050();
+        if (version_compare($oldVersion, '0.5.2', '<')) self::migrate_to_052();
 
         $existing = (array) get_option('dt_settings', []);
         $settings = wp_parse_args($existing, self::defaults());
@@ -220,6 +221,33 @@ class DT_DB {
         if (self::column_exists($rounds, 'league_key')) {
             $wpdb->query("UPDATE `$rounds` SET league_key='1lm' WHERE league_key='' OR league_key IS NULL");
             $wpdb->query("ALTER TABLE `$rounds` DROP INDEX season_round");
+        }
+    }
+
+    private static function migrate_to_052(): void {
+        global $wpdb;
+        $matches = self::table('matches');
+        $predictions = self::table('predictions');
+
+        $groups = $wpdb->get_results("SELECT round_id,home_team_id,away_team_id,COUNT(*) total
+            FROM `$matches` GROUP BY round_id,home_team_id,away_team_id HAVING COUNT(*)>1");
+        foreach ($groups as $group) {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT m.*,COUNT(p.id) prediction_count FROM `$matches` m
+                 LEFT JOIN `$predictions` p ON p.match_id=m.id
+                 WHERE m.round_id=%d AND m.home_team_id=%d AND m.away_team_id=%d
+                 GROUP BY m.id ORDER BY m.manual_lock DESC,prediction_count DESC,m.id DESC",
+                $group->round_id, $group->home_team_id, $group->away_team_id
+            ));
+            if (count($rows) < 2) continue;
+            $keeper = array_shift($rows);
+            foreach ($rows as $duplicate) {
+                // UPDATE IGNORE keeps an already existing prediction for the keeper and
+                // moves every non-conflicting user prediction before deleting the duplicate.
+                $wpdb->query($wpdb->prepare("UPDATE IGNORE `$predictions` SET match_id=%d WHERE match_id=%d", $keeper->id, $duplicate->id));
+                $wpdb->delete($predictions, ['match_id'=>(int)$duplicate->id], ['%d']);
+                $wpdb->delete($matches, ['id'=>(int)$duplicate->id], ['%d']);
+            }
         }
     }
 
