@@ -390,6 +390,10 @@ class DT_REST {
         }
         unset($item);
 
+        $currentSeason=(string)(DT_DB::settings()['season']??'');
+        $leagueAchievements=self::league_achievements($uid,$season);
+        $leagueRanks=$season===$currentSeason?$leagueAchievements:self::league_achievements($uid,$currentSeason);
+
         return [
             'user_id'=>$uid,
             'display_name'=>$user ? $user->display_name : 'Kibic',
@@ -399,8 +403,35 @@ class DT_REST {
             'points'=>(float) ($row['points'] ?? 0) + $adjustment,
             'winner_hits'=>(int) ($row['winner_hits'] ?? 0),
             'rank'=>$rank,
+            'league_achievements'=>$leagueAchievements,
+            'league_ranks'=>$leagueRanks,
             'history'=>$history,
         ];
+    }
+
+    private static function league_achievements(int $uid, string $season): array {
+        global $wpdb;
+        $seasonSql=$season!==''?$wpdb->prepare(' AND r.season=%s',$season):'';
+        $rows=$wpdb->get_results(
+            "SELECT p.user_id,r.league_key,COUNT(p.id) predictions,COALESCE(SUM(p.points),0) points,
+                    SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) winner_hits
+             FROM ".DT_DB::table('predictions')." p
+             JOIN ".DT_DB::table('matches')." m ON m.id=p.match_id
+             JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id
+             WHERE p.selected_team_id IS NOT NULL AND r.league_key IN ('1lm','plk','2lm') $seasonSql
+             GROUP BY r.league_key,p.user_id",
+            ARRAY_A
+        );
+        $out=[];
+        foreach(['1lm','plk','2lm'] as $key)$out[$key]=['rank'=>null,'points'=>0.0,'winner_hits'=>0,'predictions'=>0];
+        $byLeague=['1lm'=>[],'plk'=>[],'2lm'=>[]];
+        foreach((array)$rows as $row){$key=(string)($row['league_key']??'');if(isset($byLeague[$key]))$byLeague[$key][]=$row;}
+        foreach($byLeague as $key=>$leagueRows){
+            usort($leagueRows,static function($a,$b){$points=(float)$b['points']<=>(float)$a['points'];if($points!==0)return $points;$hits=(int)$b['winner_hits']<=>(int)$a['winner_hits'];if($hits!==0)return $hits;return (int)$a['user_id']<=>(int)$b['user_id'];});
+            $rank=0;$seen=0;$last=null;
+            foreach($leagueRows as $item){$seen++;$score=(string)$item['points'].'|'.(string)$item['winner_hits'];if($score!==$last)$rank=$seen;$last=$score;if((int)$item['user_id']===$uid){$out[$key]=['rank'=>$rank,'points'=>(float)$item['points'],'winner_hits'=>(int)$item['winner_hits'],'predictions'=>(int)$item['predictions']];break;}}
+        }
+        return $out;
     }
 
     public static function round_accepts_picks(array $round): bool {

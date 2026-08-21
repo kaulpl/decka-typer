@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.7 — 2026-08-21
+
+- Przeniesiono sekcję „Moje osiągnięcia” do zakładki „Moje konto”.
+- Dodano osobne karty osiągnięć dla 1LM, PLK i 2LM.
+- Dodano w górnym pasku skrót miejsc użytkownika w każdej lidze.
+- Zachowano przełączanie osiągnięć między wszechczasami i bieżącym sezonem.
+
 ## 0.5.6 — 2026-08-21
 
 - Ustawiono kolejność lig 1LM, PLK, 2LM w typowaniu i rankingu.
