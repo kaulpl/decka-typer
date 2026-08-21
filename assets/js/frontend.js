@@ -50,6 +50,7 @@
     const open=rounds.find(r=>r.is_open);return String(open?.league_key||rounds[0]?.league_key||'1lm');
   };
   const normalizeGroup=value=>String(value||'').trim().toUpperCase();
+  const displayRoundTitle=round=>String(round?.title||`${round?.round_no||''}. kolejka`).replace(/\s*[·–—-]?\s*grupa\s+[a-z0-9]+\s*$/i,'').trim();
   const preferredGroup=rounds=>{
     const relevant=rounds.filter(r=>String(r.league_key)==='2lm');
     return normalizeGroup(relevant.find(r=>r.is_open)?.group_key||relevant[0]?.group_key||'');
@@ -71,7 +72,7 @@
     const sel=$('#dt-round-select');if(!sel||!state.boot)return;
     const rounds=filteredRounds();
     sel.innerHTML=rounds.map(r=>{
-      const parts=[r.title||`${r.round_no}. kolejka`,String(r.league_key||state.league||'1lm').toUpperCase()];
+      const parts=[displayRoundTitle(r),String(r.league_key||state.league||'1lm').toUpperCase()];
       if(String(r.league_key||state.league)==='2lm'&&r.group_key)parts.push(`GRUPA ${normalizeGroup(r.group_key)}`);
       parts.push(r.season||state.boot.season||cfg.season||'');
       parts.push(r.is_open?'OTWARTA':'ZAMKNIĘTA');
@@ -106,7 +107,7 @@
       $('#dt-matches').innerHTML='<div class="dt-empty-front">Administrator nie otworzył jeszcze kolejki do typowania.</div>';
       updateSaveDock();return;
     }
-    $('#dt-round-title').textContent=round.title;
+    $('#dt-round-title').textContent=displayRoundTitle(round);
     const matches=round.matches||[];
     const submitted=!!round.submission?.submitted;
     const open=!!round.is_open;

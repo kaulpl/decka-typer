@@ -24,11 +24,10 @@
     <button data-rank-scope="season">Sezon</button>
     <button data-rank-scope="round">Kolejka</button>`;
 
+  const controls=panel.querySelector('.dt-ranking-controls')||legacyToggle.parentElement;
   const filters=document.createElement('div');
   filters.className='dt-ranking-filters';
-  legacyToggle.insertAdjacentElement('afterend',filters);
-
-  const heading=panel.querySelector('.dt-panel-head h1');
+  controls.appendChild(filters);
 
   const api=async()=>{
     const qs=new URLSearchParams({scope});
@@ -42,16 +41,6 @@
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.message||'Nie udało się pobrać rankingu.');
     return data;
-  };
-
-  const selectWrap=(labelText,select)=>{
-    const wrap=document.createElement('label');
-    wrap.className='dt-ranking-select-wrap';
-    const label=document.createElement('span');
-    label.className='dt-ranking-select-label';
-    label.textContent=labelText;
-    wrap.append(label,select);
-    return wrap;
   };
 
   const renderFilters=()=>{
@@ -74,7 +63,7 @@
         roundId=Number(roundSelect.value||0);
         load();
       });
-      filters.appendChild(selectWrap('Kolejka',roundSelect));
+      filters.appendChild(roundSelect);
     }
   };
 
@@ -101,16 +90,6 @@
       }).join('')}`;
   };
 
-  const updateTitle=()=>{
-    if(!heading)return;
-    if(scope==='all')heading.textContent='Ranking wszechczasów';
-    else if(scope==='season')heading.textContent=`Ranking · ${season}`;
-    else {
-      const r=rounds.find(x=>Number(x.id)===Number(roundId));
-      heading.textContent=`Ranking · ${season} · ${r?.title||'kolejka'}`;
-    }
-  };
-
   const load=async()=>{
     const seq=++loadingSeq;
     box.innerHTML='<div class="dt-empty-front">Ładowanie rankingu…</div>';
@@ -127,7 +106,6 @@
       roundId=Number(data.round_id||roundId||0);
       if(scope==='round'&&!roundId&&rounds.length)roundId=Number(rounds[rounds.length-1].id);
       renderFilters();
-      updateTitle();
       renderRows(data.ranking||[]);
     }catch(e){
       box.innerHTML=`<div class="dt-empty-front">${esc(e.message||'Nie udało się pobrać rankingu.')}</div>`;
