@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.15 — 2026-08-21
+
+- Dodano edytowalną stronę „Polityka prywatności” i odnośnik w stopce.
+- Dodano edytowalną stronę „Kontakt” z formularzem pytań, reklamacji, współpracy i pomysłów.
+- Dodano konfigurowalny adres odbiorcy wiadomości oraz zabezpieczenia formularza przed spamem.
+- Zagwarantowano, że aktualizacje wtyczki nie nadpisują treści utworzonych stron.
+- Zwiększono wszystkie rozmiary tekstu w interfejsie do minimum 14 px.
+
 ## 0.5.14 — 2026-08-21
 
 - zakotwiczono Artura przy prawej krawędzi maksymalnego bloku treści zamiast przy krawędzi ekranu,
