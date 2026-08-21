@@ -111,6 +111,7 @@ class DT_Frontend {
         if (($settings['site_mode'] ?? 'test') === 'test') echo '<div class="dt-test-banner"><strong>Wersja testowa</strong><span>Serwis jest w trakcie testów. Dane i funkcje mogą jeszcze ulec zmianie.</span></div>';
         if (($settings['site_mode'] ?? 'test') === 'break' && !current_user_can('manage_options')) self::break_screen();
         elseif (!is_user_logged_in()) self::login(); else self::app_shell();
+        if (($settings['site_mode'] ?? 'test') !== 'break' || current_user_can('manage_options')) self::avatar_helper(!is_user_logged_in());
         echo '<div id="dt-toast" class="dt-front-toast" role="status" aria-live="polite"></div>';
         echo '</div>';
         return ob_get_clean();
@@ -159,7 +160,10 @@ class DT_Frontend {
         echo '</main>';
 
         echo '<dialog id="dt-submit-modal" class="dt-front-modal"><div class="dt-front-modal-body"><button class="dt-front-modal-x" type="button" data-modal-close aria-label="Zamknij">×</button><div class="dt-modal-icon">' . self::icon('lock') . '</div><span class="dt-front-kicker">OSTATECZNY ZAPIS</span><h2>Zapisać typy?</h2><p>Po zatwierdzeniu kuponu tej kolejki <strong>nie będzie można zmienić żadnego typu</strong>.</p><div class="dt-modal-actions"><button type="button" class="dt-modal-cancel" data-modal-close>Wróć</button><button type="button" class="dt-modal-confirm" id="dt-confirm-submit">Tak, zapisz kupon</button></div></div></dialog>';
-        echo '<aside id="dt-avatar-helper" class="dt-avatar-helper" aria-live="polite" hidden><button type="button" class="dt-avatar-close" aria-label="Zamknij">×</button><div class="dt-avatar-bubble"></div><img alt="Avatar pomocnika TypujKosza.pl"></aside>';
+    }
+
+    private static function avatar_helper(bool $landing = false): void {
+        echo '<aside id="dt-avatar-helper" class="dt-avatar-helper'.($landing?' is-landing':'').'" aria-live="polite" hidden><button type="button" class="dt-avatar-close" aria-label="Zamknij">×</button><div class="dt-avatar-bubble"></div><img alt="Avatar pomocnika TypujKosza.pl"></aside>';
     }
 
     private static function icon(string $name): string {
