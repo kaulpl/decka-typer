@@ -43,6 +43,7 @@
   let loaded=false;
   let account=null;
   let favoriteTeamId=Number(accountCfg.favoriteTeamId||0);
+  let favoriteLeague='';
 
   const providerLabel=p=>p==='google'?'Google':p==='facebook'?'Facebook':p;
   const fmtRegistered=value=>{
@@ -81,7 +82,11 @@
       ? data.providers.map(p=>`<span class="dt-account-provider is-${esc(p)}">${esc(providerLabel(p))}</span>`).join('')
       : '<span class="dt-account-provider">konto WordPress</span>';
     const teams=Array.isArray(data.teams)?data.teams:[];
-    const teamOptions=['<option value="0">Nie wybrano</option>',...teams.map(team=>`<option value="${Number(team.id||0)}" ${Number(team.id||0)===favoriteTeamId?'selected':''}>${esc(team.name)}</option>`)].join('');
+    const favoriteTeam=teams.find(team=>Number(team.id||0)===favoriteTeamId);
+    if(!favoriteLeague)favoriteLeague=String(favoriteTeam?.leagues?.[0]||'1lm').toLowerCase();
+    const leagueTeams=teams.filter(team=>(team.leagues||[]).map(String).map(x=>x.toLowerCase()).includes(favoriteLeague));
+    const teamOptions=['<option value="0">Wybierz drużynę</option>',...leagueTeams.map(team=>`<option value="${Number(team.id||0)}" ${Number(team.id||0)===favoriteTeamId?'selected':''}>${esc(team.name)}</option>`)].join('');
+    const leagueButtons=['1lm','plk','2lm'].map(league=>`<button type="button" data-favorite-league="${league}" class="${favoriteLeague===league?'is-active':''}">${league.toUpperCase()}</button>`).join('');
 
     target.innerHTML=`
       <section class="dt-account-card dt-account-primary">
@@ -93,8 +98,9 @@
 
           <div class="dt-account-form-divider"></div>
           <label for="dt-favorite-team">Ulubiona drużyna</label>
+          <div class="dt-favorite-league-picker" role="group" aria-label="Wybierz ligę ulubionej drużyny">${leagueButtons}</div>
           <div class="dt-account-select-wrap"><select id="dt-favorite-team" name="favorite_team_id">${teamOptions}</select></div>
-          <small>Mecze tej drużyny będą oznaczone na Twoim ekranie niebieską szarfą „ULUBIONA DRUŻYNA”.</small>
+          <small>Najpierw wybierz ligę, a następnie jedną z aktualnych drużyn. Jej mecze będą oznaczone niebieską szarfą „ULUBIONA DRUŻYNA”.</small>
 
           <div class="dt-account-save-row"><button type="submit">Zapisz ustawienia</button></div>
           <div id="dt-account-message" class="dt-account-message" aria-live="polite"></div>
@@ -117,6 +123,10 @@
       </section>`;
 
     target.querySelector('#dt-profile-settings-form')?.addEventListener('submit',save);
+    target.querySelectorAll('[data-favorite-league]').forEach(button=>button.addEventListener('click',()=>{
+      favoriteLeague=String(button.dataset.favoriteLeague||'1lm');
+      render(account);
+    }));
     decorateFavoriteMatches();
   };
 
@@ -137,6 +147,7 @@
     const message=form.querySelector('#dt-account-message');
     const name=String(input?.value||'').trim();
     const selectedFavorite=Number(favorite?.value||0);
+    const previousFavorite=favoriteTeamId;
     if(name.length<2||name.length>40){message.textContent='Nazwa musi mieć od 2 do 40 znaków.';message.className='dt-account-message is-error';return;}
     button.disabled=true;message.textContent='Zapisywanie…';message.className='dt-account-message';
     try{
@@ -147,6 +158,7 @@
       decorateFavoriteMatches();
       message.textContent='Zapisano ustawienia profilu.';
       message.className='dt-account-message is-success';
+      if(selectedFavorite>0&&selectedFavorite!==previousFavorite)root.dispatchEvent(new CustomEvent('dt:avatar',{detail:{key:'favorite'}}));
     }catch(err){message.textContent=err.message;message.className='dt-account-message is-error';}
     finally{button.disabled=false;}
   };
