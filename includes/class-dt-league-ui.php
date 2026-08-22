@@ -218,7 +218,7 @@ class DT_League_UI {
         if ($roundId < 1) return new WP_Error('invalid_round', 'Nie wybrano kolejki.', ['status'=>422]);
 
         $round = $wpdb->get_row($wpdb->prepare(
-            "SELECT id,season,league_key,round_no,status,closes_at,updated_at FROM " . DT_DB::table('rounds') . " WHERE id=%d",
+            "SELECT id,season,league_key,group_key,round_no,status,closes_at,updated_at FROM " . DT_DB::table('rounds') . " WHERE id=%d",
             $roundId
         ), ARRAY_A);
         if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
@@ -231,7 +231,7 @@ class DT_League_UI {
             return $cached;
         }
 
-        $forms = self::forms_before_cutoff((string)$round['season'], $roundId, $cutoff);
+        $forms = self::forms_before_cutoff($round, $roundId, $cutoff);
         $payload = [
             'round_id'=>$roundId,
             'round_no'=>(int)$round['round_no'],
@@ -248,17 +248,20 @@ class DT_League_UI {
         global $wpdb;
         $lastSync = (array)get_option('dt_last_sync', []);
         $standings = (array)get_option(self::CACHE_OPTION, []);
+        $groupSql = (string)($round['league_key'] ?? '') === '2lm' && (string)($round['group_key'] ?? '') !== ''
+            ? $wpdb->prepare(' AND r.group_key=%s', (string)$round['group_key']) : '';
         $resultFingerprint = $wpdb->get_row($wpdb->prepare(
             "SELECT COUNT(*) finished_count,COALESCE(MAX(m.updated_at),'') last_result_update,
                     COALESCE(SUM(m.id+m.score_home*1009+m.score_away*1013),0) result_sum
              FROM " . DT_DB::table('matches') . " m
              JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
-             WHERE r.season=%s AND m.round_id<>%d
-               AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
-               AND m.starts_at IS NOT NULL AND m.starts_at<%s",
+             WHERE r.season=%s AND r.league_key=%s $groupSql AND m.round_id<>%d
+               AND r.round_no<%d
+               AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL",
             (string)($round['season'] ?? ''),
+            (string)($round['league_key'] ?? '1lm'),
             $roundId,
-            $cutoff
+            (int)($round['round_no'] ?? 0)
         ), ARRAY_A);
         $signature = implode('|', [
             DT_VERSION,
@@ -287,12 +290,14 @@ class DT_League_UI {
         return current_time('mysql');
     }
 
-    private static function forms_before_cutoff(string $season, int $roundId, string $cutoff): array {
+    private static function forms_before_cutoff(array $round, int $roundId, string $cutoff): array {
         global $wpdb;
         $teamsTable = DT_DB::table('teams');
         $matchesTable = DT_DB::table('matches');
         $roundsTable = DT_DB::table('rounds');
 
+        $groupSql = (string)($round['league_key'] ?? '') === '2lm' && (string)($round['group_key'] ?? '') !== ''
+            ? $wpdb->prepare(' AND r.group_key=%s', (string)$round['group_key']) : '';
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT m.id,m.round_id,m.home_team_id,m.away_team_id,m.score_home,m.score_away,m.starts_at,
                     h.name home_name,h.logo_url home_logo,a.name away_name,a.logo_url away_logo
@@ -300,16 +305,16 @@ class DT_League_UI {
              JOIN $roundsTable r ON r.id=m.round_id
              JOIN $teamsTable h ON h.id=m.home_team_id
              JOIN $teamsTable a ON a.id=m.away_team_id
-             WHERE r.season=%s
+             WHERE r.season=%s AND r.league_key=%s $groupSql
+               AND r.round_no<%d
                AND m.round_id<>%d
                AND m.score_home IS NOT NULL
                AND m.score_away IS NOT NULL
-               AND m.starts_at IS NOT NULL
-               AND m.starts_at<%s
-             ORDER BY m.starts_at ASC,m.id ASC",
-            $season,
-            $roundId,
-            $cutoff
+             ORDER BY r.round_no ASC,COALESCE(m.starts_at,'9999-12-31 23:59:59') ASC,m.id ASC",
+            (string)($round['season'] ?? ''),
+            (string)($round['league_key'] ?? '1lm'),
+            (int)($round['round_no'] ?? 0),
+            $roundId
         ), ARRAY_A);
         if (!is_array($rows)) $rows = [];
 
@@ -322,10 +327,10 @@ class DT_League_UI {
             $homeStatus = $homeScore === $awayScore ? 'neutral' : ($homeScore > $awayScore ? 'win' : 'loss');
             $awayStatus = $homeScore === $awayScore ? 'neutral' : ($awayScore > $homeScore ? 'win' : 'loss');
 
-            $forms[$homeId][] = self::form_item($homeStatus, $awayId, (string)$match['away_name'], (string)$match['away_logo'], $homeScore, $awayScore);
-            $forms[$awayId][] = self::form_item($awayStatus, $homeId, (string)$match['home_name'], (string)$match['home_logo'], $awayScore, $homeScore);
-            if (count($forms[$homeId]) > 5) array_shift($forms[$homeId]);
-            if (count($forms[$awayId]) > 5) array_shift($forms[$awayId]);
+            $homeItem = self::form_item($homeStatus, $awayId, (string)$match['away_name'], (string)$match['away_logo'], $homeScore, $awayScore);
+            $awayItem = self::form_item($awayStatus, $homeId, (string)$match['home_name'], (string)$match['home_logo'], $awayScore, $homeScore);
+            foreach ([$homeId, 'club:' . self::club_key((string)$match['home_name'])] as $key) { $forms[$key][]=$homeItem; if (count($forms[$key])>5) array_shift($forms[$key]); }
+            foreach ([$awayId, 'club:' . self::club_key((string)$match['away_name'])] as $key) { $forms[$key][]=$awayItem; if (count($forms[$key])>5) array_shift($forms[$key]); }
         }
         return $forms;
     }
@@ -343,12 +348,13 @@ class DT_League_UI {
         $payload = [];
         foreach ($teams as $team) {
             $id = (int)$team['id'];
-            $items = array_values($forms[$id] ?? []);
-            while (count($items) < 5) array_unshift($items, null);
             $key = self::club_key((string)$team['name']);
+            $items = array_values($forms['club:' . $key] ?? $forms[$id] ?? []);
+            while (count($items) < 5) array_unshift($items, null);
             $position = isset($positions[$key]['position']) ? (int)$positions[$key]['position'] : null;
             $payload[(string)$id] = [
                 'position'=>$position,
+                'logo'=>class_exists('DT_Team_Logos') ? (DT_Team_Logos::url_for((string)$team['name']) ?: (string)$team['logo_url']) : (string)$team['logo_url'],
                 'form'=>array_slice($items, -5),
             ];
         }

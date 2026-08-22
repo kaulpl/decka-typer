@@ -277,11 +277,15 @@ class DT_REST {
             $historyFilter .= $wpdb->prepare(' AND r.group_key=%s', (string)$round['group_key']);
         }
         $history = $wpdb->get_results(
-            "SELECT m.id,m.home_team_id,m.away_team_id,m.score_home,m.score_away,m.starts_at
+            "SELECT m.id,m.round_id,m.home_team_id,m.away_team_id,m.score_home,m.score_away,m.starts_at,
+                    r.round_no,h.name home_name,a.name away_name
              FROM " . DT_DB::table('matches') . " m
              JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
+             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
              WHERE $historyFilter AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
-             ORDER BY m.starts_at ASC,m.id ASC",
+               AND (r.round_no<" . (int)($round['round_no'] ?? 0) . " OR r.id=" . (int)$roundId . ")
+             ORDER BY r.round_no ASC,m.starts_at ASC,m.id ASC",
             ARRAY_A
         );
 
@@ -320,8 +324,8 @@ class DT_REST {
             $match['featured'] = (bool) $match['featured'];
             $match['starts_at_iso'] = self::iso_datetime($match['starts_at'] ?? null);
             $before = !empty($match['starts_at']) ? (string)$match['starts_at'] : '9999-12-31 23:59:59';
-            $match['home_insights'] = self::team_insights((int)$match['home_team_id'], 'home', $before, (int)$match['id'], (array)$history);
-            $match['away_insights'] = self::team_insights((int)$match['away_team_id'], 'away', $before, (int)$match['id'], (array)$history);
+            $match['home_insights'] = self::team_insights((int)$match['home_team_id'], (string)$match['home_name'], 'home', $before, (int)$match['id'], (int)$roundId, (int)($round['round_no'] ?? 0), (array)$history);
+            $match['away_insights'] = self::team_insights((int)$match['away_team_id'], (string)$match['away_name'], 'away', $before, (int)$match['id'], (int)$roundId, (int)($round['round_no'] ?? 0), (array)$history);
             $prediction = $predMap[$match['id']] ?? null;
             $match['prediction'] = $prediction ? [
                 'selected_team_id'=>(int) $prediction['selected_team_id'],
@@ -351,13 +355,17 @@ class DT_REST {
         return $round;
     }
 
-    private static function team_insights(int $teamId, string $venue, string $before, int $currentMatchId, array $history): array {
+    private static function team_insights(int $teamId, string $teamName, string $venue, string $before, int $currentMatchId, int $currentRoundId, int $currentRoundNo, array $history): array {
         $all = [];
         $venueMatches = [];
+        $teamKey = self::team_key($teamName);
         foreach ($history as $item) {
-            if ((int)($item['id'] ?? 0) === $currentMatchId || (string)($item['starts_at'] ?? '') >= $before) continue;
-            $isHome = (int)($item['home_team_id'] ?? 0) === $teamId;
-            $isAway = (int)($item['away_team_id'] ?? 0) === $teamId;
+            if ((int)($item['id'] ?? 0) === $currentMatchId) continue;
+            $earlierRound = (int)($item['round_no'] ?? 0) < $currentRoundNo;
+            $earlierInCurrentRound = (int)($item['round_id'] ?? 0) === $currentRoundId && (string)($item['starts_at'] ?? '') < $before;
+            if (!$earlierRound && !$earlierInCurrentRound) continue;
+            $isHome = (int)($item['home_team_id'] ?? 0) === $teamId || self::team_key((string)($item['home_name'] ?? '')) === $teamKey;
+            $isAway = (int)($item['away_team_id'] ?? 0) === $teamId || self::team_key((string)($item['away_name'] ?? '')) === $teamKey;
             if (!$isHome && !$isAway) continue;
             $scored = $isHome ? (int)$item['score_home'] : (int)$item['score_away'];
             $allowed = $isHome ? (int)$item['score_away'] : (int)$item['score_home'];
@@ -381,6 +389,11 @@ class DT_REST {
             'venue_average'=>$average($venueMatches),
             'venue'=>$venue,
         ];
+    }
+
+    private static function team_key(string $name): string {
+        $name = strtolower(remove_accents(wp_strip_all_tags($name)));
+        return trim((string)preg_replace('/[^a-z0-9]+/', ' ', $name));
     }
 
     private static function me_payload(int $uid, string $season, string $league = 'all'): array {
