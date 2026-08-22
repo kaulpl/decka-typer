@@ -253,6 +253,27 @@
     floatingTooltip.style.top=`${Math.max(8,rect.top-tip.height-8)}px`;
   };
   const hideFormTooltip=()=>{floatingTooltip.hidden=true;};
+  document.addEventListener('pointermove',event=>{
+    if(event.pointerType==='touch'||floatingTooltip.hidden)return;
+    const dot=document.elementFromPoint(event.clientX,event.clientY)?.closest?.('.dt-form-dot:not(.is-empty)');
+    if(dot)return;
+    qa('.dt-form-dot.is-tooltip-open').forEach(item=>{
+      item.classList.remove('is-tooltip-open');
+      item.closest('.dt-team-choice')?.classList.remove('has-form-tooltip-open');
+    });
+    hideFormTooltip();
+  },{passive:true});
+  root.addEventListener('pointerleave',event=>{if(event.pointerType!=='touch')hideFormTooltip();});
+  document.addEventListener('pointerdown',event=>{
+    if(event.target.closest?.('.dt-form-dot:not(.is-empty)'))return;
+    qa('.dt-form-dot.is-tooltip-open').forEach(item=>{
+      item.classList.remove('is-tooltip-open');
+      item.closest('.dt-team-choice')?.classList.remove('has-form-tooltip-open');
+    });
+    hideFormTooltip();
+  },true);
+  window.addEventListener('scroll',hideFormTooltip,{passive:true});
+  window.addEventListener('blur',hideFormTooltip);
   root.addEventListener('mouseover',event=>{const dot=event.target.closest('.dt-form-dot:not(.is-empty)');if(dot)showFormTooltip(dot);});
   root.addEventListener('mouseout',event=>{const dot=event.target.closest('.dt-form-dot:not(.is-empty)');if(dot&&!dot.contains(event.relatedTarget)&&!dot.classList.contains('is-tooltip-open'))hideFormTooltip();});
   root.addEventListener('focusin',event=>{const dot=event.target.closest('.dt-form-dot:not(.is-empty)');if(dot)showFormTooltip(dot);});
