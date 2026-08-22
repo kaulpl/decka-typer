@@ -327,8 +327,8 @@ class DT_League_UI {
             $homeStatus = $homeScore === $awayScore ? 'neutral' : ($homeScore > $awayScore ? 'win' : 'loss');
             $awayStatus = $homeScore === $awayScore ? 'neutral' : ($awayScore > $homeScore ? 'win' : 'loss');
 
-            $homeItem = self::form_item($homeStatus, $awayId, (string)$match['away_name'], (string)$match['away_logo'], $homeScore, $awayScore);
-            $awayItem = self::form_item($awayStatus, $homeId, (string)$match['home_name'], (string)$match['home_logo'], $awayScore, $homeScore);
+            $homeItem = self::form_item($homeStatus, 'home', $awayId, (string)$match['away_name'], (string)$match['away_logo'], $homeScore, $awayScore);
+            $awayItem = self::form_item($awayStatus, 'away', $homeId, (string)$match['home_name'], (string)$match['home_logo'], $awayScore, $homeScore);
             foreach ([$homeId, 'club:' . self::club_key((string)$match['home_name'])] as $key) { $forms[$key][]=$homeItem; if (count($forms[$key])>5) array_shift($forms[$key]); }
             foreach ([$awayId, 'club:' . self::club_key((string)$match['away_name'])] as $key) { $forms[$key][]=$awayItem; if (count($forms[$key])>5) array_shift($forms[$key]); }
         }
@@ -361,10 +361,11 @@ class DT_League_UI {
         return $payload;
     }
 
-    private static function form_item(string $status, int $opponentId, string $opponentName, string $storedLogo, int $scoreFor, int $scoreAgainst): array {
+    private static function form_item(string $status, string $venue, int $opponentId, string $opponentName, string $storedLogo, int $scoreFor, int $scoreAgainst): array {
         $localLogo = class_exists('DT_Team_Logos') ? DT_Team_Logos::url_for($opponentName) : null;
         return [
             'status'=>$status,
+            'venue'=>$venue,
             'opponent_id'=>$opponentId,
             'opponent_name'=>$opponentName,
             'opponent_logo'=>$localLogo ?: $storedLogo,

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.29 — 2026-08-22
+
+- Dymki ostatnich spotkań zawsze pokazują gospodarza po lewej stronie, a gościa po prawej stronie wyniku.
+- Nagłówki „Wygrana” i „Porażka” zastąpiono informacją „Mecz domowy” albo „Mecz wyjazdowy”.
+- Zielone i czerwone tło nadal wskazuje odpowiednio zwycięstwo lub porażkę obserwowanej drużyny.
+- Opis dostępności dymka zachowuje tekstową informację o wyniku sportowym dla czytników ekranu.
+
 ## 0.5.28 — 2026-08-22
 
 - Poprawiono średnią punktów z trzech ostatnich meczów domowych i trzech ostatnich meczów wyjazdowych.

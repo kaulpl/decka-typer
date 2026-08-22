@@ -25,13 +25,17 @@
   const formDot=(item,teamLogo)=>{
     if(!item)return '<span class="dt-form-dot is-empty" aria-label="Brak danych"></span>';
     const status=item.status==='win'?'is-win':item.status==='loss'?'is-loss':'is-empty';
-    const label=item.status==='win'?'Wygrana':item.status==='loss'?'Porażka':'Brak rozstrzygnięcia';
-    const score=`${Number(item.score_for||0)} : ${Number(item.score_against||0)}`;
-    const title=`${label}${item.opponent_name?` z ${item.opponent_name}`:''} · ${score}`;
+    const isAway=item.venue==='away';
+    const label=isAway?'Mecz wyjazdowy':'Mecz domowy';
+    const score=isAway?`${Number(item.score_against||0)} : ${Number(item.score_for||0)}`:`${Number(item.score_for||0)} : ${Number(item.score_against||0)}`;
+    const result=item.status==='win'?'zwycięstwo':item.status==='loss'?'porażka':'remis';
+    const title=`${label}${item.opponent_name?` z ${item.opponent_name}`:''} · ${score} · ${result}`;
     const image=item.opponent_logo?`<img src="${esc(item.opponent_logo)}" alt="" loading="lazy">`:'';
     const ownLogo=teamLogo?`<img src="${esc(teamLogo)}" alt="" loading="lazy">`:'<i aria-hidden="true"></i>';
     const opponentLogo=item.opponent_logo?`<img src="${esc(item.opponent_logo)}" alt="" loading="lazy">`:'<i aria-hidden="true"></i>';
-    return `<span class="dt-form-dot ${status}" tabindex="0" role="button" aria-label="${esc(title)}">${image}<span class="dt-form-tooltip" role="tooltip"><b>${esc(label)}</b><span class="dt-form-scoreline">${ownLogo}<strong>${esc(score)}</strong>${opponentLogo}</span></span></span>`;
+    const leftLogo=isAway?opponentLogo:ownLogo;
+    const rightLogo=isAway?ownLogo:opponentLogo;
+    return `<span class="dt-form-dot ${status}" tabindex="0" role="button" aria-label="${esc(title)}">${image}<span class="dt-form-tooltip" role="tooltip"><b>${esc(label)}</b><span class="dt-form-scoreline">${leftLogo}<strong>${esc(score)}</strong>${rightLogo}</span></span></span>`;
   };
 
   const decorateTeamButton=btn=>{
