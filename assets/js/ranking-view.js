@@ -82,10 +82,12 @@
         return `<div class="dt-rank-row dt-ranking-grid ${rank<=3?'is-podium':''} ${r.is_expert?'is-expert':''}">
           <div class="dt-rank-pos">${rank}</div>
           <div class="dt-rank-person dt-rank-person-clean"><span class="dt-rank-user-copy"><strong>${icon?`<span class="dt-rank-medal" aria-label="Miejsce ${rank}">${icon}</span>`:''}<span class="dt-rank-name">${esc(r.display_name||'Kibic')}</span>${r.is_expert?'<span class="dt-expert-badge">EKSPERT!</span>':''}</strong><small>${Number(r.predictions||0)} typów</small></span></div>
-          <div class="dt-rank-points">${fmtPoints(r.points)} pkt</div>
-          <div class="dt-rank-hit-rate"><strong>${Number(r.winner_hits||0)}/${Number(r.predictions||0)}</strong><small>trafione / typowane</small></div>
-          <div class="dt-rank-efficiency"><strong>${n(r.efficiency).toFixed(1).replace('.',',')}%</strong><small>skuteczność</small></div>
-          <div class="dt-rank-bonus"><strong>${n(r.bonus_points)>0?`+${fmtPoints(r.bonus_points)} pkt`:'0'}</strong><small>${Number(r.bonus_hits||0)} trafień BONUS</small></div>
+          <div class="dt-rank-points" data-label="Punkty">${fmtPoints(r.points)} pkt</div>
+          <div class="dt-rank-mobile-stats">
+            <div class="dt-rank-hit-rate" data-label="Trafienia"><strong>${Number(r.winner_hits||0)}/${Number(r.predictions||0)}</strong><small>trafione / typowane</small></div>
+            <div class="dt-rank-efficiency" data-label="Skuteczność"><strong>${n(r.efficiency).toFixed(1).replace('.',',')}%</strong><small>skuteczność</small></div>
+            <div class="dt-rank-bonus" data-label="Bonus"><strong>${n(r.bonus_points)>0?`+${fmtPoints(r.bonus_points)} pkt`:'0'}</strong><small>${Number(r.bonus_hits||0)} trafień BONUS</small></div>
+          </div>
         </div>`;
       }).join('')}`;
   };

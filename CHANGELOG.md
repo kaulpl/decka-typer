@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.21 — 2026-08-22
+
+- Zastąpiono tekst „Do meczu pozostało” kompaktową ikoną zegara.
+- Zmniejszono typografię licznika przy meczu, zachowując dostępny opis dla czytników ekranu.
+- Przebudowano mobilny ranking na czytelne karty bez poziomego rozsuwania strony.
+- Uporządkowano na telefonach miejsce, użytkownika, punkty, trafienia, skuteczność i bonus.
+- Dostosowano mobilne filtry zakresu, lig, grup i sezonów.
+
 ## 0.5.20 — 2026-08-22
 
 - Dodano na landing page i w aplikacji trzy graficzne liczniki startu lig: 1LM, PLK i 2LM.
