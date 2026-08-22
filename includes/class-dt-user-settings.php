@@ -40,6 +40,12 @@ class DT_User_Settings {
             ['dt-front'],
             DT_VERSION
         );
+        wp_enqueue_style(
+            'dt-account-typography',
+            DT_URL . 'assets/css/account-typography.css',
+            ['dt-user-settings'],
+            DT_VERSION
+        );
         wp_enqueue_script(
             'dt-user-settings',
             DT_URL . 'assets/js/user-settings.js',

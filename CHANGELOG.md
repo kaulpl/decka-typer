@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.18 — 2026-08-22
+
+- Zwiększono wszystkie teksty w zakładce „Moje konto” do minimum 14 px.
+- Powiększono etykiety, podpowiedzi, dane konta, komunikaty, przyciski i oznaczenia sposobu logowania.
+- Dostosowano wysokość komunikatów formularza do większej typografii.
+
 ## 0.5.17 — 2026-08-21
 
 - Nazwy lig w przełączniku zakładki „Typuj” są pobierane z ustawień administratora.
