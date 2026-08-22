@@ -248,6 +248,7 @@ class DT_League_UI {
         $lastSync = (array)get_option('dt_last_sync', []);
         $standings = (array)get_option(self::CACHE_OPTION, []);
         $signature = implode('|', [
+            DT_VERSION,
             $roundId,
             (string)($round['season'] ?? ''),
             (string)($round['updated_at'] ?? ''),
@@ -305,8 +306,8 @@ class DT_League_UI {
             $homeStatus = $homeScore === $awayScore ? 'neutral' : ($homeScore > $awayScore ? 'win' : 'loss');
             $awayStatus = $homeScore === $awayScore ? 'neutral' : ($awayScore > $homeScore ? 'win' : 'loss');
 
-            $forms[$homeId][] = self::form_item($homeStatus, $awayId, (string)$match['away_name'], (string)$match['away_logo']);
-            $forms[$awayId][] = self::form_item($awayStatus, $homeId, (string)$match['home_name'], (string)$match['home_logo']);
+            $forms[$homeId][] = self::form_item($homeStatus, $awayId, (string)$match['away_name'], (string)$match['away_logo'], $homeScore, $awayScore);
+            $forms[$awayId][] = self::form_item($awayStatus, $homeId, (string)$match['home_name'], (string)$match['home_logo'], $awayScore, $homeScore);
             if (count($forms[$homeId]) > 5) array_shift($forms[$homeId]);
             if (count($forms[$awayId]) > 5) array_shift($forms[$awayId]);
         }
@@ -338,13 +339,15 @@ class DT_League_UI {
         return $payload;
     }
 
-    private static function form_item(string $status, int $opponentId, string $opponentName, string $storedLogo): array {
+    private static function form_item(string $status, int $opponentId, string $opponentName, string $storedLogo, int $scoreFor, int $scoreAgainst): array {
         $localLogo = class_exists('DT_Team_Logos') ? DT_Team_Logos::url_for($opponentName) : null;
         return [
             'status'=>$status,
             'opponent_id'=>$opponentId,
             'opponent_name'=>$opponentName,
             'opponent_logo'=>$localLogo ?: $storedLogo,
+            'score_for'=>$scoreFor,
+            'score_against'=>$scoreAgainst,
         ];
     }
 
