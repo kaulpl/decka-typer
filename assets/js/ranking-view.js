@@ -6,12 +6,12 @@
   const legacyToggle=panel?.querySelector('.dt-ranking-toggle');
   if(!root||!panel||!box||!legacyToggle||!cfg.root)return;
 
-  let scope='all';
+  let scope='season';
   let season=String(cfg.season||'');
   let roundId=0;
   let seasons=[];
   let rounds=[];
-  let league='all',leagues=[],group='',groups=[];
+  let league='1lm',leagues=[],group='',groups=[];
   let loadingSeq=0;
 
   const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
@@ -20,8 +20,8 @@
   const medal=rank=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'';
 
   legacyToggle.innerHTML=`
-    <button class="is-active" data-rank-scope="all">Wszechczasów</button>
-    <button data-rank-scope="season">Sezon</button>
+    <button data-rank-scope="all">Wszechczasów</button>
+    <button class="is-active" data-rank-scope="season">Sezon</button>
     <button data-rank-scope="round">Kolejka</button>`;
 
   const controls=panel.querySelector('.dt-ranking-controls')||legacyToggle.parentElement;

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.19 — 2026-08-22
+
+- Ustawiono domyślny widok rankingu po otwarciu lub odświeżeniu strony na „Sezon” i „1LM”.
+- Zachowano wybrane filtry rankingu podczas poruszania się między zakładkami bez odświeżania strony.
+- Wyłączono trwałe przenoszenie wyboru rankingu na kolejne odświeżenie strony.
+
 ## 0.5.18 — 2026-08-22
 
 - Zwiększono wszystkie teksty w zakładce „Moje konto” do minimum 14 px.
