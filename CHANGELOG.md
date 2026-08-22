@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.23 — 2026-08-22
+
+- Zastąpiono niebieskie oznaczenie meczu ulubionej drużyny plakietką „ULUBIONA DRUŻYNA” obok plakietki BONUS.
+- Dodano do każdego meczu w zakładce „Typuj” zwijany panel „Rozwiń więcej”.
+- Dodano dla obu drużyn bilans ogólny oraz bilans domowy lub wyjazdowy.
+- Dodano średnią zdobytych punktów z trzech ostatnich meczów ogółem i z trzech ostatnich spotkań domowych lub wyjazdowych.
+- Dodano dostępne podpowiedzi wyjaśniające sposób liczenia średnich.
+- Statystyki uwzględniają wyłącznie wcześniejsze rozegrane mecze bieżącego sezonu, ligi i grupy 2LM.
+
 ## 0.5.22 — 2026-08-22
 
 - Naprawiono zaznaczanie wybranej grupy 2LM w rankingu.

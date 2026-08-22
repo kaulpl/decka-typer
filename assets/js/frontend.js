@@ -56,6 +56,14 @@
   };
   const initials=name=>String(name||'').split(/\s+/).filter(Boolean).slice(-2).map(x=>x[0]).join('').toUpperCase();
   const teamLogo=(name,url)=>url?`<div class="dt-team-logo"><img src="${esc(url)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${esc(initials(name))}'"></div>`:`<div class="dt-team-logo">${esc(initials(name))}</div>`;
+  const recordLabel=record=>`${Number(record?.wins||0)}-${Number(record?.losses||0)}`;
+  const averageLabel=value=>value===null||value===undefined?'—':Number(value).toFixed(1).replace('.',',');
+  const infoTip=text=>`<span class="dt-info-tip" tabindex="0" aria-label="Informacja"><span aria-hidden="true">i</span><span class="dt-info-tooltip" role="tooltip">${esc(text)}</span></span>`;
+  const teamInsights=(name,data,venue)=>{
+    const venueName=venue==='home'?'dom':'wyjazd';
+    const venueHelp=venue==='home'?'Średnia zdobywanych punktów w ostatnich 3 meczach domowych.':'Średnia zdobywanych punktów w ostatnich 3 meczach wyjazdowych.';
+    return `<section class="dt-team-insights"><strong>${esc(name)}</strong><dl><div><dt>Bilans ogólny</dt><dd>${esc(recordLabel(data?.overall_record))}</dd></div><div><dt>Bilans ${venueName}</dt><dd>${esc(recordLabel(data?.venue_record))}</dd></div><div><dt>Średnia pkt ${venueName} ${infoTip(venueHelp)}</dt><dd>${esc(averageLabel(data?.venue_average))}</dd></div><div><dt>Średnia pkt ${infoTip('Średnia zdobywanych punktów w ostatnich 3 meczach ogółem.')}</dt><dd>${esc(averageLabel(data?.overall_average))}</dd></div></dl></section>`;
+  };
 
   const load=async()=>{
     try{
@@ -172,7 +180,7 @@
         <button type="button" class="dt-team-choice ${homeClass}" data-team-choice data-match="${m.id}" data-team="${m.home_team_id}" ${canPick?'':'disabled'}>${teamLogo(m.home_name,m.home_logo)}<strong>${esc(m.home_name)}</strong><span class="dt-choice-mark">${pick===Number(m.home_team_id)?'TWÓJ TYP':'GOSPODARZ'}</span></button>
         <div class="dt-vs-mark">VS</div>
         <button type="button" class="dt-team-choice ${awayClass}" data-team-choice data-match="${m.id}" data-team="${m.away_team_id}" ${canPick?'':'disabled'}>${teamLogo(m.away_name,m.away_logo)}<strong>${esc(m.away_name)}</strong><span class="dt-choice-mark">${pick===Number(m.away_team_id)?'TWÓJ TYP':'GOŚĆ'}</span></button>
-      </div>${result}</article>`;
+      </div>${result}<details class="dt-match-more"><summary><span aria-hidden="true">▾</span> Rozwiń więcej <span aria-hidden="true">▾</span></summary><div class="dt-match-insights-grid">${teamInsights(m.home_name,m.home_insights,'home')}${teamInsights(m.away_name,m.away_insights,'away')}</div></details></article>`;
   };
   const bindTeamChoices=()=>{
     $$('[data-team-choice]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -222,7 +230,7 @@
     if(!me)return;
     const sum=$('#dt-my-summary'),hist=$('#dt-my-history');
     if(sum)sum.innerHTML=`<div class="dt-my-cards"><div class="dt-my-card"><span>Miejsce</span><strong>${me.rank?`#${me.rank}`:'—'}</strong></div><div class="dt-my-card"><span>Punkty</span><strong>${Number(me.points||0).toFixed(0)}</strong></div><div class="dt-my-card"><span>Trafienia</span><strong>${me.winner_hits||0}</strong></div><div class="dt-my-card"><span>Kupony</span><strong>${me.submissions||0}</strong></div></div>`;
-    if(hist){const h=me.history||[],favoriteId=Number(window.DeckaTyperAccountConfig?.favoriteTeamId||0);hist.innerHTML=h.length?h.map(x=>`<div class="dt-history-row ${favoriteId>0&&[Number(x.home_team_id||0),Number(x.away_team_id||0)].includes(favoriteId)?'is-favorite-team':''}"><div class="dt-history-round">#${x.round_no} kolejka</div><div class="dt-history-game">${esc(x.home_name)} – ${esc(x.away_name)}<small>${esc(fmtDate(x.starts_at_iso,true))}</small></div><div class="dt-history-score"><small>Twój typ</small><strong>${esc(x.selected_team_name)}</strong></div><div class="dt-history-points">${x.result_known?`${Number(x.points).toFixed(0)} pkt`:'—'}</div></div>`).join(''):'<div class="dt-empty-front">Nie masz jeszcze zapisanych typów.</div>';}
+    if(hist){const h=me.history||[],favoriteId=Number(window.DeckaTyperAccountConfig?.favoriteTeamId||0);hist.innerHTML=h.length?h.map(x=>{const favorite=favoriteId>0&&[Number(x.home_team_id||0),Number(x.away_team_id||0)].includes(favoriteId);return `<div class="dt-history-row"><div class="dt-history-round">#${x.round_no} kolejka</div><div class="dt-history-game">${esc(x.home_name)} – ${esc(x.away_name)}<small>${esc(fmtDate(x.starts_at_iso,true))}</small>${favorite?'<span class="dt-history-favorite">♥ Ulubiona drużyna</span>':''}</div><div class="dt-history-score"><small>Twój typ</small><strong>${esc(x.selected_team_name)}</strong></div><div class="dt-history-points">${x.result_known?`${Number(x.points).toFixed(0)} pkt`:'—'}</div></div>`;}).join(''):'<div class="dt-empty-front">Nie masz jeszcze zapisanych typów.</div>';}
   };
 
   root.addEventListener('click',e=>{

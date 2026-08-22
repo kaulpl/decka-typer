@@ -51,14 +51,16 @@
   const matchRow=item=>{
     const status=statusOf(item);
     const statusLabel=status==='hit'?'TRAFIONY':status==='miss'?'NIETRAFIONY':'OCZEKUJE';
-    const bonus=item.is_bonus?`<span class="dt-coupon-bonus">★ BONUS +${esc(fmtBonus(item.bonus_points))} PKT</span>`:'';
     const favoriteId=Number(accountCfg.favoriteTeamId||0);
     const isFavorite=favoriteId>0&&[Number(item.home_team_id||0),Number(item.away_team_id||0)].includes(favoriteId);
-    return `<div class="dt-coupon-match is-${status} ${item.is_bonus?'is-bonus':''} ${isFavorite?'is-favorite-team':''}">
+    const bonus=item.is_bonus?`<span class="dt-coupon-bonus">★ BONUS +${esc(fmtBonus(item.bonus_points))} PKT</span>`:'';
+    const favorite=isFavorite?'<span class="dt-coupon-favorite">♥ ULUBIONA DRUŻYNA</span>':'';
+    const tags=bonus||favorite?`<span class="dt-coupon-tags">${bonus}${favorite}</span>`:'';
+    return `<div class="dt-coupon-match is-${status} ${item.is_bonus?'is-bonus':''}">
       <div class="dt-coupon-game">
         <strong>${esc(item.home_name)} <span>–</span> ${esc(item.away_name)}</strong>
         <small>${esc(fmtDate(item.starts_at_iso))}</small>
-        ${bonus}
+        ${tags}
       </div>
       <div class="dt-coupon-user-pick">
         <small>TWÓJ TYP</small>
