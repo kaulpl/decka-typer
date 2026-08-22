@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.27 — 2026-08-22
+
+- Dymki ostatnich pięciu spotkań pokazują logotyp drużyny, wynik i logotyp przeciwnika zamiast tekstowej nazwy rywala.
+- Logotypy w dymku są o 15% wyższe od czcionki wyniku.
+- Historia formy oraz średnie punktowe rozpoznają wcześniejsze spotkania na podstawie numeru kolejki, a nie wyłącznie daty meczu.
+- Dodano rozpoznawanie tego samego klubu po znormalizowanej nazwie, dzięki czemu duplikat identyfikatora powstały po synchronizacji nie ukrywa wyników.
+- Ręcznie uzupełniony wynik wcześniejszej kolejki jest uwzględniany również wtedy, gdy spotkanie nie ma zapisanej godziny rozpoczęcia.
+
 ## 0.5.26 — 2026-08-22
 
 - Przeniesiono dymki wyników ostatnich pięciu meczów do niezależnej warstwy nad aplikacją.

@@ -22,14 +22,16 @@
   const currentRoundId=()=>Number(q('#dt-round-select')?.value||0);
   const teamData=id=>activeTeams?.[String(id)]||cfg.teams?.[String(id)]||{position:null,form:[null,null,null,null,null]};
 
-  const formDot=item=>{
+  const formDot=(item,teamLogo)=>{
     if(!item)return '<span class="dt-form-dot is-empty" aria-label="Brak danych"></span>';
     const status=item.status==='win'?'is-win':item.status==='loss'?'is-loss':'is-empty';
     const label=item.status==='win'?'Wygrana':item.status==='loss'?'Porażka':'Brak rozstrzygnięcia';
     const score=`${Number(item.score_for||0)} : ${Number(item.score_against||0)}`;
     const title=`${label}${item.opponent_name?` z ${item.opponent_name}`:''} · ${score}`;
     const image=item.opponent_logo?`<img src="${esc(item.opponent_logo)}" alt="" loading="lazy">`:'';
-    return `<span class="dt-form-dot ${status}" tabindex="0" role="button" aria-label="${esc(title)}">${image}<span class="dt-form-tooltip" role="tooltip"><b>${esc(label)}</b><span>${esc(score)}</span><small>${esc(item.opponent_name||'')}</small></span></span>`;
+    const ownLogo=teamLogo?`<img src="${esc(teamLogo)}" alt="" loading="lazy">`:'<i aria-hidden="true"></i>';
+    const opponentLogo=item.opponent_logo?`<img src="${esc(item.opponent_logo)}" alt="" loading="lazy">`:'<i aria-hidden="true"></i>';
+    return `<span class="dt-form-dot ${status}" tabindex="0" role="button" aria-label="${esc(title)}">${image}<span class="dt-form-tooltip" role="tooltip"><b>${esc(label)}</b><span class="dt-form-scoreline">${ownLogo}<strong>${esc(score)}</strong>${opponentLogo}</span></span></span>`;
   };
 
   const decorateTeamButton=btn=>{
@@ -54,7 +56,8 @@
       }
       const items=Array.isArray(data.form)?data.form.slice(-5):[];
       while(items.length<5)items.unshift(null);
-      form.innerHTML=items.map(formDot).join('');
+      const teamLogo=data.logo||btn.querySelector('.dt-team-logo img')?.src||'';
+      form.innerHTML=items.map(item=>formDot(item,teamLogo)).join('');
     }
   };
 
