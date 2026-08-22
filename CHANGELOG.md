@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.26 — 2026-08-22
+
+- Przeniesiono dymki wyników ostatnich pięciu meczów do niezależnej warstwy nad aplikacją.
+- Dymki nie są już przycinane ani zasłaniane przez kafelki drużyn i moduł meczu.
+- Zachowano obsługę najechania, klawiatury oraz dotknięcia na telefonie.
+- Rozszerzono klucz pamięci podręcznej formy o liczbę, czas aktualizacji i sumę wyników rozegranych spotkań.
+- Każda ręczna zmiana wyniku automatycznie odświeża ostatnie pięć meczów wszystkich drużyn.
+
 ## 0.5.25 — 2026-08-22
 
 - Przeniesiono wstęgę „ULUBIONA DRUŻYNA” z całego modułu meczu na kafelek konkretnej drużyny.

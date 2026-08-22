@@ -233,12 +233,31 @@
   };
 
   const matchBox=q('#dt-matches');
+  const floatingTooltip=document.createElement('div');
+  floatingTooltip.className='dt-form-floating-tooltip';
+  floatingTooltip.hidden=true;
+  document.body.appendChild(floatingTooltip);
+  const showFormTooltip=dot=>{
+    const content=dot.querySelector('.dt-form-tooltip');if(!content)return;
+    floatingTooltip.className=`dt-form-floating-tooltip ${dot.classList.contains('is-win')?'is-win':'is-loss'}`;
+    floatingTooltip.innerHTML=content.innerHTML;floatingTooltip.hidden=false;
+    const rect=dot.getBoundingClientRect(),tip=floatingTooltip.getBoundingClientRect();
+    floatingTooltip.style.left=`${Math.max(8,Math.min(window.innerWidth-tip.width-8,rect.left+rect.width/2-tip.width/2))}px`;
+    floatingTooltip.style.top=`${Math.max(8,rect.top-tip.height-8)}px`;
+  };
+  const hideFormTooltip=()=>{floatingTooltip.hidden=true;};
+  root.addEventListener('mouseover',event=>{const dot=event.target.closest('.dt-form-dot:not(.is-empty)');if(dot)showFormTooltip(dot);});
+  root.addEventListener('mouseout',event=>{const dot=event.target.closest('.dt-form-dot:not(.is-empty)');if(dot&&!dot.contains(event.relatedTarget)&&!dot.classList.contains('is-tooltip-open'))hideFormTooltip();});
+  root.addEventListener('focusin',event=>{const dot=event.target.closest('.dt-form-dot:not(.is-empty)');if(dot)showFormTooltip(dot);});
+  root.addEventListener('focusout',event=>{const dot=event.target.closest('.dt-form-dot:not(.is-empty)');if(dot&&!dot.classList.contains('is-tooltip-open'))hideFormTooltip();});
   root.addEventListener('click',event=>{
     const dot=event.target.closest('.dt-form-dot:not(.is-empty)');
     if(!dot)return;
     event.preventDefault();event.stopPropagation();
-    qa('.dt-form-dot.is-tooltip-open').forEach(item=>{if(item!==dot)item.classList.remove('is-tooltip-open');});
+    qa('.dt-form-dot.is-tooltip-open').forEach(item=>{if(item!==dot){item.classList.remove('is-tooltip-open');item.closest('.dt-team-choice')?.classList.remove('has-form-tooltip-open');}});
     dot.classList.toggle('is-tooltip-open');
+    dot.closest('.dt-team-choice')?.classList.toggle('has-form-tooltip-open',dot.classList.contains('is-tooltip-open'));
+    if(dot.classList.contains('is-tooltip-open'))showFormTooltip(dot);else hideFormTooltip();
   },true);
   root.addEventListener('keydown',event=>{
     const dot=event.target.closest('.dt-form-dot:not(.is-empty)');

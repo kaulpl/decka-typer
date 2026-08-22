@@ -245,8 +245,21 @@ class DT_League_UI {
     }
 
     private static function context_cache_key(int $roundId, array $round, string $cutoff): string {
+        global $wpdb;
         $lastSync = (array)get_option('dt_last_sync', []);
         $standings = (array)get_option(self::CACHE_OPTION, []);
+        $resultFingerprint = $wpdb->get_row($wpdb->prepare(
+            "SELECT COUNT(*) finished_count,COALESCE(MAX(m.updated_at),'') last_result_update,
+                    COALESCE(SUM(m.id+m.score_home*1009+m.score_away*1013),0) result_sum
+             FROM " . DT_DB::table('matches') . " m
+             JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+             WHERE r.season=%s AND m.round_id<>%d
+               AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
+               AND m.starts_at IS NOT NULL AND m.starts_at<%s",
+            (string)($round['season'] ?? ''),
+            $roundId,
+            $cutoff
+        ), ARRAY_A);
         $signature = implode('|', [
             DT_VERSION,
             $roundId,
@@ -255,6 +268,9 @@ class DT_League_UI {
             $cutoff,
             (string)($lastSync['at'] ?? ''),
             (string)($standings['fetched_at'] ?? ''),
+            (string)($resultFingerprint['finished_count'] ?? 0),
+            (string)($resultFingerprint['last_result_update'] ?? ''),
+            (string)($resultFingerprint['result_sum'] ?? 0),
         ]);
         return 'dt_lctx_' . substr(md5($signature), 0, 24);
     }
