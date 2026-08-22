@@ -55,18 +55,21 @@
 
   const decorateFavoriteMatches=()=>{
     root.querySelectorAll('#dt-matches [data-match-card]').forEach(card=>{
-      const teamIds=[...card.querySelectorAll('.dt-team-choice[data-team]')].map(btn=>Number(btn.dataset.team||0));
-      const isFavorite=favoriteTeamId>0&&teamIds.includes(favoriteTeamId);
-      card.classList.toggle('is-favorite-team',isFavorite);
-      let ribbon=card.querySelector('.dt-favorite-ribbon');
-      if(isFavorite&&!ribbon){
-        ribbon=document.createElement('div');
-        ribbon.className='dt-favorite-ribbon';
-        ribbon.textContent='ULUBIONA DRUŻYNA';
-        card.appendChild(ribbon);
-      }else if(!isFavorite&&ribbon){
-        ribbon.remove();
-      }
+      card.classList.remove('is-favorite-team');
+      card.querySelectorAll(':scope > .dt-favorite-ribbon').forEach(ribbon=>ribbon.remove());
+      card.querySelectorAll('.dt-team-choice[data-team]').forEach(team=>{
+        const isFavorite=favoriteTeamId>0&&Number(team.dataset.team||0)===favoriteTeamId;
+        team.classList.toggle('is-favorite-team-choice',isFavorite);
+        let ribbon=team.querySelector(':scope > .dt-favorite-ribbon');
+        if(isFavorite&&!ribbon){
+          ribbon=document.createElement('span');
+          ribbon.className='dt-favorite-ribbon';
+          ribbon.textContent='ULUBIONA DRUŻYNA';
+          team.appendChild(ribbon);
+        }else if(!isFavorite&&ribbon){
+          ribbon.remove();
+        }
+      });
     });
   };
 

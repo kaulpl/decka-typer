@@ -46,6 +46,12 @@ class DT_User_Settings {
             ['dt-user-settings'],
             DT_VERSION
         );
+        wp_enqueue_style(
+            'dt-favorite-team-ribbon',
+            DT_URL . 'assets/css/favorite-team-ribbon.css',
+            ['dt-user-settings'],
+            DT_VERSION
+        );
         wp_enqueue_script(
             'dt-user-settings',
             DT_URL . 'assets/js/user-settings.js',

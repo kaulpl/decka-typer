@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.25 — 2026-08-22
+
+- Przeniesiono wstęgę „ULUBIONA DRUŻYNA” z całego modułu meczu na kafelek konkretnej drużyny.
+- Umieszczono oznaczenie w prawym dolnym rogu kafelka ulubionej drużyny.
+- Usunięto niebieskie wyróżnienie obejmujące cały mecz.
+- Dodano osobne dopasowanie wielkości i położenia wstęgi na telefonach.
+
 ## 0.5.24 — 2026-08-22
 
 - Poprawiono pozycjonowanie dymków wyjaśniających średnie punktowe przy krawędziach strony.
