@@ -18,6 +18,7 @@
   const n=v=>Number(v||0);
   const fmtPoints=v=>Number.isInteger(n(v))?String(n(v)):n(v).toFixed(1).replace('.',',');
   const medal=rank=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'';
+  const normalizeGroup=value=>String(value||'').trim().toUpperCase().replace(/^GRUPA\s+/,'');
 
   legacyToggle.innerHTML=`
     <button data-rank-scope="all">Wszechczasów</button>
@@ -49,7 +50,7 @@
     const leagueBar=document.createElement('div');leagueBar.className='dt-filter-segmented dt-filter-leagues';
     leagueBar.innerHTML=leagues.map(l=>`<button type="button" data-filter-league="${esc(l.key)}" class="${l.key===league?'is-active':''}">${esc(l.name)}</button>`).join('');
     filters.appendChild(leagueBar);
-    if(league==='2lm'&&groups.length){const groupBar=document.createElement('div');groupBar.className='dt-filter-segmented dt-filter-groups';groupBar.innerHTML=groups.map(g=>`<button type="button" data-filter-group="${esc(g)}" class="${g===group?'is-active':''}">GRUPA ${esc(String(g).toUpperCase())}</button>`).join('');filters.appendChild(groupBar);}
+    if(league==='2lm'&&groups.length){const groupBar=document.createElement('div');groupBar.className='dt-filter-segmented dt-filter-groups';groupBar.innerHTML=groups.map(g=>`<button type="button" data-filter-group="${esc(normalizeGroup(g))}" class="${normalizeGroup(g)===normalizeGroup(group)?'is-active':''}">GRUPA ${esc(normalizeGroup(g))}</button>`).join('');filters.appendChild(groupBar);}
     if(scope==='all')return;
 
     const seasonBar=document.createElement('div');seasonBar.className='dt-filter-segmented dt-filter-seasons';seasonBar.innerHTML=seasons.map(s=>`<button type="button" data-filter-season="${esc(s)}" class="${s===season?'is-active':''}">${esc(s)}</button>`).join('');filters.appendChild(seasonBar);
@@ -102,9 +103,9 @@
       season=String(data.season||season||seasons[0]||'');
       rounds=Array.isArray(data.rounds)?data.rounds:[];
       leagues=Array.isArray(data.leagues)?data.leagues:[];
-      groups=Array.isArray(data.groups)?data.groups:[];
+      groups=Array.isArray(data.groups)?data.groups.map(normalizeGroup).filter(Boolean):[];
       league=String(data.league||league||'all');
-      group=String(data.group||group||groups[0]||'');
+      group=normalizeGroup(data.group||group||groups[0]||'');
       roundId=Number(data.round_id||roundId||0);
       if(scope==='round'&&!roundId&&rounds.length)roundId=Number(rounds[rounds.length-1].id);
       renderFilters();
@@ -124,7 +125,7 @@
   root.addEventListener('click',e=>{
     if(e.target.closest('[data-tab="ranking"]'))setTimeout(load,0);
     const leagueButton=e.target.closest('[data-filter-league]');if(leagueButton){league=leagueButton.dataset.filterLeague||'all';group='';roundId=0;load();return;}
-    const groupButton=e.target.closest('[data-filter-group]');if(groupButton){group=groupButton.dataset.filterGroup||'';roundId=0;load();return;}
+    const groupButton=e.target.closest('[data-filter-group]');if(groupButton){group=normalizeGroup(groupButton.dataset.filterGroup);roundId=0;load();return;}
     const seasonButton=e.target.closest('[data-filter-season]');if(seasonButton){season=seasonButton.dataset.filterSeason||season;roundId=0;load();}
   });
 

@@ -79,7 +79,7 @@
     const complete=known.length===items.length&&items.length>0;
     const baseMeta=complete?`${hits}/${items.length} trafień · ${points.toFixed(0)} pkt`:`${known.length}/${items.length} rozliczonych`;
     const meta=bonusMatches?`${baseMeta} · ★ BONUS`:baseMeta;
-    return `<details class="dt-coupon" ${index===0?'open':''}>
+    return `<details class="dt-coupon is-league-${esc(league)}" ${index===0?'open':''}>
       <summary class="dt-coupon-summary">
         <div class="dt-coupon-title">
           <small>${esc(leagueLabel)}</small>
