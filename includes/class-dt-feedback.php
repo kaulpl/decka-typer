@@ -55,7 +55,7 @@ class DT_Feedback {
 
     public static function render(): void {
         if (!is_user_logged_in()) return;
-        echo '<button type="button" class="dt-feedback-trigger" id="dt-feedback-trigger" aria-haspopup="dialog"><span aria-hidden="true">!</span>Zgłoś problem</button>';
+        echo '<button type="button" class="dt-feedback-trigger" id="dt-feedback-trigger" aria-haspopup="dialog" aria-label="Zgłoś problem"><span class="dt-feedback-trigger-icon" aria-hidden="true">!</span><span class="dt-feedback-trigger-label" aria-hidden="true">Zgłoś problem</span></button>';
         echo '<dialog class="dt-feedback-modal" id="dt-feedback-modal" aria-labelledby="dt-feedback-title"><form method="dialog" class="dt-feedback-card" id="dt-feedback-form">';
         echo '<button type="button" class="dt-feedback-close" data-feedback-close aria-label="Zamknij">×</button>';
         echo '<div class="dt-feedback-icon" aria-hidden="true">!</div><p class="dt-feedback-kicker">POMÓŻ NAM ULEPSZAĆ SERWIS</p><h2 id="dt-feedback-title">Zgłoś problem</h2>';
