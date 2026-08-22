@@ -1,0 +1,29 @@
+/* Keep every text element in the user's account readable at 14 px or more. */
+.dt-account-hint,
+.dt-account-form label,
+.dt-account-form input,
+.dt-account-form select,
+.dt-account-form small,
+.dt-account-footnote,
+.dt-account-message,
+.dt-account-grid span,
+.dt-account-grid strong,
+.dt-account-save-row button,
+.dt-account-button,
+.dt-account-loading,
+.dt-account-error {
+    font-size: 14px;
+}
+
+.dt-account-provider {
+    font-size: 14px !important;
+}
+
+.dt-account-form small,
+.dt-account-footnote {
+    line-height: 1.55;
+}
+
+.dt-account-message {
+    min-height: 22px;
+}
