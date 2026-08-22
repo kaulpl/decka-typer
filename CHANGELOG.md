@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.31 — 2026-08-22
+
+- Przycisk „Zgłoś problem” zmieniono w kompaktową pionową zakładkę przy dolnej części prawej krawędzi okna.
+- Domyślnie widoczny jest wyłącznie żółty przycisk z wykrzyknikiem.
+- Po najechaniu myszką lub ustawieniu fokusu zakładka rozwija się w górę i pokazuje mniejszy pionowy napis „Zgłoś problem”.
+- Na telefonach pozostaje dyskretny wykrzyknik otwierający formularz po dotknięciu.
+
 ## 0.5.30 — 2026-08-22
 
 - Dymki Last 5 są zamykane po opuszczeniu kółka, wyjściu poza aplikację, przewinięciu strony lub utracie aktywności okna.
