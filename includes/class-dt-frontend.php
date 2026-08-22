@@ -76,14 +76,17 @@ class DT_Frontend {
     private static function assets(): void {
         $settings = DT_DB::settings();
         wp_enqueue_style('dt-front', DT_URL . 'assets/css/frontend.css', [], DT_VERSION);
+        wp_enqueue_style('dt-countdowns', DT_URL . 'assets/css/countdowns.css', ['dt-front'], DT_VERSION);
         wp_enqueue_style('dt-mobile-nav', DT_URL . 'assets/css/mobile-nav.css', ['dt-front', 'dt-user-settings'], DT_VERSION);
         wp_enqueue_script('dt-front', DT_URL . 'assets/js/frontend.js', [], DT_VERSION, true);
+        wp_enqueue_script('dt-countdowns', DT_URL . 'assets/js/countdowns.js', ['dt-front'], DT_VERSION, true);
         wp_localize_script('dt-front', 'DeckaTyper', [
             'root'=>esc_url_raw(rest_url('decka-typer/v1/')),
             'nonce'=>is_user_logged_in() ? wp_create_nonce('wp_rest') : '',
             'loggedIn'=>is_user_logged_in(),
             'season'=>$settings['season'],
             'leagueName'=>'PLK · 1LM · 2LM',
+            'showCountdowns'=>!empty($settings['show_countdowns']),
             'timezone'=>wp_timezone_string() ?: 'Europe/Warsaw',
             'logo'=>DT_URL . 'assets/img/decka-logo.png',
             'colors'=>[
@@ -109,6 +112,7 @@ class DT_Frontend {
         ob_start();
         echo '<div id="decka-typer" class="dt-app" style="--dt-primary:' . esc_attr($settings['brand_primary']) . ';--dt-accent:' . esc_attr($settings['brand_accent']) . ';--dt-surface:' . esc_attr($settings['brand_surface']) . '">';
         self::hero($settings);
+        if (!empty($settings['show_countdowns'])) self::league_countdowns($settings);
         if (($settings['site_mode'] ?? 'test') === 'test') echo '<div class="dt-test-banner"><strong>Wersja testowa</strong><span>Serwis jest w trakcie testów. Dane i funkcje mogą jeszcze ulec zmianie.</span></div>';
         if (($settings['site_mode'] ?? 'test') === 'break' && !current_user_can('manage_options')) self::break_screen();
         elseif (!is_user_logged_in()) self::login(); else self::app_shell();
@@ -123,6 +127,38 @@ class DT_Frontend {
         echo '<a class="dt-brand" href="' . esc_url(home_url('/')) . '" aria-label="TypujKosza.pl — strona główna"><img src="' . esc_url(DT_URL . 'assets/img/decka-logo.png') . '" alt="Decka Pelplin"><div><span>DECKA PELPLIN</span><strong>TYPER <em>' . esc_html($settings['season']) . '</em></strong></div></a>';
         echo '<div class="dt-live-pill"><i></i>PLK · 1LM · 2LM</div>';
         echo '</div></header>';
+    }
+
+    private static function league_countdowns(array $settings): void {
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT r.league_key,MIN(m.starts_at) starts_at
+             FROM " . DT_DB::table('rounds') . " r
+             JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
+             WHERE r.season=%s AND m.start_time_known=1 AND m.starts_at IS NOT NULL
+             GROUP BY r.league_key",
+            (string)($settings['season'] ?? '')
+        ), ARRAY_A);
+        $starts = [];
+        foreach ((array)$rows as $row) $starts[(string)$row['league_key']] = (string)$row['starts_at'];
+        $names = (array)($settings['league_names'] ?? []);
+        $fallback = ['1lm'=>'1 Liga Mężczyzn','plk'=>'ORLEN Basket Liga','2lm'=>'2 Liga Mężczyzn'];
+        $now = current_datetime()->getTimestamp();
+
+        echo '<section class="dt-league-countdowns" aria-labelledby="dt-league-countdowns-title"><div class="dt-front-inner"><div class="dt-countdown-heading"><span>SEZON ' . esc_html((string)($settings['season'] ?? '')) . '</span><strong id="dt-league-countdowns-title">Odliczanie do startu lig</strong></div><div class="dt-league-countdown-grid">';
+        foreach (['1lm','plk','2lm'] as $key) {
+            $mysql = $starts[$key] ?? '';
+            $start = $mysql !== '' ? new DateTimeImmutable($mysql, wp_timezone()) : null;
+            $timestamp = $start ? $start->getTimestamp() : false;
+            $iso = $start ? $start->format(DATE_ATOM) : '';
+            $state = $timestamp === false ? 'is-tbd' : ($timestamp <= $now ? 'is-started' : 'is-upcoming');
+            echo '<article class="dt-league-countdown ' . esc_attr($state) . '"><div><span class="dt-league-code">' . esc_html(strtoupper($key)) . '</span><strong>' . esc_html((string)($names[$key] ?? $fallback[$key])) . '</strong></div>';
+            if ($state === 'is-upcoming') echo '<div class="dt-countdown-clock" data-countdown-target="' . esc_attr($iso) . '" data-countdown-expired="Liga wystartowała"><small>Do startu pozostało</small><strong data-countdown-value>—</strong></div>';
+            elseif ($state === 'is-started') echo '<div class="dt-countdown-status">Liga wystartowała</div>';
+            else echo '<div class="dt-countdown-status">Termin do potwierdzenia</div>';
+            echo '</article>';
+        }
+        echo '</div></div></section>';
     }
 
     private static function break_screen(): void {
