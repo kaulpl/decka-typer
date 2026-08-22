@@ -7,7 +7,7 @@ class DT_Admin {
         add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
         foreach ([
             'sync_now','save_settings','save_match','add_match','add_round','adjust_points',
-            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert'
+            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert','update_feedback'
         ] as $action) {
             add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
         }
@@ -22,6 +22,7 @@ class DT_Admin {
             ['decka-typer-matches','Mecze','matches'],
             ['decka-typer-predictions','Typy','predictions'],
             ['decka-typer-users','Użytkownicy','users'],
+            ['decka-typer-feedback','Feedback','feedback'],
             ['decka-typer-stats','Statystyki','stats'],
             ['decka-typer-sync','Synchronizacja danych PZKosz','sync'],
             ['decka-typer-logs','Historia','logs'],
@@ -188,6 +189,57 @@ class DT_Admin {
         wp_nonce_field('dt_open_round');
         echo '<label>Zamknięcie możliwości typowania<input type="datetime-local" name="closes_at" id="dt-open-round-close" required></label><div class="dt-inline-warning">Po zapisaniu kuponu użytkownik nie będzie mógł go zmienić. Termin zamknięcia nie może być późniejszy niż start pierwszego meczu ze znaną godziną.</div><button class="button button-primary dt-button">Otwórz typowanie</button></form></dialog>';
         echo '<script>document.addEventListener("click",function(e){var b=e.target.closest(".dt-open-round");if(!b)return;var d={};try{d=JSON.parse(b.dataset.round||"{}");}catch(_){return;}document.getElementById("dt-open-round-id").value=d.id||"";document.getElementById("dt-open-round-title").textContent="Otwórz: "+(d.title||"kolejkę");document.getElementById("dt-open-round-close").value=d.default_close||"";document.getElementById("dt-open-round-modal").showModal();});</script>';
+        self::end_shell();
+    }
+
+    public static function feedback(): void {
+        global $wpdb;
+        $table = DT_DB::table('feedback');
+        $status = sanitize_key((string)($_GET['status'] ?? 'all'));
+        $allowed = ['all','new','in_progress','resolved','cancelled'];
+        if (!in_array($status, $allowed, true)) $status = 'all';
+        $where = $status === 'all' ? '' : $wpdb->prepare(' WHERE f.status=%s', $status);
+        $page = max(1, (int)($_GET['dt_paged'] ?? 1));
+        $perPage = 30;
+        $total = (int)$wpdb->get_var("SELECT COUNT(*) FROM $table f$where");
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT f.*,u.display_name FROM $table f LEFT JOIN {$wpdb->users} u ON u.ID=f.user_id$where ORDER BY f.created_at DESC,f.id DESC LIMIT %d OFFSET %d",
+            $perPage, ($page - 1) * $perPage
+        ));
+        $counts = array_fill_keys(['new','in_progress','resolved','cancelled'], 0);
+        foreach ((array)$wpdb->get_results("SELECT status,COUNT(*) total FROM $table GROUP BY status") as $row) {
+            if (isset($counts[$row->status])) $counts[$row->status] = (int)$row->total;
+        }
+        $labels = ['new'=>'Nowe','in_progress'=>'W trakcie','resolved'=>'Rozwiązano','cancelled'=>'Anulowano'];
+        $tones = ['new'=>'orange','in_progress'=>'blue','resolved'=>'green','cancelled'=>'neutral'];
+
+        self::shell('Feedback', 'Zgłoszenia problemów przesłane przez zalogowanych użytkowników.');
+        echo '<div class="dt-feedback-summary">';
+        foreach ($labels as $key=>$label) self::metric($label, $counts[$key], $key === 'new' ? 'warning' : ($key === 'resolved' ? 'yes-alt' : 'feedback'), $tones[$key] === 'neutral' ? 'violet' : $tones[$key]);
+        echo '</div><div class="dt-toolbar dt-feedback-filters">';
+        $allUrl = add_query_arg(['page'=>'decka-typer-feedback','status'=>'all'], admin_url('admin.php'));
+        echo '<a class="button ' . ($status === 'all' ? 'button-primary' : '') . '" href="' . esc_url($allUrl) . '">Wszystkie</a>';
+        foreach ($labels as $key=>$label) {
+            $url = add_query_arg(['page'=>'decka-typer-feedback','status'=>$key], admin_url('admin.php'));
+            echo '<a class="button ' . ($status === $key ? 'button-primary' : '') . '" href="' . esc_url($url) . '">' . esc_html($label) . ' (' . $counts[$key] . ')</a>';
+        }
+        echo '</div><section class="dt-card dt-feedback-list">';
+        if (!$rows) echo '<div class="dt-empty">Brak zgłoszeń w wybranym statusie.</div>';
+        foreach ($rows as $row) {
+            echo '<article class="dt-feedback-item"><header><div><strong>#' . (int)$row->id . ' · ' . esc_html($row->display_name ?: 'Użytkownik #' . (int)$row->user_id) . '</strong><a href="mailto:' . esc_attr($row->email) . '">' . esc_html($row->email) . '</a></div><div>' . self::badge($labels[$row->status] ?? 'Nowe', $tones[$row->status] ?? 'neutral') . '<time>' . esc_html(self::date_pl($row->created_at)) . '</time></div></header>';
+            echo '<div class="dt-feedback-message">' . nl2br(esc_html($row->message)) . '</div>';
+            if ($row->page_url) echo '<a class="dt-feedback-source" href="' . esc_url($row->page_url) . '" target="_blank" rel="noopener noreferrer"><span class="dashicons dashicons-admin-links"></span>' . esc_html($row->page_url) . '</a>';
+            echo '<footer><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_update_feedback"><input type="hidden" name="feedback_id" value="' . (int)$row->id . '"><input type="hidden" name="return_status" value="' . esc_attr($status) . '">';
+            wp_nonce_field('dt_update_feedback_' . (int)$row->id);
+            echo '<label>Status zgłoszenia <select name="status">';
+            foreach ($labels as $key=>$label) echo '<option value="' . esc_attr($key) . '" ' . selected($row->status, $key, false) . '>' . esc_html($label) . '</option>';
+            echo '</select></label><button class="button button-primary">Zapisz status</button></form></footer></article>';
+        }
+        echo '</section>';
+        if ($total > $perPage) {
+            $base = add_query_arg(['page'=>'decka-typer-feedback','status'=>$status,'dt_paged'=>'%#%'], admin_url('admin.php'));
+            echo '<div class="tablenav"><div class="tablenav-pages">' . wp_kses_post(paginate_links(['base'=>$base,'format'=>'','current'=>$page,'total'=>(int)ceil($total/$perPage)])) . '</div></div>';
+        }
         self::end_shell();
     }
 
@@ -567,6 +619,24 @@ class DT_Admin {
         else update_user_meta($uid, 'dt_typer_expert', 1);
         DT_Logger::log('expert_status_changed',$wasExpert?'Odebrano oznaczenie eksperta.':'Nadano oznaczenie eksperta.',['target_user'=>$uid,'is_expert'=>$wasExpert?0:1],'notice',get_current_user_id());
         self::redirect('decka-typer-users',$wasExpert?'Użytkownik nie jest już oznaczony jako ekspert.':'Użytkownik został oznaczony jako ekspert.');
+    }
+
+    public static function update_feedback(): void {
+        $id = max(0, (int)($_POST['feedback_id'] ?? 0));
+        self::guard('dt_update_feedback_' . $id);
+        global $wpdb;
+        $status = sanitize_key((string)($_POST['status'] ?? 'new'));
+        if (!in_array($status, ['new','in_progress','resolved','cancelled'], true)) {
+            self::redirect('decka-typer-feedback', 'Nieprawidłowy status zgłoszenia.', 'error');
+        }
+        $ok = $wpdb->update(DT_DB::table('feedback'), [
+            'status'=>$status,
+            'admin_user_id'=>get_current_user_id(),
+            'updated_at'=>current_time('mysql'),
+        ], ['id'=>$id], ['%s','%d','%s'], ['%d']);
+        DT_Logger::log('feedback_status_changed', 'Administrator zmienił status zgłoszenia.', ['feedback_id'=>$id,'status'=>$status], 'notice', get_current_user_id());
+        $returnStatus = sanitize_key((string)($_POST['return_status'] ?? 'all'));
+        self::redirect('decka-typer-feedback', $ok !== false ? 'Status zgłoszenia został zapisany.' : 'Nie udało się zapisać statusu.', $ok !== false ? 'success' : 'error', ['status'=>$returnStatus]);
     }
 
     public static function save_avatar(): void {

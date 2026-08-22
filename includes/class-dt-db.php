@@ -147,6 +147,22 @@ class DT_DB {
             KEY created_at (created_at)
         ) $charset;";
 
+        $sql[] = "CREATE TABLE " . self::table('feedback') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            email VARCHAR(190) NOT NULL,
+            message TEXT NOT NULL,
+            page_url TEXT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'new',
+            admin_user_id BIGINT UNSIGNED NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            KEY user_id (user_id),
+            KEY status (status),
+            KEY created_at (created_at)
+        ) $charset;";
+
         foreach ($sql as $statement) dbDelta($statement);
 
         if (version_compare($oldVersion, '0.2.0', '<')) self::migrate_to_020();

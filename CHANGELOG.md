@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.30 — 2026-08-22
+
+- Dymki Last 5 są zamykane po opuszczeniu kółka, wyjściu poza aplikację, przewinięciu strony lub utracie aktywności okna.
+- Dodano dla zalogowanych użytkowników żółty pływający przycisk „Zgłoś problem”.
+- Dodano nowoczesny modal z walidowanym opisem problemu i informacją o adresie e-mail przypisanym do konta.
+- Zgłoszenia zapisują użytkownika, adres e-mail, datę, treść oraz adres widoku, na którym wystąpił problem.
+- Dodano zabezpieczenie przed zbyt częstym wysyłaniem zgłoszeń.
+- Dodano moduł administratora „Feedback” z licznikami, filtrowaniem, paginacją oraz statusami: Nowe, W trakcie, Rozwiązano i Anulowano.
+- Zmiana statusu zapisuje administratora obsługującego zgłoszenie i czas aktualizacji.
+
 ## 0.5.29 — 2026-08-22
 
 - Dymki ostatnich spotkań zawsze pokazują gospodarza po lewej stronie, a gościa po prawej stronie wyniku.

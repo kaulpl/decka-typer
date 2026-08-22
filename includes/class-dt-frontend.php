@@ -81,6 +81,10 @@ class DT_Frontend {
         wp_enqueue_style('dt-mobile-nav', DT_URL . 'assets/css/mobile-nav.css', ['dt-front', 'dt-user-settings'], DT_VERSION);
         wp_enqueue_script('dt-front', DT_URL . 'assets/js/frontend.js', [], DT_VERSION, true);
         wp_enqueue_script('dt-countdowns', DT_URL . 'assets/js/countdowns.js', ['dt-front'], DT_VERSION, true);
+        if (is_user_logged_in()) {
+            wp_enqueue_style('dt-feedback', DT_URL . 'assets/css/feedback.css', ['dt-front'], DT_VERSION);
+            wp_enqueue_script('dt-feedback', DT_URL . 'assets/js/feedback.js', ['dt-front'], DT_VERSION, true);
+        }
         wp_localize_script('dt-front', 'DeckaTyper', [
             'root'=>esc_url_raw(rest_url('decka-typer/v1/')),
             'nonce'=>is_user_logged_in() ? wp_create_nonce('wp_rest') : '',
@@ -119,6 +123,9 @@ class DT_Frontend {
         if (($settings['site_mode'] ?? 'test') === 'break' && !current_user_can('manage_options')) self::break_screen();
         elseif (!is_user_logged_in()) self::login(); else self::app_shell();
         if (($settings['site_mode'] ?? 'test') !== 'break' || current_user_can('manage_options')) self::avatar_helper(!is_user_logged_in());
+        if (($settings['site_mode'] ?? 'test') !== 'break' || current_user_can('manage_options')) {
+            if (class_exists('DT_Feedback')) DT_Feedback::render();
+        }
         echo '<div id="dt-toast" class="dt-front-toast" role="status" aria-live="polite"></div>';
         echo '</div>';
         return ob_get_clean();
