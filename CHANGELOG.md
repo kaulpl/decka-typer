@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.22 — 2026-08-22
+
+- Naprawiono zaznaczanie wybranej grupy 2LM w rankingu.
+- Ujednolicono obsługę zapisów grup w formatach `A`, `a` i `Grupa A`.
+- Dodano kolorowy lewy pasek ligi przy rozwijanych kolejkach w „Moich typach”.
+- Dodano w ustawieniach osobne edytowalne kolory dla 1LM, PLK i 2LM.
+- Te same kolory lig są używane w odliczaniu oraz w historii typów.
+
 ## 0.5.21 — 2026-08-22
 
 - Zastąpiono tekst „Do meczu pozostało” kompaktową ikoną zegara.

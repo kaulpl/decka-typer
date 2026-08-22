@@ -77,13 +77,17 @@ class DT_Ranking_View {
 
     private static function groups(string $season): array {
         global $wpdb;
-        return array_values(array_filter(array_map('strval',(array)$wpdb->get_col($wpdb->prepare("SELECT DISTINCT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key",$season)))));
+        $groups = array_map(static function($value): string {
+            $value = strtoupper(trim((string)$value));
+            return preg_replace('/^GRUPA\s+/u', '', $value) ?: '';
+        }, (array)$wpdb->get_col($wpdb->prepare("SELECT DISTINCT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key",$season)));
+        return array_values(array_unique(array_filter($groups)));
     }
 
     private static function rounds(string $season, string $league = 'all', string $group = ''): array {
         global $wpdb;
         $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND league_key=%s ', $league) : '';
-        $groupSql = $group !== '' ? $wpdb->prepare(' AND group_key=%s ', $group) : '';
+        $groupSql = $group !== '' ? $wpdb->prepare(" AND REPLACE(UPPER(TRIM(group_key)),'GRUPA ','')=%s ", $group) : '';
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT id,round_no,title,status,closes_at,league_key,group_key FROM " . DT_DB::table('rounds') . " WHERE season=%s $leagueSql $groupSql AND status IN ('open','closed') ORDER BY league_key,group_key,round_no ASC,id ASC",
             $season
@@ -112,7 +116,7 @@ class DT_Ranking_View {
             $filter = $wpdb->prepare(' AND r.season=%s AND r.id=%d ', $season, $roundId);
         }
         if ($league !== 'all') $filter .= $wpdb->prepare(' AND r.league_key=%s ', $league);
-        if ($group !== '') $filter .= $wpdb->prepare(' AND r.group_key=%s ', $group);
+        if ($group !== '') $filter .= $wpdb->prepare(" AND REPLACE(UPPER(TRIM(r.group_key)),'GRUPA ','')=%s ", $group);
 
         $sql = "SELECT u.ID user_id,u.display_name,
                        COUNT(p.id) predictions,

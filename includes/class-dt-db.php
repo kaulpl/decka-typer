@@ -326,6 +326,7 @@ class DT_DB {
         return [
             'season' => '2026/2027',
             'league_names' => ['plk'=>'ORLEN Basket Liga', '1lm'=>'1 Liga Mężczyzn', '2lm'=>'2 Liga Mężczyzn'],
+            'league_colors' => ['1lm'=>'#055EFB', 'plk'=>'#FB5D0B', '2lm'=>'#4F6F9D'],
             'site_mode' => 'test',
             'leagues' => ['plk'=>1, '1lm'=>1, '2lm'=>1],
             'source_url' => 'https://1lm.pzkosz.pl/terminarz-i-wyniki.html',
