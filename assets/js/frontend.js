@@ -159,6 +159,7 @@
     const homeClass=pick?pick===Number(m.home_team_id)?'is-selected':'is-rejected':'';
     const awayClass=pick?pick===Number(m.away_team_id)?'is-selected':'is-rejected':'';
     const timing=m.start_time_known?fmtDate(m.starts_at_iso,true):`${fmtDate(m.starts_at_iso,false)} · godzina do potwierdzenia`;
+    const showCountdown=!!cfg.showCountdowns&&!!m.start_time_known&&!!m.starts_at_iso&&new Date(m.starts_at_iso).getTime()>Date.now();
     const resultKnown=m.score_home!==null&&m.score_home!==undefined&&m.score_away!==null&&m.score_away!==undefined;
     let result='';
     if(resultKnown){
@@ -166,7 +167,7 @@
       result=`<div class="dt-result-row"><span>Wynik: <strong>${esc(m.score_home)} : ${esc(m.score_away)}</strong></span>${m.prediction?`<span class="dt-points ${Number(m.prediction.points||0)===0?'is-zero':''}">${esc(pts)}</span>`:''}</div>`;
     }
     return `<article class="dt-match ${decka?'is-decka':''} ${canPick?'':'is-locked'}" data-match-card="${m.id}">
-      <div class="dt-match-head"><span class="dt-date">${icon('calendar')}${esc(timing)}</span><span class="dt-lock-pill ${canPick?'is-open':''}">${icon(canPick?'check':'lock')}${canPick?'wybierz zwycięzcę':'zamknięte'}</span></div>
+      <div class="dt-match-head"><div class="dt-match-timing"><span class="dt-date">${icon('calendar')}${esc(timing)}</span>${showCountdown?`<span class="dt-match-countdown" data-countdown-target="${esc(m.starts_at_iso)}" data-countdown-hide-expired="1"><small>Do meczu pozostało:</small><strong data-countdown-value>—</strong></span>`:''}</div><span class="dt-lock-pill ${canPick?'is-open':''}">${icon(canPick?'check':'lock')}${canPick?'wybierz zwycięzcę':'zamknięte'}</span></div>
       <div class="dt-winner-grid">
         <button type="button" class="dt-team-choice ${homeClass}" data-team-choice data-match="${m.id}" data-team="${m.home_team_id}" ${canPick?'':'disabled'}>${teamLogo(m.home_name,m.home_logo)}<strong>${esc(m.home_name)}</strong><span class="dt-choice-mark">${pick===Number(m.home_team_id)?'TWÓJ TYP':'GOSPODARZ'}</span></button>
         <div class="dt-vs-mark">VS</div>

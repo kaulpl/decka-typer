@@ -338,6 +338,7 @@ class DT_DB {
             'points_winner' => 1,
             'perfect_round_bonus' => 0,
             'show_community_picks_after_lock' => 1,
+            'show_countdowns' => 1,
             'brand_primary' => '#1756A9',
             'brand_accent' => '#F47A24',
             'brand_surface' => '#F5F7FB',

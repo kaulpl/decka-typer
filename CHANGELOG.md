@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.20 — 2026-08-22
+
+- Dodano na landing page i w aplikacji trzy graficzne liczniki startu lig: 1LM, PLK i 2LM.
+- Daty startu lig są automatycznie wyznaczane z najwcześniejszych meczów aktualnego terminarza.
+- Dodano przy przyszłych meczach w zakładce „Typuj” odliczanie dni, godzin, minut i sekund.
+- Dodano w ustawieniach administratora globalny przełącznik wyświetlania liczników.
+- Liczniki automatycznie kończą działanie po rozpoczęciu ligi lub meczu i nie pokazują wartości ujemnych.
+
 ## 0.5.19 — 2026-08-22
 
 - Ustawiono domyślny widok rankingu po otwarciu lub odświeżeniu strony na „Sezon” i „1LM”.
