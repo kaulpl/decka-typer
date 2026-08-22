@@ -77,6 +77,7 @@ class DT_Frontend {
         $settings = DT_DB::settings();
         wp_enqueue_style('dt-front', DT_URL . 'assets/css/frontend.css', [], DT_VERSION);
         wp_enqueue_style('dt-countdowns', DT_URL . 'assets/css/countdowns.css', ['dt-front'], DT_VERSION);
+        wp_enqueue_style('dt-match-insights', DT_URL . 'assets/css/match-insights.css', ['dt-front'], DT_VERSION);
         wp_enqueue_style('dt-mobile-nav', DT_URL . 'assets/css/mobile-nav.css', ['dt-front', 'dt-user-settings'], DT_VERSION);
         wp_enqueue_script('dt-front', DT_URL . 'assets/js/frontend.js', [], DT_VERSION, true);
         wp_enqueue_script('dt-countdowns', DT_URL . 'assets/js/countdowns.js', ['dt-front'], DT_VERSION, true);

@@ -272,6 +272,19 @@ class DT_REST {
         }
         $pastStarted = $firstMatch !== '' && $firstMatch <= $now;
 
+        $historyFilter = $wpdb->prepare('r.season=%s AND r.league_key=%s', (string)($round['season'] ?? ''), (string)($round['league_key'] ?? '1lm'));
+        if ((string)($round['league_key'] ?? '') === '2lm' && (string)($round['group_key'] ?? '') !== '') {
+            $historyFilter .= $wpdb->prepare(' AND r.group_key=%s', (string)$round['group_key']);
+        }
+        $history = $wpdb->get_results(
+            "SELECT m.id,m.home_team_id,m.away_team_id,m.score_home,m.score_away,m.starts_at
+             FROM " . DT_DB::table('matches') . " m
+             JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+             WHERE $historyFilter AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
+             ORDER BY m.starts_at ASC,m.id ASC",
+            ARRAY_A
+        );
+
         $predMap = [];
         $submission = null;
         if (is_user_logged_in()) {
@@ -306,6 +319,9 @@ class DT_REST {
             $match['manual_lock'] = (bool) $match['manual_lock'];
             $match['featured'] = (bool) $match['featured'];
             $match['starts_at_iso'] = self::iso_datetime($match['starts_at'] ?? null);
+            $before = !empty($match['starts_at']) ? (string)$match['starts_at'] : '9999-12-31 23:59:59';
+            $match['home_insights'] = self::team_insights((int)$match['home_team_id'], 'home', $before, (int)$match['id'], (array)$history);
+            $match['away_insights'] = self::team_insights((int)$match['away_team_id'], 'away', $before, (int)$match['id'], (array)$history);
             $prediction = $predMap[$match['id']] ?? null;
             $match['prediction'] = $prediction ? [
                 'selected_team_id'=>(int) $prediction['selected_team_id'],
@@ -333,6 +349,38 @@ class DT_REST {
         ] : ['submitted'=>false];
         $round['can_submit'] = is_user_logged_in() && $isOpen && !$submission;
         return $round;
+    }
+
+    private static function team_insights(int $teamId, string $venue, string $before, int $currentMatchId, array $history): array {
+        $all = [];
+        $venueMatches = [];
+        foreach ($history as $item) {
+            if ((int)($item['id'] ?? 0) === $currentMatchId || (string)($item['starts_at'] ?? '') >= $before) continue;
+            $isHome = (int)($item['home_team_id'] ?? 0) === $teamId;
+            $isAway = (int)($item['away_team_id'] ?? 0) === $teamId;
+            if (!$isHome && !$isAway) continue;
+            $scored = $isHome ? (int)$item['score_home'] : (int)$item['score_away'];
+            $allowed = $isHome ? (int)$item['score_away'] : (int)$item['score_home'];
+            $entry = ['won'=>$scored > $allowed, 'points'=>$scored];
+            $all[] = $entry;
+            if (($venue === 'home' && $isHome) || ($venue === 'away' && $isAway)) $venueMatches[] = $entry;
+        }
+        $record = static function(array $items): array {
+            $wins = count(array_filter($items, static fn($item): bool=>(bool)$item['won']));
+            return ['wins'=>$wins, 'losses'=>count($items)-$wins];
+        };
+        $average = static function(array $items): ?float {
+            $last = array_slice($items, -3);
+            if (!$last) return null;
+            return round(array_sum(array_column($last, 'points')) / count($last), 1);
+        };
+        return [
+            'overall_record'=>$record($all),
+            'venue_record'=>$record($venueMatches),
+            'overall_average'=>$average($all),
+            'venue_average'=>$average($venueMatches),
+            'venue'=>$venue,
+        ];
     }
 
     private static function me_payload(int $uid, string $season, string $league = 'all'): array {
