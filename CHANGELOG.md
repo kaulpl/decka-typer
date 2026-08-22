@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.28 — 2026-08-22
+
+- Poprawiono średnią punktów z trzech ostatnich meczów domowych i trzech ostatnich meczów wyjazdowych.
+- Ujednolicono rozpoznawanie wariantów nazw klubów w Last 5 oraz statystykach meczu.
+- Strona historycznego spotkania jest teraz jednoznacznie rozpoznawana jako domowa albo wyjazdowa przed dodaniem wyniku do średniej.
+- Identyfikacja po nazwie ma pierwszeństwo przed historycznym identyfikatorem drużyny, co zabezpiecza obliczenia po synchronizacji danych.
+
 ## 0.5.27 — 2026-08-22
 
 - Dymki ostatnich pięciu spotkań pokazują logotyp drużyny, wynik i logotyp przeciwnika zamiast tekstowej nazwy rywala.

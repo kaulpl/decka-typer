@@ -364,14 +364,19 @@ class DT_REST {
             $earlierRound = (int)($item['round_no'] ?? 0) < $currentRoundNo;
             $earlierInCurrentRound = (int)($item['round_id'] ?? 0) === $currentRoundId && (string)($item['starts_at'] ?? '') < $before;
             if (!$earlierRound && !$earlierInCurrentRound) continue;
-            $isHome = (int)($item['home_team_id'] ?? 0) === $teamId || self::team_key((string)($item['home_name'] ?? '')) === $teamKey;
-            $isAway = (int)($item['away_team_id'] ?? 0) === $teamId || self::team_key((string)($item['away_name'] ?? '')) === $teamKey;
-            if (!$isHome && !$isAway) continue;
-            $scored = $isHome ? (int)$item['score_home'] : (int)$item['score_away'];
-            $allowed = $isHome ? (int)$item['score_away'] : (int)$item['score_home'];
+            $homeKey = self::team_key((string)($item['home_name'] ?? ''));
+            $awayKey = self::team_key((string)($item['away_name'] ?? ''));
+            $side = null;
+            if ($homeKey !== '' && $homeKey === $teamKey) $side = 'home';
+            elseif ($awayKey !== '' && $awayKey === $teamKey) $side = 'away';
+            elseif ((int)($item['home_team_id'] ?? 0) === $teamId) $side = 'home';
+            elseif ((int)($item['away_team_id'] ?? 0) === $teamId) $side = 'away';
+            if ($side === null) continue;
+            $scored = $side === 'home' ? (int)$item['score_home'] : (int)$item['score_away'];
+            $allowed = $side === 'home' ? (int)$item['score_away'] : (int)$item['score_home'];
             $entry = ['won'=>$scored > $allowed, 'points'=>$scored];
             $all[] = $entry;
-            if (($venue === 'home' && $isHome) || ($venue === 'away' && $isAway)) $venueMatches[] = $entry;
+            if ($venue === $side) $venueMatches[] = $entry;
         }
         $record = static function(array $items): array {
             $wins = count(array_filter($items, static fn($item): bool=>(bool)$item['won']));
@@ -393,7 +398,20 @@ class DT_REST {
 
     private static function team_key(string $name): string {
         $name = strtolower(remove_accents(wp_strip_all_tags($name)));
-        return trim((string)preg_replace('/[^a-z0-9]+/', ' ', $name));
+        $normalized = trim((string)preg_replace('/\s+/', ' ', preg_replace('/[^a-z0-9]+/', ' ', $name)));
+        $known = [
+            'polonia 1912 leszno','polonia leszno','wkk','politechnika opolska','sokol lancut',
+            'starogard gdanski','spojnia stargard','resovia rzeszow','miasto szkla krosno',
+            'lks lodz','lks coolpack lodz','notec inowroclaw','polonia warszawa','gks tychy',
+            'basket poznan','decka pelplin','kotwica','polonia bytom',
+        ];
+        foreach ($known as $needle) {
+            if (!str_contains($normalized, $needle)) continue;
+            if ($needle === 'polonia leszno') return 'polonia 1912 leszno';
+            if ($needle === 'lks coolpack lodz') return 'lks lodz';
+            return $needle;
+        }
+        return $normalized;
     }
 
     private static function me_payload(int $uid, string $season, string $league = 'all'): array {
