@@ -26,9 +26,10 @@
     if(!item)return '<span class="dt-form-dot is-empty" aria-label="Brak danych"></span>';
     const status=item.status==='win'?'is-win':item.status==='loss'?'is-loss':'is-empty';
     const label=item.status==='win'?'Wygrana':item.status==='loss'?'Porażka':'Brak rozstrzygnięcia';
-    const title=`${label}${item.opponent_name?` z ${item.opponent_name}`:''}`;
+    const score=`${Number(item.score_for||0)} : ${Number(item.score_against||0)}`;
+    const title=`${label}${item.opponent_name?` z ${item.opponent_name}`:''} · ${score}`;
     const image=item.opponent_logo?`<img src="${esc(item.opponent_logo)}" alt="" loading="lazy">`:'';
-    return `<span class="dt-form-dot ${status}" title="${esc(title)}" aria-label="${esc(title)}">${image}</span>`;
+    return `<span class="dt-form-dot ${status}" tabindex="0" role="button" aria-label="${esc(title)}">${image}<span class="dt-form-tooltip" role="tooltip"><b>${esc(label)}</b><span>${esc(score)}</span><small>${esc(item.opponent_name||'')}</small></span></span>`;
   };
 
   const decorateTeamButton=btn=>{
@@ -232,6 +233,18 @@
   };
 
   const matchBox=q('#dt-matches');
+  root.addEventListener('click',event=>{
+    const dot=event.target.closest('.dt-form-dot:not(.is-empty)');
+    if(!dot)return;
+    event.preventDefault();event.stopPropagation();
+    qa('.dt-form-dot.is-tooltip-open').forEach(item=>{if(item!==dot)item.classList.remove('is-tooltip-open');});
+    dot.classList.toggle('is-tooltip-open');
+  },true);
+  root.addEventListener('keydown',event=>{
+    const dot=event.target.closest('.dt-form-dot:not(.is-empty)');
+    if(!dot||!['Enter',' '].includes(event.key))return;
+    event.preventDefault();event.stopPropagation();dot.click();
+  },true);
   if(matchBox)new MutationObserver(scheduleMatchDecorate).observe(matchBox,{childList:true,subtree:true});
   const metaBox=q('#dt-round-meta');
   if(metaBox)new MutationObserver(scheduleMatchDecorate).observe(metaBox,{childList:true,subtree:true});

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.24 — 2026-08-22
+
+- Poprawiono pozycjonowanie dymków wyjaśniających średnie punktowe przy krawędziach strony.
+- Usunięto zbędną pustą przestrzeń pod nazwami drużyn w rozwijanych statystykach.
+- Panele statystyk są domyślnie zamknięte i nie rozciągają sąsiednich kafelków meczów.
+- Zmieniono nazwę przycisku na „Zobacz statystyki”.
+- Dodano wyniki spotkań do kółek formy ostatnich pięciu meczów.
+- Dymek wyniku jest zielony po zwycięstwie i czerwony po porażce.
+- Na telefonach dymek wyniku można otworzyć dotknięciem kółka bez zaznaczania typu.
+
 ## 0.5.23 — 2026-08-22
 
 - Zastąpiono niebieskie oznaczenie meczu ulubionej drużyny plakietką „ULUBIONA DRUŻYNA” obok plakietki BONUS.
