@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.32 — 2026-08-23
+
+- Ujednolicono sześciokolumnową siatkę nagłówka i wierszy rankingu.
+- Usunięto pośredni kontener statystyk, który powodował podwójne i przesunięte pionowe separatory.
+- Każda komórka rankingu jest teraz bezpośrednim elementem tej samej siatki.
+- Długie nazwy użytkowników i plakietka „EKSPERT!” nie zmieniają szerokości kolumn.
+- Zachowano osobny, zwarty układ kart rankingu na telefonach.
+
 ## 0.5.31 — 2026-08-22
 
 - Przycisk „Zgłoś problem” zmieniono w kompaktową pionową zakładkę przy dolnej części prawej krawędzi okna.
