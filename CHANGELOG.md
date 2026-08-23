@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.33 — 2026-08-23
+
+- Przełączono wszystkie osiem avatarów Bota Artura z PNG na WebP z przezroczystością.
+- Ujednolicono produkcyjne nazwy plików i usunięto dopisek „kopia”.
+- Zaktualizowano wszystkie sytuacje Artura, w tym powitanie na landing page i reakcję na wybór ulubionej drużyny.
+- Zmniejszono łączną wagę avatarów z około 14 MB do około 3,6 MB.
+- Usunięto stare pliki PNG z paczki wtyczki; pozostają dostępne w historii Git.
+
 ## 0.5.32 — 2026-08-23
 
 - Ujednolicono sześciokolumnową siatkę nagłówka i wierszy rankingu.
