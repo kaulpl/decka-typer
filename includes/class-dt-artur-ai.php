@@ -123,25 +123,43 @@ class DT_Artur_AI {
             'contents'=>[['role'=>'user','parts'=>[['text'=>"DANE MECZU:\n$context\n\nPYTANIE UŻYTKOWNIKA:\n$question"]]]],
             'generationConfig'=>['temperature'=>0.72,'maxOutputTokens'=>260,'topP'=>0.9],
         ];
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode(self::model()).':generateContent';
-        $response = wp_remote_post($url, [
-            'timeout'=>25,
-            'headers'=>['Content-Type'=>'application/json','x-goog-api-key'=>(string)DT_GEMINI_API_KEY],
-            'body'=>wp_json_encode($body, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
-        ]);
-        if (is_wp_error($response)) {
-            DT_Logger::log('artur_ai_error', $response->get_error_message(), [], 'error', get_current_user_id());
-            return new WP_Error('ai_unavailable', 'Artur chwilowo studiuje tablicę taktyczną. Spróbuj ponownie za moment.', ['status'=>503]);
+        $models = array_values(array_unique([self::model(), 'gemini-3.5-flash-lite']));
+        $lastCode = 0;
+        $lastMessage = 'Nieprawidłowa odpowiedź Gemini.';
+        foreach ($models as $index=>$model) {
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode($model).':generateContent';
+            $response = wp_remote_post($url, [
+                'timeout'=>25,
+                'headers'=>['Content-Type'=>'application/json','x-goog-api-key'=>(string)DT_GEMINI_API_KEY],
+                'body'=>wp_json_encode($body, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+            ]);
+            if (is_wp_error($response)) {
+                $lastMessage = $response->get_error_message();
+                break;
+            }
+            $lastCode = wp_remote_retrieve_response_code($response);
+            $payload = json_decode(wp_remote_retrieve_body($response), true);
+            $parts = (array)($payload['candidates'][0]['content']['parts'] ?? []);
+            $texts = [];
+            foreach ($parts as $part) if (is_array($part) && isset($part['text'])) $texts[] = (string)$part['text'];
+            $text = trim(implode("\n", $texts));
+            if ($lastCode >= 200 && $lastCode < 300 && $text !== '') {
+                if ($index > 0) DT_Logger::log('artur_ai_model_fallback', 'Użyto zapasowego modelu Gemini.', ['model'=>$model], 'warning', get_current_user_id());
+                return mb_substr(wp_strip_all_tags($text), 0, 900);
+            }
+            $lastMessage = sanitize_text_field((string)($payload['error']['message'] ?? ($payload['candidates'][0]['finishReason'] ?? 'Gemini nie zwróciło treści odpowiedzi.')));
+            $modelUnavailable = $lastCode === 404 || (
+                stripos($lastMessage, 'model') !== false
+                && (stripos($lastMessage, 'not found') !== false || stripos($lastMessage, 'not supported') !== false)
+            );
+            if (!$modelUnavailable) break;
         }
-        $code = wp_remote_retrieve_response_code($response);
-        $payload = json_decode(wp_remote_retrieve_body($response), true);
-        $text = trim((string)($payload['candidates'][0]['content']['parts'][0]['text'] ?? ''));
-        if ($code < 200 || $code >= 300 || $text === '') {
-            $message = sanitize_text_field((string)($payload['error']['message'] ?? 'Nieprawidłowa odpowiedź Gemini.'));
-            DT_Logger::log('artur_ai_error', $message, ['http_code'=>$code], 'error', get_current_user_id());
-            return new WP_Error('ai_unavailable', 'Artur chwilowo studiuje tablicę taktyczną. Spróbuj ponownie za moment.', ['status'=>503]);
+        DT_Logger::log('artur_ai_error', $lastMessage, ['http_code'=>$lastCode,'model'=>self::model()], 'error', get_current_user_id());
+        $publicMessage = 'Artur chwilowo studiuje tablicę taktyczną. Spróbuj ponownie za moment.';
+        if (current_user_can('manage_options')) {
+            $publicMessage .= ' Szczegóły techniczne: HTTP '.(int)$lastCode.' — '.$lastMessage;
         }
-        return mb_substr(wp_strip_all_tags($text), 0, 900);
+        return new WP_Error('ai_unavailable', $publicMessage, ['status'=>503]);
     }
 
     private static function context(array $match, array $round): string {

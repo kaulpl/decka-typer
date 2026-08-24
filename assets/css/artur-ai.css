@@ -19,11 +19,12 @@
 .dt-artur-ai-history { display:grid; gap:10px; max-height:320px; overflow:auto; }
 .dt-artur-ai-history article { display:grid; gap:7px; }
 .dt-artur-ai-history article>div { max-width:88%; padding:10px 12px; border-radius:12px; background:#edf4ff; }
-.dt-artur-ai-history article>div.is-artur { justify-self:end; background:#fff7ce; }
+.dt-artur-ai-history article>div.is-artur { justify-self:end; background:#fff7ce; border:1px solid #ecd56d; }
 .dt-artur-ai-history b { font-size:14px; }
+.dt-artur-ai-history .is-artur b { display:inline-flex; padding:3px 7px; margin-bottom:3px; border-radius:999px; background:#f2c94c; color:#493800; font-weight:950; }
 .dt-artur-ai-history p { margin:3px 0 0; font-size:14px; line-height:1.55; white-space:pre-wrap; }
-.dt-artur-ai-prompts { display:flex; gap:7px; overflow-x:auto; padding:12px 0; }
-.dt-artur-ai-prompts button { flex:0 0 auto; border:1px solid #dbe3ef; border-radius:999px; background:#fff; color:#42516a; padding:7px 10px; font-size:14px; cursor:pointer; }
+.dt-artur-ai-prompts { display:grid; grid-template-columns:1fr; gap:7px; padding:12px 0; }
+.dt-artur-ai-prompts button { width:100%; border:1px solid #dbe3ef; border-radius:10px; background:#fff; color:#42516a; padding:8px 11px; font-size:14px; cursor:pointer; text-align:left; }
 .dt-artur-ai-card form { display:grid; gap:8px; }
 .dt-artur-ai-card form label { font-size:14px; font-weight:800; }
 .dt-artur-ai-card textarea { width:100%; box-sizing:border-box; border:1px solid #d7e0eb; border-radius:12px; padding:11px; font:inherit; font-size:14px; resize:vertical; }
