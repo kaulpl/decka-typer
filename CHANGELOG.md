@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.34 — 2026-08-24
+
+- Dodano „Koło ratunkowe Artura” zasilane przez Gemini API i klucz `DT_GEMINI_API_KEY` z pliku `wp-config.php`.
+- Każdy użytkownik może przypisać koło do jednego wybranego meczu w kolejce i zadać domyślnie trzy pytania.
+- Po pierwszym pytaniu koła nie można przenieść do innego spotkania tej kolejki, a wykorzystania i odpowiedzi są trwale zapisywane.
+- Artur otrzymuje ostatnią formę drużyn, statystyki dom/wyjazd oraz dostępne mecze bezpośrednie, ale nie otrzymuje danych osobowych ani typu użytkownika.
+- Dodano gotowe pytania, własne pytanie, historię rozmowy i responsywny modal z avatarem Artura.
+- W Ustawieniach dodano przełącznik funkcji, model Gemini, limit pytań oraz edytowalną instrukcję osobowości i stylu odpowiedzi.
+- Własna instrukcja zapisana przez administratora nie jest nadpisywana podczas aktualizacji wtyczki.
+- Dodano kontrolę dostępności klucza, terminów kolejki, zapisanego kuponu oraz limitów po stronie serwera.
+
 ## 0.5.33 — 2026-08-23
 
 - Przełączono wszystkie osiem avatarów Bota Artura z PNG na WebP z przezroczystością.

@@ -78,9 +78,11 @@ class DT_Frontend {
         wp_enqueue_style('dt-front', DT_URL . 'assets/css/frontend.css', [], DT_VERSION);
         wp_enqueue_style('dt-countdowns', DT_URL . 'assets/css/countdowns.css', ['dt-front'], DT_VERSION);
         wp_enqueue_style('dt-match-insights', DT_URL . 'assets/css/match-insights.css', ['dt-front'], DT_VERSION);
+        wp_enqueue_style('dt-artur-ai', DT_URL . 'assets/css/artur-ai.css', ['dt-front'], DT_VERSION);
         wp_enqueue_style('dt-mobile-nav', DT_URL . 'assets/css/mobile-nav.css', ['dt-front', 'dt-user-settings'], DT_VERSION);
         wp_enqueue_script('dt-front', DT_URL . 'assets/js/frontend.js', [], DT_VERSION, true);
         wp_enqueue_script('dt-countdowns', DT_URL . 'assets/js/countdowns.js', ['dt-front'], DT_VERSION, true);
+        wp_enqueue_script('dt-artur-ai', DT_URL . 'assets/js/artur-ai.js', ['dt-front'], DT_VERSION, true);
         if (is_user_logged_in()) {
             wp_enqueue_style('dt-feedback', DT_URL . 'assets/css/feedback.css', ['dt-front'], DT_VERSION);
             wp_enqueue_script('dt-feedback', DT_URL . 'assets/js/feedback.js', ['dt-front'], DT_VERSION, true);
@@ -92,6 +94,7 @@ class DT_Frontend {
             'season'=>$settings['season'],
             'leagueName'=>'PLK · 1LM · 2LM',
             'showCountdowns'=>!empty($settings['show_countdowns']),
+            'arturAiEnabled'=>class_exists('DT_Artur_AI') && DT_Artur_AI::enabled(),
             'timezone'=>wp_timezone_string() ?: 'Europe/Warsaw',
             'logo'=>DT_URL . 'assets/img/decka-logo.png',
             'colors'=>[
@@ -206,6 +209,7 @@ class DT_Frontend {
         echo '</main>';
 
         echo '<dialog id="dt-submit-modal" class="dt-front-modal"><div class="dt-front-modal-body"><button class="dt-front-modal-x" type="button" data-modal-close aria-label="Zamknij">×</button><div class="dt-modal-icon">' . self::icon('lock') . '</div><span class="dt-front-kicker">OSTATECZNY ZAPIS</span><h2>Zapisać typy?</h2><p>Po zatwierdzeniu kuponu tej kolejki <strong>nie będzie można zmienić żadnego typu</strong>.</p><div class="dt-modal-actions"><button type="button" class="dt-modal-cancel" data-modal-close>Wróć</button><button type="button" class="dt-modal-confirm" id="dt-confirm-submit">Tak, zapisz kupon</button></div></div></dialog>';
+        echo '<dialog id="dt-artur-ai-modal" class="dt-artur-ai-modal" aria-labelledby="dt-artur-ai-title"><div class="dt-artur-ai-card"><button type="button" class="dt-artur-ai-close" aria-label="Zamknij">×</button><header><img src="'.esc_url(DT_URL.'assets/img/artur-bot/02-myslenie.webp').'" alt="Artur"><div><span>KOŁO RATUNKOWE</span><h2 id="dt-artur-ai-title">Zapytaj Artura</h2><p id="dt-artur-ai-match"></p></div></header><div class="dt-artur-ai-status" id="dt-artur-ai-status">Sprawdzam dostępność…</div><div class="dt-artur-ai-history" id="dt-artur-ai-history" aria-live="polite"></div><div class="dt-artur-ai-prompts" id="dt-artur-ai-prompts"></div><form id="dt-artur-ai-form"><label for="dt-artur-ai-question">Twoje pytanie o ten mecz</label><textarea id="dt-artur-ai-question" maxlength="300" rows="3" required placeholder="Np. która drużyna jest ostatnio w lepszej formie?"></textarea><button type="submit">Zapytaj Artura</button></form><small>Treść pytania i statystyki meczu są przesyłane do Gemini. Nie przekazujemy Twojego nazwiska, e-maila ani zapisanego typu. Odpowiedź Artura jest podpowiedzią, a nie gwarancją wyniku.</small></div></dialog>';
     }
 
     private static function avatar_helper(bool $landing = false): void {
