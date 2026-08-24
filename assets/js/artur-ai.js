@@ -10,7 +10,8 @@
     const unlimited=!!current?.unlimited,used=Number(current?.used||0),limit=Number(current?.limit||3),remaining=unlimited?Infinity:Math.max(0,limit-used),bound=unlimited?0:Number(current?.match_id||0),wrong=!unlimited&&bound&&bound!==Number(selected?.match||0);
     statusBox.className='dt-artur-ai-status'+(remaining?'':' is-used');
     statusBox.innerHTML=unlimited?'Tryb testowy: <strong>pytania bez limitu i bez blokady meczu</strong>.':(wrong?'Koło ratunkowe tej kolejki wykorzystujesz już przy innym meczu.':`Pozostałe pytania: <strong>${remaining}/${limit}</strong>${bound?' · koło przypisane do tego meczu':''}`);
-    historyBox.innerHTML=(current?.history||[]).map((item,index)=>`<article><div class="dt-artur-question"><b>Twoje pytanie ${index+1}:</b><p>${esc(item.question)}</p></div><div class="is-artur"><b>Odpowiedź Artura:</b><p>${esc(item.answer)}</p></div></article>`).join('');
+    const arturImage=cfg.avatar?.thinking?.url||'';
+    historyBox.innerHTML=(current?.history||[]).map((item,index)=>`<article><div class="dt-artur-question"><b>Twoje pytanie ${index+1}:</b><p>${esc(item.question)}</p></div><div class="is-artur">${arturImage?`<img class="dt-artur-chat-avatar" src="${esc(arturImage)}" alt="Artur AI">`:''}<div class="dt-artur-answer-body"><b>Odpowiedź Artura:</b><p>${esc(item.answer)}</p></div></div></article>`).join('');
     promptsBox.innerHTML=!wrong&&remaining?prompts.map(p=>`<button type="button" data-artur-prompt="${esc(p)}">${esc(p)}</button>`).join(''):'';
     form.hidden=!!wrong||!remaining||!current?.available;
     form.querySelector('button').disabled=sending;
