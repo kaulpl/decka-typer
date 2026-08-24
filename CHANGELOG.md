@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.36 — 2026-08-24
+
+- Gotowe pytania w Kole ratunkowym są prezentowane pionowo, jedno pod drugim.
+- Historia pytań i odpowiedzi jest wyświetlana jako czytelny chat nad listą gotowych pytań.
+- Wzmocniono oznaczenie „Odpowiedź Artura:” za pomocą osobnej etykiety i kontrastowego tła.
+- Zmieniono informację prywatności na komunikat o braku gwarancji trafionego typu i anonimizacji danych profilu.
+- Poprawiono odczyt wieloczęściowych odpowiedzi Gemini, w tym odpowiedzi modeli korzystających z mechanizmu thinking.
+- Dodano automatyczne przełączenie na zapasowy model `gemini-3.5-flash-lite`, gdy skonfigurowany model nie istnieje lub nie obsługuje żądania.
+- Pełna przyczyna błędu Gemini jest zapisywana w Historii, a administrator otrzymuje kod HTTP i komunikat techniczny bezpośrednio w Kole ratunkowym.
+
 ## 0.5.35 — 2026-08-24
 
 - W trybie testowym Koło ratunkowe Artura działa bez limitu pytań i bez przypisania do jednego meczu.
