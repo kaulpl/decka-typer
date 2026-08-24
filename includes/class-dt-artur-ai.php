@@ -30,6 +30,12 @@ class DT_Artur_AI {
         $roundId = (int)$request['round_id'];
         $round = self::round($roundId);
         if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
+        if (self::test_mode()) {
+            return new WP_REST_Response([
+                'enabled'=>self::enabled(), 'available'=>self::enabled(), 'unlimited'=>true,
+                'limit'=>self::limit(), 'used'=>0, 'remaining'=>null, 'match_id'=>null, 'history'=>[],
+            ]);
+        }
         $rows = $wpdb->get_results($wpdb->prepare(
             'SELECT match_id,question_no,question,answer,created_at FROM '.DT_DB::table('artur_ai').' WHERE user_id=%d AND round_id=%d ORDER BY question_no',
             get_current_user_id(), $roundId
@@ -62,7 +68,8 @@ class DT_Artur_AI {
             return new WP_Error('invalid_question', 'Pytanie musi mieć od 5 do 300 znaków.', ['status'=>422]);
         }
         $round = self::round($roundId);
-        if (!$round || !DT_REST::round_accepts_picks($round) || self::submitted($roundId)) {
+        $testMode = self::test_mode();
+        if (!$round || (!$testMode && (!DT_REST::round_accepts_picks($round) || self::submitted($roundId)))) {
             return new WP_Error('unavailable', 'Koło ratunkowe działa tylko przed zapisaniem kuponu otwartej kolejki.', ['status'=>409]);
         }
         $match = self::match($matchId, $roundId);
@@ -70,6 +77,17 @@ class DT_Artur_AI {
 
         $table = DT_DB::table('artur_ai');
         $uid = get_current_user_id();
+        if ($testMode) {
+            $answer = self::gemini($question, $match, $round);
+            if (is_wp_error($answer)) return $answer;
+            DT_Logger::log('artur_ai_test_question', 'Testowe pytanie do Artura bez limitu i trwałego zapisu.', [
+                'round_id'=>$roundId, 'match_id'=>$matchId,
+            ], 'notice', $uid);
+            return new WP_REST_Response([
+                'ok'=>true, 'unlimited'=>true, 'question_no'=>0, 'question'=>$question,
+                'answer'=>$answer, 'remaining'=>null, 'match_id'=>$matchId,
+            ]);
+        }
         $existing = $wpdb->get_results($wpdb->prepare(
             "SELECT match_id,question_no FROM $table WHERE user_id=%d AND round_id=%d ORDER BY question_no FOR UPDATE",
             $uid, $roundId
@@ -186,4 +204,5 @@ class DT_Artur_AI {
     private static function submitted(int $roundId): bool { global $wpdb; return (bool)$wpdb->get_var($wpdb->prepare('SELECT id FROM '.DT_DB::table('round_submissions').' WHERE user_id=%d AND round_id=%d',get_current_user_id(),$roundId)); }
     private static function model(): string { $model=sanitize_text_field((string)(DT_DB::settings()['artur_ai_model']??'')); return $model ?: 'gemini-2.5-flash-lite'; }
     private static function limit(): int { return max(1,min(5,(int)(DT_DB::settings()['artur_ai_questions']??3))); }
+    private static function test_mode(): bool { return (string)(DT_DB::settings()['site_mode'] ?? 'test') === 'test'; }
 }

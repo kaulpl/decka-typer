@@ -95,6 +95,7 @@ class DT_Frontend {
             'leagueName'=>'PLK · 1LM · 2LM',
             'showCountdowns'=>!empty($settings['show_countdowns']),
             'arturAiEnabled'=>class_exists('DT_Artur_AI') && DT_Artur_AI::enabled(),
+            'siteMode'=>(string)($settings['site_mode'] ?? 'test'),
             'timezone'=>wp_timezone_string() ?: 'Europe/Warsaw',
             'logo'=>DT_URL . 'assets/img/decka-logo.png',
             'colors'=>[
