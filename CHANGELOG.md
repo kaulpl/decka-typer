@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.35 — 2026-08-24
+
+- W trybie testowym Koło ratunkowe Artura działa bez limitu pytań i bez przypisania do jednego meczu.
+- Testowe rozmowy nie są zapisywane jako wykorzystanie koła, dlatego odświeżenie strony nie powoduje blokady.
+- Tryb testowy pozwala sprawdzać Artura również przy zapisanym kuponie i zamkniętej kolejce.
+- W trybie produkcyjnym zachowano limit pytań, jeden wybrany mecz i trwałą kontrolę po stronie serwera.
+- Zmniejszono przycisk Koła ratunkowego do dyskretnej ikonki rozwijającej podpis po najechaniu lub fokusie.
+- Na telefonach przycisk pozostaje kompaktowy, ale stale pokazuje ikonę oraz napis „Koło ratunkowe Artura”.
+- Dodano w panelu administratora objaśnienie różnicy pomiędzy trybem testowym i produkcyjnym.
+- Przy aktualizacji usuwane są wyłącznie pytania zapisane wcześniej przez wersję 0.5.34 w aktywnym trybie testowym, aby po przejściu na produkcję nie zużywały limitu.
+
 ## 0.5.34 — 2026-08-24
 
 - Dodano „Koło ratunkowe Artura” zasilane przez Gemini API i klucz `DT_GEMINI_API_KEY` z pliku `wp-config.php`.

@@ -182,6 +182,16 @@ class DT_DB {
 
         foreach ($sql as $statement) dbDelta($statement);
 
+        // Version 0.5.34 persisted questions also while the whole site was in test mode.
+        // Remove only those one-time test records so they cannot unexpectedly consume
+        // the production lifeline after an administrator switches the site live.
+        if (version_compare($oldVersion, '0.5.35', '<')) {
+            $storedBeforeUpgrade = (array)get_option('dt_settings', []);
+            if ((string)($storedBeforeUpgrade['site_mode'] ?? 'test') === 'test') {
+                $wpdb->query('DELETE FROM '.self::table('artur_ai'));
+            }
+        }
+
         if (version_compare($oldVersion, '0.2.0', '<')) self::migrate_to_020();
         if (version_compare($oldVersion, '0.2.5', '<')) self::migrate_to_025();
         if (version_compare($oldVersion, '0.5.0', '<')) self::migrate_to_050();
