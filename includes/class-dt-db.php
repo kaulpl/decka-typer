@@ -163,6 +163,23 @@ class DT_DB {
             KEY created_at (created_at)
         ) $charset;";
 
+        $sql[] = "CREATE TABLE " . self::table('artur_ai') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            round_id BIGINT UNSIGNED NOT NULL,
+            match_id BIGINT UNSIGNED NOT NULL,
+            question_no TINYINT UNSIGNED NOT NULL,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            model VARCHAR(100) NOT NULL,
+            created_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY user_round_question (user_id, round_id, question_no),
+            KEY user_round (user_id, round_id),
+            KEY match_id (match_id),
+            KEY created_at (created_at)
+        ) $charset;";
+
         foreach ($sql as $statement) dbDelta($statement);
 
         if (version_compare($oldVersion, '0.2.0', '<')) self::migrate_to_020();
@@ -356,6 +373,10 @@ class DT_DB {
             'perfect_round_bonus' => 0,
             'show_community_picks_after_lock' => 1,
             'show_countdowns' => 1,
+            'artur_ai_enabled' => 0,
+            'artur_ai_model' => 'gemini-2.5-flash-lite',
+            'artur_ai_questions' => 3,
+            'artur_ai_instruction' => self::default_artur_ai_instruction(),
             'brand_primary' => '#1756A9',
             'brand_accent' => '#F47A24',
             'brand_surface' => '#F5F7FB',
@@ -368,6 +389,10 @@ class DT_DB {
             'contact_page_id' => 0,
             'typer_page_id' => 0,
         ];
+    }
+
+    public static function default_artur_ai_instruction(): string {
+        return 'Jesteś Arturem, koszykarskim asystentem TypujKosza.pl. Odpowiadasz po polsku, rzeczowo i dojrzale, ale z nutą inteligentnego humoru oraz sportowego szaleństwa. Sporadycznie i naturalnie używasz rzadkich polskich słów. Opierasz się wyłącznie na przekazanych statystykach. Nie wymyślasz kontuzji, składów ani faktów. Nie gwarantujesz wyniku i nie udzielasz porad bukmacherskich. Wyraźnie odróżniasz fakty od wniosków. Odpowiedź ma maksymalnie 700 znaków.';
     }
 
     public static function settings(): array {
