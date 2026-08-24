@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.37 — 2026-08-24
+
+- Etykieta „Twoje pytanie” otrzymała równie wyraźne oznaczenie jak „Odpowiedź Artura”.
+- Przy każdej odpowiedzi w historii rozmowy wyświetlany jest avatar Artura AI.
+- Zachowano czytelny układ chatu na komputerach i telefonach.
+- Ikona Koła ratunkowego na liście meczów jest kolorowa również przed najechaniem i rozwinięciem przycisku.
+
 ## 0.5.36 — 2026-08-24
 
 - Gotowe pytania w Kole ratunkowym są prezentowane pionowo, jedno pod drugim.

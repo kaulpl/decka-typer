@@ -1,10 +1,9 @@
 .dt-artur-ai-action { display:flex; justify-content:flex-end; margin-top:8px; }
 .dt-artur-ai-open { width:34px; height:34px; border:1px solid #d9e1eb; border-radius:999px; background:#f7f9fc; color:#5e6b7e; display:flex; align-items:center; gap:0; padding:0 8px; overflow:hidden; cursor:pointer; white-space:nowrap; transition:width .2s ease,background .2s ease,border-color .2s ease,color .2s ease,box-shadow .2s ease; }
-.dt-artur-ai-open>span { flex:0 0 17px; font-size:16px; line-height:1; filter:grayscale(1); opacity:.72; }
+.dt-artur-ai-open>span { flex:0 0 17px; font-size:16px; line-height:1; opacity:1; }
 .dt-artur-ai-open strong { max-width:0; opacity:0; overflow:hidden; font-size:14px; font-weight:800; transition:max-width .2s ease,opacity .15s ease,margin .2s ease; }
 .dt-artur-ai-open:hover,.dt-artur-ai-open:focus-visible { width:190px; gap:7px; background:#fff9dc; border-color:#e5ce70; color:#66510a; box-shadow:0 5px 15px rgba(75,60,8,.08); }
 .dt-artur-ai-open:hover strong,.dt-artur-ai-open:focus-visible strong { max-width:150px; opacity:1; margin-left:1px; }
-.dt-artur-ai-open:hover>span,.dt-artur-ai-open:focus-visible>span { filter:grayscale(.35); opacity:1; }
 .dt-artur-ai-modal { width:min(720px,calc(100% - 24px)); border:0; border-radius:22px; padding:0; background:transparent; }
 .dt-artur-ai-modal::backdrop { background:rgba(9,20,39,.62); backdrop-filter:blur(5px); }
 .dt-artur-ai-card { position:relative; background:#fff; border-radius:22px; padding:22px; box-shadow:0 24px 80px rgba(8,25,55,.28); }
@@ -19,9 +18,12 @@
 .dt-artur-ai-history { display:grid; gap:10px; max-height:320px; overflow:auto; }
 .dt-artur-ai-history article { display:grid; gap:7px; }
 .dt-artur-ai-history article>div { max-width:88%; padding:10px 12px; border-radius:12px; background:#edf4ff; }
-.dt-artur-ai-history article>div.is-artur { justify-self:end; background:#fff7ce; border:1px solid #ecd56d; }
+.dt-artur-ai-history article>div.is-artur { justify-self:end; display:flex; align-items:flex-start; gap:9px; background:#fff7ce; border:1px solid #ecd56d; }
 .dt-artur-ai-history b { font-size:14px; }
+.dt-artur-ai-history .dt-artur-question b { display:inline-flex; padding:3px 7px; margin-bottom:3px; border-radius:999px; background:#dceaff; color:#164f9e; font-weight:950; }
 .dt-artur-ai-history .is-artur b { display:inline-flex; padding:3px 7px; margin-bottom:3px; border-radius:999px; background:#f2c94c; color:#493800; font-weight:950; }
+.dt-artur-chat-avatar { flex:0 0 46px; width:46px; height:46px; object-fit:contain; filter:drop-shadow(0 4px 6px rgba(31,43,64,.12)); }
+.dt-artur-answer-body { min-width:0; }
 .dt-artur-ai-history p { margin:3px 0 0; font-size:14px; line-height:1.55; white-space:pre-wrap; }
 .dt-artur-ai-prompts { display:grid; grid-template-columns:1fr; gap:7px; padding:12px 0; }
 .dt-artur-ai-prompts button { width:100%; border:1px solid #dbe3ef; border-radius:10px; background:#fff; color:#42516a; padding:8px 11px; font-size:14px; cursor:pointer; text-align:left; }
