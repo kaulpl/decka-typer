@@ -5,10 +5,10 @@ if (!defined('ABSPATH')) exit;
 class DT_Ads {
     private const PAGE = 'decka-typer-ads';
     private const SLOTS = [
-        'h1' => ['name'=>'H1 — Baner górny', 'width'=>1180, 'height'=>125, 'location'=>'Szerokość kontenera treści pod nagłówkiem'],
-        'f1' => ['name'=>'F1 — Baner dolny', 'width'=>1180, 'height'=>125, 'location'=>'Szerokość kontenera treści bezpośrednio przed stopką'],
-        's1' => ['name'=>'S1 — Skyscraper lewy', 'width'=>160, 'height'=>600, 'location'=>'Pływający slot po lewej stronie treści'],
-        's2' => ['name'=>'S2 — Skyscraper prawy', 'width'=>160, 'height'=>600, 'location'=>'Pływający slot po prawej stronie treści'],
+        'h1' => ['name'=>'H1 — Baner górny', 'width'=>2360, 'height'=>250, 'location'=>'Szerokość kontenera treści pod nagłówkiem'],
+        'f1' => ['name'=>'F1 — Baner dolny', 'width'=>2360, 'height'=>250, 'location'=>'Szerokość kontenera treści bezpośrednio przed stopką'],
+        's1' => ['name'=>'S1 — Skyscraper lewy', 'width'=>325, 'height'=>1210, 'location'=>'Pływający slot po lewej stronie treści'],
+        's2' => ['name'=>'S2 — Skyscraper prawy', 'width'=>325, 'height'=>1210, 'location'=>'Pływający slot po prawej stronie treści'],
     ];
 
     public static function register(): void {
@@ -239,7 +239,7 @@ class DT_Ads {
         echo '<section class="dt-card dt-section"><span class="dt-eyebrow">'.($ad?'EDYCJA KAMPANII':'NOWA KAMPANIA').'</span><h2>'.esc_html($ad?(string)$ad->name:'Dodaj reklamę').'</h2><form class="dt-ad-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'"><input type="hidden" name="action" value="dt_save_ad"><input type="hidden" name="id" value="'.(int)($ad->id??0).'">';
         wp_nonce_field('dt_save_ad');
         echo '<div class="dt-form-3"><label>Nazwa kampanii<input name="name" required maxlength="190" value="'.esc_attr((string)($ad->name??'')).'"></label><label>Reklamodawca / od kogo<input name="advertiser" required maxlength="190" value="'.esc_attr((string)($ad->advertiser??'')).'"></label><label>Slot reklamowy<select name="slot_key" required>';
-        foreach ($slots as $key=>$slot) echo '<option value="'.esc_attr($key).'" '.selected((string)($ad->slot_key??'d1'),$key,false).'>'.esc_html($slot['name'].' · '.$slot['width'].'×'.$slot['height'].' px').'</option>';
+        foreach ($slots as $key=>$slot) echo '<option value="'.esc_attr($key).'" '.selected((string)($ad->slot_key??'h1'),$key,false).'>'.esc_html($slot['name'].' · wymiar grafiki: '.$slot['width'].' × '.$slot['height'].' px').'</option>';
         echo '</select></label></div><div class="dt-form-2"><label>Grafika reklamy — URL<div class="dt-media-field"><input type="url" name="image_url" data-dt-media-input required value="'.esc_attr((string)($ad->image_url??'')).'"><button type="button" class="button" data-dt-media>Wybierz z biblioteki</button></div></label><label>Link docelowy<input type="url" name="target_url" required value="'.esc_attr((string)($ad->target_url??'')).'" placeholder="https://..."></label></div><label>Opis alternatywny grafiki<input name="alt_text" maxlength="255" value="'.esc_attr((string)($ad->alt_text??'')).'" placeholder="Krótki opis dostępny dla czytników ekranu"></label><div class="dt-form-4"><label>Start emisji<input type="datetime-local" name="starts_at" required value="'.esc_attr($start).'"></label><label>Koniec emisji<input type="datetime-local" name="ends_at" required value="'.esc_attr($end).'"></label><label>Status<select name="status">';
         foreach (['draft'=>'Szkic','active'=>'Aktywna','paused'=>'Wstrzymana','archived'=>'Archiwalna'] as $key=>$label) echo '<option value="'.$key.'" '.selected((string)($ad->status??'draft'),$key,false).'>'.$label.'</option>';
         echo '</select></label><label>Priorytet 0–100<input type="number" min="0" max="100" name="priority" value="'.esc_attr((int)($ad->priority??10)).'"></label></div><div class="dt-form-2"><label>Limit wyświetleń <small>0 = bez limitu</small><input type="number" min="0" name="max_impressions" value="'.esc_attr((int)($ad->max_impressions??0)).'"></label><label>Limit kliknięć <small>0 = bez limitu</small><input type="number" min="0" name="max_clicks" value="'.esc_attr((int)($ad->max_clicks??0)).'"></label></div><label>Notatki wewnętrzne<textarea name="notes" rows="3">'.esc_textarea((string)($ad->notes??'')).'</textarea></label><div class="dt-ad-form-actions"><button class="button button-primary dt-button">'.($ad?'Zapisz zmiany':'Utwórz kampanię').'</button>'.($ad?' <a class="button" href="'.esc_url(admin_url('admin.php?page='.self::PAGE)).'">Anuluj edycję</a>':'').'</div></form></section>';

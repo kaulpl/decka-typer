@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.49 — 2026-08-25
+
+- Ustalono produkcyjne wymiary plików reklamowych w jakości 2×: H1 i F1 — 2360 × 250 px, S1 i S2 — 325 × 1210 px.
+- Przy każdej pozycji na liście wyboru slotu dodano jednoznaczny opis „wymiar grafiki”.
+- Zaktualizowano wymiary na makietach testowych, w ustawieniach oraz atrybutach obrazów HTML.
+- Zachowano dotychczasowy responsywny rozmiar wyświetlania reklam w obrębie interfejsu.
+- Skyscrapery są wyświetlane w dokładnej skali 50% (162,5 × 605 px), dzięki czemu grafika 325 × 1210 px nie jest zniekształcana ani kadrowana.
+- Poprawiono domyślny wybór nowej kampanii z nieaktualnego D1 na H1.
+
 ## 0.5.48 — 2026-08-25
 
 - Skorygowano wymagany wymiar grafik H1 i F1 z błędnego 1920 × 125 px na rzeczywisty format kontenera 1180 × 125 px.
