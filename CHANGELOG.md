@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.41 — 2026-08-25
+
+- Dopasowano szerokość rozwiniętego Koła ratunkowego Artura do długości napisu.
+- Usunięto nadmiar pustego miejsca po prawej stronie etykiety przycisku.
+- Przycisk na komputerach rozwija się nakładkowo w lewo i nie przesuwa daty ani statusu meczu.
+- Zablokowano łamanie daty, godziny i statusu meczu do kolejnej linii.
+- Zachowano dotychczasowy układ mobilny.
+
 ## 0.5.40 — 2026-08-25
 
 - Wzmocniono sygnał nazwy witryny dla Google jako dokładnie „TypujKosza.pl”.
