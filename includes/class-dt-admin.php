@@ -470,9 +470,9 @@ class DT_Admin {
         $leagueColors = wp_parse_args((array)($s['league_colors'] ?? []), ['1lm'=>'#055EFB','plk'=>'#FB5D0B','2lm'=>'#4F6F9D']);
         echo '<section class="dt-card"><span class="dt-eyebrow">WYGLĄD</span><h2>Kolory interfejsu</h2><div class="dt-form-3"><label>Niebieski<input type="color" name="brand_primary" value="' . esc_attr($s['brand_primary']) . '"></label><label>Akcent<input type="color" name="brand_accent" value="' . esc_attr($s['brand_accent']) . '"></label><label>Tło<input type="color" name="brand_surface" value="' . esc_attr($s['brand_surface']) . '"></label></div><h3>Kolory lig</h3><p class="dt-muted">Te kolory oznaczają ligi w odliczaniu oraz przy kolejkach w zakładce „Moje typy”.</p><div class="dt-form-3"><label>1LM<input type="color" name="league_colors[1lm]" value="' . esc_attr($leagueColors['1lm']) . '"></label><label>PLK<input type="color" name="league_colors[plk]" value="' . esc_attr($leagueColors['plk']) . '"></label><label>2LM<input type="color" name="league_colors[2lm]" value="' . esc_attr($leagueColors['2lm']) . '"></label></div></section>';
         echo '<div class="dt-savebar"><div><strong>Decka Typer ' . esc_html(DT_VERSION) . '</strong><span>Zmiany ustawień obowiązują od razu.</span></div><button class="button button-primary dt-button">Zapisz ustawienia</button></div></form>';
-        echo '<section class="dt-card dt-danger-zone"><span class="dt-eyebrow">NARZĘDZIA TESTOWE</span><h2>Wyczyść dane Typera</h2><p>Usuwa wszystkie typy, zapisane kupony, korekty punktów i ustawienia profilowe Typera. Konta WordPress oraz ich logowanie pozostają bez zmian.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Usunąć bezpowrotnie wszystkie dane typerskie? Konta użytkowników pozostaną.\')"><input type="hidden" name="action" value="dt_reset_typer_data">';
+        echo '<section class="dt-card dt-danger-zone"><span class="dt-eyebrow">NARZĘDZIA TESTOWE</span><h2>Wyczyść dane Typera</h2><p>Usuwa wszystkie typy, punkty, wyniki, mecze, kolejki i drużyny, a następnie ponownie synchronizuje PLK, 1LM oraz 2LM. Konta WordPress, reklamy, Feedback, ustawienia Artura, AI i pozostała konfiguracja pozostają bez zmian.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Usunąć bezpowrotnie dane typerskie i sportowe, a następnie pobrać ligi od nowa?\')"><input type="hidden" name="action" value="dt_reset_typer_data">';
         wp_nonce_field('dt_reset_typer_data');
-        echo '<label>Wpisz <strong>WYCZYŚĆ</strong>, aby potwierdzić<input name="confirmation" autocomplete="off" required></label><p><button class="button dt-danger-button"><span class="dashicons dashicons-trash"></span> Usuń wszystkie typowania</button></p></form></section>';
+        echo '<label>Wpisz <strong>WYCZYŚĆ</strong>, aby potwierdzić<input name="confirmation" autocomplete="off" required></label><p><button class="button dt-danger-button"><span class="dashicons dashicons-trash"></span> Wyczyść dane i zsynchronizuj ligi</button></p></form></section>';
         self::end_shell();
     }
 
@@ -663,7 +663,10 @@ class DT_Admin {
         global $wpdb;
         $wpdb->query('START TRANSACTION');
         try {
-            foreach (['predictions','round_submissions','point_adjustments','artur_ai'] as $table) {
+            // Delete dependent data first, then the complete sports catalogue. This
+            // also removes manually entered scores and locks, so the following sync
+            // always rebuilds leagues from their official sources.
+            foreach (['predictions','round_submissions','point_adjustments','artur_ai','matches','rounds','teams'] as $table) {
                 if ($wpdb->query('DELETE FROM '.DT_DB::table($table)) === false) throw new RuntimeException($wpdb->last_error ?: 'Błąd czyszczenia tabeli '.$table);
             }
             if ($wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->usermeta} WHERE meta_key IN (%s,%s)",'dt_ranking_name','dt_favorite_team_id')) === false) {
@@ -675,8 +678,43 @@ class DT_Admin {
             DT_Logger::log('typer_reset_failed',$e->getMessage(),[], 'error', get_current_user_id());
             self::redirect('decka-typer-settings','Nie udało się wyczyścić danych Typera.','error');
         }
-        DT_Logger::log('typer_data_reset','Administrator usunął wszystkie dane typerskie. Konta użytkowników zachowano.',[], 'warning', get_current_user_id());
-        self::redirect('decka-typer-settings','System typerski został wyczyszczony. Konta i logowanie zachowano.');
+
+        // Match IDs and round IDs are recreated by the import. Remove only their
+        // mapping; keep the configured BONUS point value and every other setting.
+        delete_option('dt_bonus_matches');
+        delete_option('dt_1lm_standings_cache');
+        $contextCache = $wpdb->esc_like('_transient_dt_lctx_') . '%';
+        $contextTimeout = $wpdb->esc_like('_transient_timeout_dt_lctx_') . '%';
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+            $contextCache,
+            $contextTimeout
+        ));
+
+        DT_Logger::log(
+            'typer_data_reset',
+            'Administrator usunął dane typerskie, wyniki, mecze, kolejki i drużyny. Konta oraz konfigurację wtyczki zachowano.',
+            [],
+            'warning',
+            get_current_user_id()
+        );
+
+        $sync = DT_Sync::run(true);
+        $leagueResults = (array)($sync['leagues'] ?? []);
+        $synced = [];
+        $failed = [];
+        foreach (['plk'=>'PLK','1lm'=>'1LM','2lm'=>'2LM'] as $key=>$label) {
+            if (!empty($leagueResults[$key]['ok'])) $synced[] = $label;
+            else $failed[] = $label;
+        }
+
+        $message = 'Dane Typera zostały wyczyszczone. Ponownie pobrano: ' . ($synced ? implode(', ', $synced) : 'brak lig') . '.';
+        if ($failed) {
+            $message .= ' Nie udało się pobrać: ' . implode(', ', $failed) . '. Szczegóły zapisano w Historii.';
+            self::redirect('decka-typer-sync', $message, 'error');
+        }
+        $message .= ' Zaimportowano ' . (int)($sync['matches_new'] ?? 0) . ' meczów.';
+        self::redirect('decka-typer-sync', $message, 'success');
     }
 
     private static function nullable_int($value): ?int {
