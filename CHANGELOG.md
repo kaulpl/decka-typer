@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.44 — 2026-08-25
+
+- Dodano moduł „Reklamy” z tworzeniem, edycją, aktywowaniem, wstrzymywaniem i archiwizowaniem kampanii.
+- Kampania przechowuje reklamodawcę, grafikę, link docelowy, opis dostępności, slot, priorytet, okres emisji, limity oraz notatki wewnętrzne.
+- Dodano harmonogram emisji z datą i godziną rozpoczęcia oraz zakończenia, a także czytelny czas kampanii w dniach i miesiącach.
+- Dodano slot D1 pod nagłówkiem oraz D2 bezpośrednio przed stopką, oba w formacie 970 × 250 px i skalowane proporcjonalnie na telefonach.
+- Dodano anonimowe, dzienne statystyki wyświetleń, kliknięć i CTR; wyświetlenie jest liczone po zobaczeniu co najmniej połowy reklamy i najwyżej raz na sesję.
+- Dodano limity wyświetleń i kliknięć, priorytety kampanii oraz automatyczne rozpoznawanie statusów zaplanowana, aktywna, zakończona i wyczerpany limit.
+- Dodano wybór grafiki z biblioteki mediów WordPressa.
+- Dodano bezpieczne śledzenie kliknięć przez podpisane adresy przekierowujące.
+- W ustawieniach dodano tryb symulacji D1 i D2 w postaci pomarańczowych makiet widocznych wyłącznie administratorowi.
+
 ## 0.5.43 — 2026-08-25
 
 - Dodano zakres rankingu „Miesiąc” obok widoków Wszechczasów, Sezon i Kolejka.
