@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.46 — 2026-08-25
+
+- Dopasowano szerokość slotów H1 i F1 do głównego kontenera treści oraz panelu odliczania do startu lig.
+- H1 i F1 mają maksymalnie 1180 px szerokości, zachowują marginesy mobilne i nie przekraczają 125 px wysokości.
+- Górna krawędź slotów S1 i S2 rozpoczyna się na wysokości panelu nawigacji „Typuj / Ranking / Moje typy / Moje konto”.
+- Podczas przewijania skyscrapery pozostają widoczne i zatrzymują się z bezpiecznym odstępem od górnej krawędzi okna.
+- Położenie bocznych reklam jest ponownie obliczane przy przewijaniu oraz zmianie rozmiaru okna.
+
 ## 0.5.45 — 2026-08-25
 
 - Zmieniono nazwy poziomych slotów D1 i D2 odpowiednio na H1 i F1.
