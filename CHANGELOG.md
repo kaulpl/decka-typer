@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.47 — 2026-08-25
+
+- Dodano zaokrąglenie 14 px do slotów H1 i F1, zgodne ze slotami bocznymi S1 i S2.
+- Grafiki reklamowe są przycinane do kształtu slotu także wtedy, gdy przesłany plik ma ostre, prostokątne narożniki.
+- Dodano standardowy odstęp modułowy pod reklamą H1.
+- Dodano standardowy odstęp pod komunikatem „Wersja testowa”.
+
 ## 0.5.46 — 2026-08-25
 
 - Dopasowano szerokość slotów H1 i F1 do głównego kontenera treści oraz panelu odliczania do startu lig.
