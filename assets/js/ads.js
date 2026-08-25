@@ -9,7 +9,7 @@
   const sides=[...document.querySelectorAll('.dt-ad-slot-s1,.dt-ad-slot-s2')];
   if(sides.length){
     let queued=false;
-    const align=()=>{queued=false;const main=document.querySelector('.dt-app-main');if(!main)return;const maxTop=Math.max(20,window.innerHeight-625);const top=Math.min(maxTop,Math.max(20,main.getBoundingClientRect().top));sides.forEach(slot=>slot.style.setProperty('--dt-ad-side-top',`${Math.round(top)}px`))};
+    const align=()=>{queued=false;const landing=document.querySelector('.dt-login-wrap');const h1=document.querySelector('.dt-ad-slot-h1');const anchor=document.querySelector('#dt-ad-h1-anchor');const target=landing?(h1||anchor):document.querySelector('.dt-app-main');if(!target)return;const targetTop=target.getBoundingClientRect().top+(landing&&!h1?16:0);const maxTop=Math.max(20,window.innerHeight-625);const top=Math.min(maxTop,Math.max(20,targetTop));sides.forEach(slot=>slot.style.setProperty('--dt-ad-side-top',`${Math.round(top)}px`))};
     const schedule=()=>{if(!queued){queued=true;requestAnimationFrame(align)}};
     align();window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule,{passive:true});
   }
