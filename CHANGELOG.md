@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.38 — 2026-08-25
+
+- Poszerzono rozwinięty przycisk Koła ratunkowego Artura na komputerach.
+- Zwiększono wewnętrzną przestrzeń napisu, aby pełne „Koło ratunkowe Artura” nie było obcinane.
+- Dodano ograniczenie maksymalnej szerokości do obszaru kafelka meczu.
+- Zachowano kompaktowy, pełny napis na urządzeniach mobilnych.
+
 ## 0.5.37 — 2026-08-24
 
 - Etykieta „Twoje pytanie” otrzymała równie wyraźne oznaczenie jak „Odpowiedź Artura”.
