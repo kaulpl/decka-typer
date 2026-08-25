@@ -88,6 +88,8 @@ class DT_Brand {
         $url = class_exists('DT_Canonical') ? DT_Canonical::URL : home_url('/');
         $image = self::logo_stacked_url();
         echo '<meta name="theme-color" content="' . esc_attr(self::NAVY) . '">' . "\n";
+        echo '<meta name="application-name" content="' . esc_attr(self::NAME) . '">' . "\n";
+        echo '<meta name="apple-mobile-web-app-title" content="' . esc_attr(self::NAME) . '">' . "\n";
         echo '<link rel="icon" type="image/png" href="' . esc_url(self::mark_url()) . '">' . "\n";
         echo '<meta name="description" content="'.esc_attr(self::SEO_DESCRIPTION).'">' . "\n";
         echo '<link rel="alternate" hreflang="pl-PL" href="'.esc_url($url).'">' . "\n";
@@ -110,9 +112,18 @@ class DT_Brand {
         echo '<meta name="twitter:description" content="'.esc_attr(self::SEO_DESCRIPTION).'">' . "\n";
         echo '<meta name="twitter:image" content="'.esc_url($image).'">' . "\n";
         echo '<script type="application/ld+json">'.wp_json_encode([
-            '@context'=>'https://schema.org','@type'=>'WebSite','name'=>self::NAME,'url'=>$url,
-            'description'=>self::SEO_DESCRIPTION,'inLanguage'=>'pl-PL','sameAs'=>[self::FACEBOOK_URL],
-            'publisher'=>['@type'=>'Organization','name'=>self::NAME,'url'=>$url,'logo'=>['@type'=>'ImageObject','url'=>$image]],
+            '@context'=>'https://schema.org',
+            '@graph'=>[
+                [
+                    '@type'=>'WebSite','@id'=>$url.'#website','url'=>$url,'name'=>self::NAME,
+                    'alternateName'=>['TypujKosza','Typuj Kosza'],'description'=>self::SEO_DESCRIPTION,
+                    'inLanguage'=>'pl-PL','publisher'=>['@id'=>$url.'#organization'],
+                ],
+                [
+                    '@type'=>'Organization','@id'=>$url.'#organization','name'=>self::NAME,'url'=>$url,
+                    'logo'=>['@type'=>'ImageObject','url'=>$image],'sameAs'=>[self::FACEBOOK_URL],
+                ],
+            ],
         ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE).'</script>' . "\n";
     }
 

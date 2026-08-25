@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.40 — 2026-08-25
+
+- Wzmocniono sygnał nazwy witryny dla Google jako dokładnie „TypujKosza.pl”.
+- Dodano spójne dane strukturalne `WebSite` i `Organization` z nazwami alternatywnymi marki.
+- Dodano metadane nazwy aplikacji dla przeglądarek i urządzeń mobilnych.
+- Usunięto powielone metadane SEO generowane osobno przez landing page.
+- Zachowano tytuł wyniku wyszukiwania rozpoczynający się od „TypujKosza.pl”.
+
 ## 0.5.39 — 2026-08-25
 
 - Przeniesiono Koło ratunkowe Artura na komputerach do górnego wiersza kafelka meczu.
