@@ -217,6 +217,13 @@ class DT_DB {
 
         foreach ($sql as $statement) dbDelta($statement);
 
+        // Preserve campaigns created with the original 0.5.44 slot names.
+        if (version_compare($oldVersion, '0.5.45', '<')) {
+            $adsTable = self::table('ads');
+            $wpdb->query("UPDATE $adsTable SET slot_key='h1' WHERE slot_key='d1'");
+            $wpdb->query("UPDATE $adsTable SET slot_key='f1' WHERE slot_key='d2'");
+        }
+
         // Version 0.5.34 persisted questions also while the whole site was in test mode.
         // Remove only those one-time test records so they cannot unexpectedly consume
         // the production lifeline after an administrator switches the site live.

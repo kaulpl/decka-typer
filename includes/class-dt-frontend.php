@@ -122,7 +122,7 @@ class DT_Frontend {
         $leagueColors = wp_parse_args((array)($settings['league_colors'] ?? []), ['1lm'=>'#055EFB','plk'=>'#FB5D0B','2lm'=>'#4F6F9D']);
         echo '<div id="decka-typer" class="dt-app" style="--dt-primary:' . esc_attr($settings['brand_primary']) . ';--dt-accent:' . esc_attr($settings['brand_accent']) . ';--dt-surface:' . esc_attr($settings['brand_surface']) . ';--dt-league-1lm:' . esc_attr($leagueColors['1lm']) . ';--dt-league-plk:' . esc_attr($leagueColors['plk']) . ';--dt-league-2lm:' . esc_attr($leagueColors['2lm']) . '">';
         self::hero($settings);
-        if (class_exists('DT_Ads')) DT_Ads::render_slot('d1');
+        if (class_exists('DT_Ads')) DT_Ads::render_slot('h1');
         if (!empty($settings['show_countdowns'])) self::league_countdowns($settings);
         if (($settings['site_mode'] ?? 'test') === 'test') echo '<div class="dt-test-banner"><strong>Wersja testowa</strong><span>Serwis jest w trakcie testów. Dane i funkcje mogą jeszcze ulec zmianie.</span></div>';
         if (($settings['site_mode'] ?? 'test') === 'break' && !current_user_can('manage_options')) self::break_screen();

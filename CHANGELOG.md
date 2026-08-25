@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.45 — 2026-08-25
+
+- Zmieniono nazwy poziomych slotów D1 i D2 odpowiednio na H1 i F1.
+- Istniejące kampanie oraz ich statystyki są automatycznie zachowywane i przepinane do nowych nazw slotów.
+- H1 i F1 zajmują pełną szerokość strony, mają format źródłowy 1920 × 125 px i wysokość nieprzekraczającą 125 px.
+- Dodano pływający slot S1 po lewej oraz S2 po prawej stronie treści w formacie 160 × 600 px.
+- Boczne sloty są automatycznie ukrywane, gdy szerokość lub wysokość okna nie pozwala wyświetlić ich bez zasłaniania aplikacji.
+- Rozszerzono tryb pomarańczowych makiet oraz panel kampanii o wszystkie cztery miejsca reklamowe.
+
 ## 0.5.44 — 2026-08-25
 
 - Dodano moduł „Reklamy” z tworzeniem, edycją, aktywowaniem, wstrzymywaniem i archiwizowaniem kampanii.
