@@ -5,8 +5,8 @@ if (!defined('ABSPATH')) exit;
 class DT_Ads {
     private const PAGE = 'decka-typer-ads';
     private const SLOTS = [
-        'h1' => ['name'=>'H1 — Baner górny', 'width'=>1920, 'height'=>125, 'location'=>'Pełna szerokość strony pod nagłówkiem'],
-        'f1' => ['name'=>'F1 — Baner dolny', 'width'=>1920, 'height'=>125, 'location'=>'Pełna szerokość strony bezpośrednio przed stopką'],
+        'h1' => ['name'=>'H1 — Baner górny', 'width'=>1180, 'height'=>125, 'location'=>'Szerokość kontenera treści pod nagłówkiem'],
+        'f1' => ['name'=>'F1 — Baner dolny', 'width'=>1180, 'height'=>125, 'location'=>'Szerokość kontenera treści bezpośrednio przed stopką'],
         's1' => ['name'=>'S1 — Skyscraper lewy', 'width'=>160, 'height'=>600, 'location'=>'Pływający slot po lewej stronie treści'],
         's2' => ['name'=>'S2 — Skyscraper prawy', 'width'=>160, 'height'=>600, 'location'=>'Pływający slot po prawej stronie treści'],
     ];

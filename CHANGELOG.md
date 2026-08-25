@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.48 — 2026-08-25
+
+- Skorygowano wymagany wymiar grafik H1 i F1 z błędnego 1920 × 125 px na rzeczywisty format kontenera 1180 × 125 px.
+- Zaktualizowano wymiary w panelu kampanii, ustawieniach, makietach testowych i atrybutach obrazów HTML.
+- Ustawiono dokładne proporcje 1180:125 dla responsywnych slotów H1 i F1, dzięki czemu prawidłowo przygotowany baner nie jest zniekształcany.
+- Potwierdzono formaty S1 i S2 jako 160 × 600 px.
+
 ## 0.5.47 — 2026-08-25
 
 - Dodano zaokrąglenie 14 px do slotów H1 i F1, zgodne ze slotami bocznymi S1 i S2.
@@ -19,7 +26,7 @@
 
 - Zmieniono nazwy poziomych slotów D1 i D2 odpowiednio na H1 i F1.
 - Istniejące kampanie oraz ich statystyki są automatycznie zachowywane i przepinane do nowych nazw slotów.
-- H1 i F1 zajmują pełną szerokość strony, mają format źródłowy 1920 × 125 px i wysokość nieprzekraczającą 125 px.
+- H1 i F1 zajmują pełną szerokość kontenera treści, mają format źródłowy 1180 × 125 px i wysokość nieprzekraczającą 125 px.
 - Dodano pływający slot S1 po lewej oraz S2 po prawej stronie treści w formacie 160 × 600 px.
 - Boczne sloty są automatycznie ukrywane, gdy szerokość lub wysokość okna nie pozwala wyświetlić ich bez zasłaniania aplikacji.
 - Rozszerzono tryb pomarańczowych makiet oraz panel kampanii o wszystkie cztery miejsca reklamowe.
