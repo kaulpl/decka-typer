@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.43 — 2026-08-25
+
+- Dodano zakres rankingu „Miesiąc” obok widoków Wszechczasów, Sezon i Kolejka.
+- Po wybraniu rankingu miesięcznego wyświetlana jest lista miesięcy z rozliczonymi meczami dla aktualnej ligi, grupy i sezonu.
+- Dodano kolumnę „Perfekcyjne 8/8” z liczbą kolejek, w których użytkownik trafił wszystkie osiem spotkań.
+- Oddzielono statystykę 8/8 od dotychczasowego mechanizmu bonusu za perfekcyjną kolejkę, aby nie zmieniać historycznej punktacji.
+- Rozszerzono responsywny układ rankingu o nową kolumnę.
+
 ## 0.5.42 — 2026-08-25
 
 - Dodano animowane koło oczekiwania podczas sprawdzania dostępności i generowania odpowiedzi Artura AI.
