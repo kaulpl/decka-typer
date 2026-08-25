@@ -181,7 +181,7 @@ class DT_Frontend {
 
     private static function login(): void {
         $error = isset($_GET['dt_login_error']) ? sanitize_text_field(wp_unslash($_GET['dt_login_error'])) : '';
-        echo '<main class="dt-front-inner dt-login-wrap"><section class="dt-login-card">';
+        echo '<main class="dt-front-inner dt-login-wrap"><section class="dt-login-card" id="dt-login">';
         echo '<div class="dt-login-copy"><span class="dt-front-kicker">TWOJE TYPY. TWÓJ RANKING.</span><h1>Wejdź do gry.</h1><p>Wybieraj zwycięzców wszystkich spotkań kolejki, zapisz jeden kupon i walcz o pierwsze miejsce w społeczności Decki Pelplin.</p>';
         echo '<div class="dt-login-features"><div>' . self::icon('bolt') . '<span><strong>Proste typowanie</strong><small>Jedno kliknięcie na zwycięzcę</small></span></div><div>' . self::icon('trophy') . '<span><strong>Ranking sezonu</strong><small>Punkty po każdym rozstrzygnięciu</small></span></div><div>' . self::icon('shield') . '<span><strong>Jeden kupon</strong><small>Po zapisie typów nie można edytować</small></span></div></div></div>';
         echo '<div class="dt-login-panel"><h2>Zaloguj się</h2><p>Jedno kliknięcie i jesteś w grze.</p>';
@@ -191,7 +191,8 @@ class DT_Frontend {
         if (DT_OAuth::configured('facebook')) { $any=true; self::oauth_button('facebook', 'Facebook'); }
         echo '<div class="dt-login-divider"><span>lub</span></div><a class="dt-social-button dt-wp-login" href="' . esc_url(wp_login_url(self::frontend_url())) . '">' . self::icon('user') . '<span>Zaloguj kontem strony</span></a>';
         if (!$any && current_user_can('manage_options')) echo '<div class="dt-setup-note">Skonfiguruj Google lub Facebook w <strong>Decka Typer → Ustawienia</strong>.</div>';
-        echo '<small class="dt-login-legal">Logując się, akceptujesz zasady Typera i politykę prywatności serwisu.</small></div></section></main>';
+        echo '<small class="dt-login-legal">Logując się, akceptujesz zasady Typera i politykę prywatności serwisu.</small></div></section>';
+        echo '<section class="dt-monthly-shirt" aria-labelledby="dt-monthly-shirt-title"><div class="dt-monthly-shirt-visual"><img src="'.esc_url(DT_URL.'assets/img/koszulka-miesiaca-icon-landing-page.png').'" alt="Personalizowana koszulka Typera Miesiąca TypujKosza.pl" width="1672" height="941" loading="lazy" decoding="async"></div><div class="dt-monthly-shirt-copy"><span class="dt-front-kicker">RANKING MIESIĄCA · 1LM</span><h2 id="dt-monthly-shirt-title">Najlepszy typer zgarnia personalizowaną koszulkę!</h2><p>Każdy miesiąc to nowa klasyfikacja i nowa szansa na zwycięstwo. Typuj mecze 1 Ligi Mężczyzn, zdobywaj punkty i zakończ miesiąc na pierwszym miejscu.</p><div class="dt-monthly-shirt-prize">'.self::icon('trophy').'<span><strong>Koszulka Typera Miesiąca</strong><small>Personalizowana specjalnie dla zwycięzcy przez ICON SPORTSWEAR.</small></span></div><a href="#dt-login" class="dt-monthly-shirt-cta">Dołącz do gry '.self::icon('arrow').'</a></div></section></main>';
     }
 
     private static function oauth_button(string $provider, string $label): void {
