@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.39 — 2026-08-25
+
+- Przeniesiono Koło ratunkowe Artura na komputerach do górnego wiersza kafelka meczu.
+- Przycisk znajduje się bezpośrednio po lewej stronie statusu „wybierz zwycięzcę” lub „zamknięte”.
+- Na urządzeniach mobilnych zachowano dotychczasowe położenie przycisku pod statystykami.
+
 ## 0.5.38 — 2026-08-25
 
 - Poszerzono rozwinięty przycisk Koła ratunkowego Artura na komputerach.
