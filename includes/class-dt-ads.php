@@ -5,8 +5,10 @@ if (!defined('ABSPATH')) exit;
 class DT_Ads {
     private const PAGE = 'decka-typer-ads';
     private const SLOTS = [
-        'd1' => ['name'=>'D1 — Billboard górny', 'width'=>970, 'height'=>250, 'location'=>'Pod nagłówkiem, nad treścią strony'],
-        'd2' => ['name'=>'D2 — Billboard dolny', 'width'=>970, 'height'=>250, 'location'=>'Bezpośrednio przed stopką strony'],
+        'h1' => ['name'=>'H1 — Baner górny', 'width'=>1920, 'height'=>125, 'location'=>'Pełna szerokość strony pod nagłówkiem'],
+        'f1' => ['name'=>'F1 — Baner dolny', 'width'=>1920, 'height'=>125, 'location'=>'Pełna szerokość strony bezpośrednio przed stopką'],
+        's1' => ['name'=>'S1 — Skyscraper lewy', 'width'=>160, 'height'=>600, 'location'=>'Pływający slot po lewej stronie treści'],
+        's2' => ['name'=>'S2 — Skyscraper prawy', 'width'=>160, 'height'=>600, 'location'=>'Pływający slot po prawej stronie treści'],
     ];
 
     public static function register(): void {
@@ -18,6 +20,7 @@ class DT_Ads {
         add_action('admin_post_nopriv_dt_ad_click', [__CLASS__, 'click']);
         add_action('rest_api_init', [__CLASS__, 'routes']);
         add_action('wp_enqueue_scripts', [__CLASS__, 'assets'], 130);
+        add_action('wp_footer', [__CLASS__, 'render_side_slots'], 19);
         add_action('wp_footer', [__CLASS__, 'render_footer_slot'], 20);
     }
 
@@ -86,11 +89,17 @@ class DT_Ads {
         $click = add_query_arg([
             'action'=>'dt_ad_click', 'ad'=>(int)$ad->id, 'token'=>self::token($ad),
         ], admin_url('admin-post.php'));
-        echo '<aside class="dt-ad-slot dt-ad-slot-'.esc_attr($slot).'" aria-label="Reklama"><span class="dt-ad-label">REKLAMA</span><a href="'.esc_url($click).'" target="_blank" rel="sponsored noopener noreferrer" data-dt-ad="'.(int)$ad->id.'" data-dt-ad-token="'.esc_attr(self::token($ad)).'" aria-label="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'"><img src="'.esc_url((string)$ad->image_url).'" alt="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'" width="'.(int)$slots[$slot]['width'].'" height="'.(int)$slots[$slot]['height'].'" loading="'.($slot === 'd1' ? 'eager' : 'lazy').'" decoding="async"></a></aside>';
+        echo '<aside class="dt-ad-slot dt-ad-slot-'.esc_attr($slot).'" aria-label="Reklama"><span class="dt-ad-label">REKLAMA</span><a href="'.esc_url($click).'" target="_blank" rel="sponsored noopener noreferrer" data-dt-ad="'.(int)$ad->id.'" data-dt-ad-token="'.esc_attr(self::token($ad)).'" aria-label="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'"><img src="'.esc_url((string)$ad->image_url).'" alt="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'" width="'.(int)$slots[$slot]['width'].'" height="'.(int)$slots[$slot]['height'].'" loading="'.($slot === 'h1' ? 'eager' : 'lazy').'" decoding="async"></a></aside>';
     }
 
     public static function render_footer_slot(): void {
-        if (class_exists('DT_Frontend') && DT_Frontend::is_typer_page()) self::render_slot('d2');
+        if (class_exists('DT_Frontend') && DT_Frontend::is_typer_page()) self::render_slot('f1');
+    }
+
+    public static function render_side_slots(): void {
+        if (!class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
+        self::render_slot('s1');
+        self::render_slot('s2');
     }
 
     private static function placeholder(string $slot, array $config): void {
