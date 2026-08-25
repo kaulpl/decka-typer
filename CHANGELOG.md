@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.52
+- Rozszerzono reset Typera o usuwanie wszystkich wyników, meczów, kolejek i drużyn.
+- Po resecie automatycznie wykonywana jest pełna synchronizacja PLK, 1LM oraz wszystkich grup 2LM.
+- Usuwane są nieaktualne powiązania meczów BONUS i ulubionych drużyn, ale wartość punktowa BONUS pozostaje bez zmian.
+- Reklamy i ich statystyki, Feedback, ustawienia Avatara Artura, AI oraz pozostała konfiguracja nie są naruszane.
+- Wynik ponownego importu każdej ligi jest prezentowany administratorowi i zapisywany w Historii.
+
 ## 0.5.51 — 2026-08-25
 
 - Na landing page wyrównano górną krawędź S1 i S2 do wysokości slotu H1.
