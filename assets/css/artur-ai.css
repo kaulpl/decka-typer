@@ -18,6 +18,11 @@
 .dt-artur-ai-close { position:absolute; right:14px; top:14px; width:34px; height:34px; border:0; border-radius:50%; background:#eef2f7; color:#25344c; font-size:23px; cursor:pointer; }
 .dt-artur-ai-status { margin:12px 0; padding:10px 12px; border-radius:10px; background:#fff7c7; color:#695100; font-size:14px; }
 .dt-artur-ai-status.is-used { background:#f0f2f5; color:#697487; }
+.dt-artur-ai-status.is-loading { display:flex; align-items:center; gap:9px; background:#eef5ff; color:#234b82; }
+.dt-artur-ai-status.is-error { background:#fff7d8; color:#6b5200; }
+.dt-artur-ai-spinner { flex:0 0 18px; width:18px; height:18px; box-sizing:border-box; border:2px solid #b8cbea; border-top-color:#055efb; border-radius:50%; animation:dt-artur-ai-spin .75s linear infinite; }
+@keyframes dt-artur-ai-spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce){.dt-artur-ai-spinner{animation-duration:1.8s}}
 .dt-artur-ai-history { display:grid; gap:10px; max-height:320px; overflow:auto; }
 .dt-artur-ai-history article { display:grid; gap:7px; }
 .dt-artur-ai-history article>div { max-width:88%; padding:10px 12px; border-radius:12px; background:#edf4ff; }
