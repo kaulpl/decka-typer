@@ -445,7 +445,7 @@ class DT_REST {
         foreach ($ranking as $item) if ((int) $item['user_id'] === $uid) { $rank = (int) $item['rank']; break; }
 
         $history = $wpdb->get_results($wpdb->prepare(
-            "SELECT r.round_no,r.league_key,r.group_key,r.season,m.starts_at,h.name home_name,a.name away_name,
+            "SELECT r.round_no,r.league_key,r.group_key,r.season,r.status round_status,m.starts_at,h.name home_name,a.name away_name,
                     p.selected_team_id,p.points,p.scoring_code,
                     h.id home_team_id,a.id away_team_id,m.score_home,m.score_away
              FROM " . DT_DB::table('predictions') . " p
@@ -523,6 +523,11 @@ class DT_REST {
 
     private static function pick_current_round(array $rounds): ?array {
         if (!$rounds) return null;
+        // 1LM is the leading competition. Prefer its open round on the first
+        // application load, then fall back to any other open competition.
+        foreach ($rounds as $round) {
+            if (!empty($round['is_open']) && (string)($round['league_key'] ?? '') === '1lm') return $round;
+        }
         foreach ($rounds as $round) if (!empty($round['is_open'])) return $round;
         return end($rounds) ?: null;
     }
