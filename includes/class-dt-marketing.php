@@ -20,28 +20,20 @@ class DT_Marketing {
     public static function seo_head(): void {
         if (!self::active()) return;
 
-        $title = 'TypujKosza.pl — darmowy typer koszykarski i ranking kibiców';
         $description = 'Typuj mecze koszykówki, zdobywaj punkty i rywalizuj w rankingach z kibicami z całej Polski. TypujKosza.pl to bezpłatny typer koszykarski dla fanów basketu.';
         $url = home_url('/');
-        $image = class_exists('DT_Brand') ? DT_Brand::logo_horizontal_url() : '';
-
-        echo '<meta name="description" content="' . esc_attr($description) . '">' . "\n";
-        echo '<meta property="og:type" content="website">' . "\n";
-        echo '<meta property="og:title" content="' . esc_attr($title) . '">' . "\n";
-        echo '<meta property="og:description" content="' . esc_attr($description) . '">' . "\n";
-        echo '<meta property="og:url" content="' . esc_url($url) . '">' . "\n";
-        if ($image) echo '<meta property="og:image" content="' . esc_url($image) . '">' . "\n";
-        echo '<meta name="twitter:card" content="summary_large_image">' . "\n";
 
         $schema = [
             '@context' => 'https://schema.org',
             '@type' => 'WebApplication',
+            '@id' => $url . '#application',
             'name' => 'TypujKosza.pl',
             'url' => $url,
             'description' => $description,
             'applicationCategory' => 'EntertainmentApplication',
             'operatingSystem' => 'Web',
             'isAccessibleForFree' => true,
+            'publisher' => ['@id' => $url . '#organization'],
             'offers' => [
                 '@type' => 'Offer',
                 'price' => '0',
