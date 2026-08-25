@@ -1,10 +1,12 @@
 .dt-artur-ai-action { display:flex; justify-content:flex-end; margin:0; }
 .dt-artur-ai-action.is-mobile { display:none; }
+.dt-artur-ai-action.is-desktop { position:relative; flex:0 0 34px; width:34px; height:34px; }
+.dt-artur-ai-action.is-desktop .dt-artur-ai-open { position:absolute; top:0; right:0; z-index:4; }
 .dt-artur-ai-open { width:34px; height:34px; border:1px solid #d9e1eb; border-radius:999px; background:#f7f9fc; color:#5e6b7e; display:flex; align-items:center; gap:0; padding:0 8px; overflow:hidden; cursor:pointer; white-space:nowrap; transition:width .2s ease,background .2s ease,border-color .2s ease,color .2s ease,box-shadow .2s ease; }
 .dt-artur-ai-open>span { flex:0 0 17px; font-size:16px; line-height:1; opacity:1; }
 .dt-artur-ai-open strong { max-width:0; opacity:0; overflow:hidden; font-size:14px; font-weight:800; transition:max-width .2s ease,opacity .15s ease,margin .2s ease; }
-.dt-artur-ai-open:hover,.dt-artur-ai-open:focus-visible { width:250px; max-width:100%; gap:7px; background:#fff9dc; border-color:#e5ce70; color:#66510a; box-shadow:0 5px 15px rgba(75,60,8,.08); }
-.dt-artur-ai-open:hover strong,.dt-artur-ai-open:focus-visible strong { max-width:205px; opacity:1; margin-left:1px; overflow:visible; }
+.dt-artur-ai-open:hover,.dt-artur-ai-open:focus-visible { width:218px; max-width:none; gap:7px; background:#fff9dc; border-color:#e5ce70; color:#66510a; box-shadow:0 5px 15px rgba(75,60,8,.08); }
+.dt-artur-ai-open:hover strong,.dt-artur-ai-open:focus-visible strong { max-width:176px; opacity:1; margin-left:1px; overflow:visible; }
 .dt-artur-ai-modal { width:min(720px,calc(100% - 24px)); border:0; border-radius:22px; padding:0; background:transparent; }
 .dt-artur-ai-modal::backdrop { background:rgba(9,20,39,.62); backdrop-filter:blur(5px); }
 .dt-artur-ai-card { position:relative; background:#fff; border-radius:22px; padding:22px; box-shadow:0 24px 80px rgba(8,25,55,.28); }
