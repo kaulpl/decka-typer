@@ -79,7 +79,9 @@
     (state.round?.matches||[]).forEach(m=>{if(m.prediction?.selected_team_id)state.picks.set(Number(m.id),Number(m.prediction.selected_team_id));});
   };
   const preferredLeague=rounds=>{
-    const open=rounds.find(r=>r.is_open);return String(open?.league_key||rounds[0]?.league_key||'1lm');
+    const open1lm=rounds.find(r=>r.is_open&&String(r.league_key)==='1lm');
+    const open=open1lm||rounds.find(r=>r.is_open);
+    return String(open?.league_key||rounds[0]?.league_key||'1lm');
   };
   const normalizeGroup=value=>String(value||'').trim().toUpperCase();
   const displayRoundTitle=round=>String(round?.title||`${round?.round_no||''}. kolejka`).replace(/\s*[·–—-]?\s*grupa\s+[a-z0-9]+\s*$/i,'').trim();

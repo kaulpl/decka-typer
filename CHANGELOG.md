@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.53
+- Przy pierwszym otwarciu zakładki „Typuj” wybierana jest otwarta kolejka 1LM, a przy jej braku otwarta kolejka innej ligi.
+- W „Moich typach” nierozstrzygnięte kupony są prezentowane przed rozstrzygniętymi.
+- W obu sekcjach kolejki są porządkowane ligami: 1LM, PLK, a następnie 2LM.
+- W obrębie ligi najnowsze kolejki są pokazywane jako pierwsze, a grupy 2LM zachowują stabilny porządek.
+
 ## 0.5.52
 - Rozszerzono reset Typera o usuwanie wszystkich wyników, meczów, kolejek i drużyn.
 - Po resecie automatycznie wykonywana jest pełna synchronizacja PLK, 1LM oraz wszystkich grup 2LM.

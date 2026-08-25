@@ -79,6 +79,13 @@ class DT_Round_Access {
         if (!$currentId || !isset($allowed[$currentId])) {
             $preferredId = 0;
             foreach ($rounds as $round) {
+                if (($round['status'] ?? '') === 'open' && (string)($round['league_key'] ?? '') === '1lm') {
+                    $preferredId = (int) $round['id'];
+                    break;
+                }
+            }
+            foreach ($rounds as $round) {
+                if ($preferredId) break;
                 if (($round['status'] ?? '') === 'open') {
                     $preferredId = (int) $round['id'];
                     break;
