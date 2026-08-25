@@ -5,7 +5,10 @@
   const prompts=['Która drużyna jest ostatnio w lepszej formie?','Jak gospodarze radzą sobie u siebie?','Jak goście grają na wyjazdach?','Czy można spodziewać się wysokiego wyniku?','Co pokazują mecze bezpośrednie?','Na co zwrócić uwagę przed typowaniem?'];
   let selected=null,current=null,sending=false;
   const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
-  const api=async(path,opt={})=>{const headers={'Content-Type':'application/json',...(opt.headers||{})};if(cfg.nonce)headers['X-WP-Nonce']=cfg.nonce;const response=await fetch(cfg.root+path,{credentials:'same-origin',...opt,headers});let data={};try{data=await response.json()}catch(_){data={message:'Błąd odpowiedzi serwera.'}}if(!response.ok)throw new Error(data.message||'Nie udało się połączyć z Arturem.');return data;};
+  const api=async(path,opt={})=>{const headers={'Content-Type':'application/json',...(opt.headers||{})};if(cfg.nonce)headers['X-WP-Nonce']=cfg.nonce;const response=await fetch(cfg.root+path,{credentials:'same-origin',...opt,headers});let data={};try{data=await response.json()}catch(_){data={}}if(!response.ok){const error=new Error(data.message||'Nie udało się połączyć z Arturem.');error.code=String(data.code||'');throw error;}return data;};
+  const loading=message=>{statusBox.className='dt-artur-ai-status is-loading';statusBox.innerHTML=`<span class="dt-artur-ai-spinner" aria-hidden="true"></span><span>${esc(message)}</span>`;};
+  const publicError=()=>{statusBox.className='dt-artur-ai-status is-error';statusBox.textContent='Artur potrzebuje jeszcze chwili na analizę. Spróbuj ponownie za moment — pytanie nie zostało wykorzystane.';};
+  const userErrors=new Set(['disabled','unavailable','invalid_question','invalid_match','lifeline_bound','limit_reached','save_failed']);
   const render=()=>{
     const unlimited=!!current?.unlimited,used=Number(current?.used||0),limit=Number(current?.limit||3),remaining=unlimited?Infinity:Math.max(0,limit-used),bound=unlimited?0:Number(current?.match_id||0),wrong=!unlimited&&bound&&bound!==Number(selected?.match||0);
     statusBox.className='dt-artur-ai-status'+(remaining?'':' is-used');
@@ -19,8 +22,8 @@
   };
   const open=async button=>{
     selected={round:Number(button.dataset.round),match:Number(button.dataset.match),home:button.dataset.home||'',away:button.dataset.away||''};
-    matchLabel.textContent=`${selected.home} – ${selected.away}`;statusBox.textContent='Sprawdzam dostępność…';historyBox.innerHTML='';promptsBox.innerHTML='';form.hidden=true;modal.showModal();
-    try{current=await api(`artur-ai/status/${selected.round}`);render();}catch(e){statusBox.textContent=e.message;}
+    matchLabel.textContent=`${selected.home} – ${selected.away}`;loading('Sprawdzam dostępność…');historyBox.innerHTML='';promptsBox.innerHTML='';form.hidden=true;modal.showModal();
+    try{current=await api(`artur-ai/status/${selected.round}`);render();}catch(_){publicError();}
   };
   root.addEventListener('click',e=>{const button=e.target.closest('[data-artur-ai]');if(button)open(button);});
   modal.querySelector('.dt-artur-ai-close')?.addEventListener('click',()=>modal.close());
@@ -28,8 +31,8 @@
   form.addEventListener('submit',async e=>{
     e.preventDefault();if(sending||!selected)return;const value=question.value.trim();if(value.length<5)return;
     if(!current?.unlimited&&!Number(current?.match_id||0)&&!confirm(`Wykorzystać Koło ratunkowe przy meczu ${selected.home} – ${selected.away}? Po pierwszym pytaniu nie przeniesiesz go do innego meczu tej kolejki.`))return;
-    sending=true;render();statusBox.textContent='Artur analizuje statystyki…';
+    sending=true;render();loading('Artur analizuje statystyki i układa podpowiedź…');
     try{const answer=await api('artur-ai/ask',{method:'POST',body:JSON.stringify({round_id:selected.round,match_id:selected.match,question:value})});current.unlimited=!!answer.unlimited||!!current.unlimited;current.match_id=current.unlimited?null:answer.match_id;current.used=current.unlimited?Number(current.used||0)+1:Number(answer.question_no);current.remaining=current.unlimited?null:Number(answer.remaining);current.history=[...(current.history||[]),{question:value,answer:answer.answer,question_no:current.used}];question.value='';sending=false;render();}
-    catch(error){sending=false;statusBox.textContent=error.message;form.querySelector('button').disabled=false;}
+    catch(error){sending=false;if(userErrors.has(error.code)){statusBox.className='dt-artur-ai-status is-error';statusBox.textContent=error.message;}else publicError();form.querySelector('button').disabled=false;}
   });
 })();

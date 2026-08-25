@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.42 — 2026-08-25
+
+- Dodano animowane koło oczekiwania podczas sprawdzania dostępności i generowania odpowiedzi Artura AI.
+- Wydłużono limit oczekiwania na odpowiedź Gemini z 25 do 45 sekund.
+- Usunięto wyświetlanie użytkownikom szczegółów HTTP, cURL i komunikatów serwera, również na kontach administratorów.
+- Błędy Gemini są zapisywane w historii wtyczki wraz z kodem transportu, modelem, czasem trwania, kolejką i meczem.
+- Po nieudanej odpowiedzi wyświetlany jest neutralny komunikat z potwierdzeniem, że pytanie nie zostało wykorzystane.
+- Dodano dostępne dla czytników ekranu komunikaty statusu oczekiwania.
+
 ## 0.5.41 — 2026-08-25
 
 - Dopasowano szerokość rozwiniętego Koła ratunkowego Artura do długości napisu.

@@ -115,6 +115,7 @@ class DT_Artur_AI {
     }
 
     private static function gemini(string $question, array $match, array $round): string|WP_Error {
+        $startedAt = microtime(true);
         $settings = DT_DB::settings();
         $instruction = trim((string)($settings['artur_ai_instruction'] ?? '')) ?: DT_DB::default_artur_ai_instruction();
         $context = self::context($match, $round);
@@ -125,15 +126,19 @@ class DT_Artur_AI {
         ];
         $models = array_values(array_unique([self::model(), 'gemini-3.5-flash-lite']));
         $lastCode = 0;
+        $lastErrorCode = '';
         $lastMessage = 'Nieprawidłowa odpowiedź Gemini.';
+        $attemptedModels = [];
         foreach ($models as $index=>$model) {
+            $attemptedModels[] = $model;
             $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode($model).':generateContent';
             $response = wp_remote_post($url, [
-                'timeout'=>25,
+                'timeout'=>45,
                 'headers'=>['Content-Type'=>'application/json','x-goog-api-key'=>(string)DT_GEMINI_API_KEY],
                 'body'=>wp_json_encode($body, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
             ]);
             if (is_wp_error($response)) {
+                $lastErrorCode = (string)$response->get_error_code();
                 $lastMessage = $response->get_error_message();
                 break;
             }
@@ -154,12 +159,20 @@ class DT_Artur_AI {
             );
             if (!$modelUnavailable) break;
         }
-        DT_Logger::log('artur_ai_error', $lastMessage, ['http_code'=>$lastCode,'model'=>self::model()], 'error', get_current_user_id());
-        $publicMessage = 'Artur chwilowo studiuje tablicę taktyczną. Spróbuj ponownie za moment.';
-        if (current_user_can('manage_options')) {
-            $publicMessage .= ' Szczegóły techniczne: HTTP '.(int)$lastCode.' — '.$lastMessage;
-        }
-        return new WP_Error('ai_unavailable', $publicMessage, ['status'=>503]);
+        DT_Logger::log('artur_ai_error', $lastMessage, [
+            'http_code'=>$lastCode,
+            'transport_error_code'=>$lastErrorCode,
+            'configured_model'=>self::model(),
+            'attempted_models'=>$attemptedModels,
+            'duration_ms'=>(int)round((microtime(true)-$startedAt)*1000),
+            'round_id'=>(int)($round['id']??0),
+            'match_id'=>(int)($match['id']??0),
+        ], 'error', get_current_user_id());
+        return new WP_Error(
+            'ai_unavailable',
+            'Artur potrzebuje jeszcze chwili na analizę. Spróbuj ponownie za moment — pytanie nie zostało wykorzystane.',
+            ['status'=>503]
+        );
     }
 
     private static function context(array $match, array $round): string {
