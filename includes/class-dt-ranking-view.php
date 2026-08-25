@@ -23,7 +23,7 @@ class DT_Ranking_View {
 
     public static function ranking(WP_REST_Request $request): WP_REST_Response {
         $scope = sanitize_key((string) $request->get_param('scope'));
-        if (!in_array($scope, ['all','season','round'], true)) $scope = 'all';
+        if (!in_array($scope, ['all','season','month','round'], true)) $scope = 'all';
 
         $settings = DT_DB::settings();
         $seasons = self::seasons((string)($settings['season'] ?? ''));
@@ -37,6 +37,10 @@ class DT_Ranking_View {
         if ($league === '2lm' && ($group === '' || !in_array($group,$availableGroups,true))) $group=$availableGroups[0]??'';
 
         $rounds = self::rounds($season, $league, $group);
+        $months = self::months($season, $league, $group);
+        $month = sanitize_text_field((string)$request->get_param('month'));
+        if ($scope === 'month' && !in_array($month, $months, true)) $month = $months[0] ?? '';
+        if ($scope !== 'month') $month = '';
         $roundId = max(0, (int) $request->get_param('round_id'));
         if ($scope === 'round') {
             $validIds = array_map(static fn($r)=>(int)$r['id'], $rounds);
@@ -55,9 +59,11 @@ class DT_Ranking_View {
             'groups'=>$availableGroups,
             'leagues'=>[['key'=>'all','name'=>'Wszystkie'],['key'=>'1lm','name'=>'1LM'],['key'=>'plk','name'=>'PLK'],['key'=>'2lm','name'=>'2LM']],
             'round_id'=>$roundId,
+            'month'=>$month,
             'seasons'=>$seasons,
             'rounds'=>$rounds,
-            'ranking'=>self::rows($scope, $season, $roundId, $league, $group),
+            'months'=>$months,
+            'ranking'=>self::rows($scope, $season, $roundId, $league, $group, $month),
         ]);
     }
 
@@ -101,7 +107,23 @@ class DT_Ranking_View {
         return $rows;
     }
 
-    private static function rows(string $scope, string $season, int $roundId, string $league = 'all', string $group = ''): array {
+    private static function months(string $season, string $league = 'all', string $group = ''): array {
+        global $wpdb;
+        $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND r.league_key=%s ', $league) : '';
+        $groupSql = $group !== '' ? $wpdb->prepare(" AND REPLACE(UPPER(TRIM(r.group_key)),'GRUPA ','')=%s ", $group) : '';
+        $rows = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT DATE_FORMAT(m.starts_at,'%%Y-%%m') month_key
+             FROM ".DT_DB::table('matches')." m
+             JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id
+             WHERE r.season=%s $leagueSql $groupSql
+               AND m.starts_at IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
+             ORDER BY month_key DESC",
+            $season
+        ));
+        return array_values(array_filter(array_map('strval', (array)$rows), static fn(string $value): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $value)));
+    }
+
+    private static function rows(string $scope, string $season, int $roundId, string $league = 'all', string $group = '', string $month = ''): array {
         global $wpdb;
         $pred = DT_DB::table('predictions');
         $mat = DT_DB::table('matches');
@@ -112,6 +134,8 @@ class DT_Ranking_View {
         $filter = '';
         if ($scope === 'season') {
             $filter = $wpdb->prepare(' AND r.season=%s ', $season);
+        } elseif ($scope === 'month') {
+            $filter = $wpdb->prepare(" AND r.season=%s AND DATE_FORMAT(m.starts_at,'%%Y-%%m')=%s ", $season, $month);
         } elseif ($scope === 'round') {
             $filter = $wpdb->prepare(' AND r.season=%s AND r.id=%d ', $season, $roundId);
         }
@@ -132,7 +156,7 @@ class DT_Ranking_View {
         if (!is_array($rows)) $rows = [];
 
         $adjustments = [];
-        if ($scope !== 'round' && $league === 'all') {
+        if (in_array($scope, ['all','season'], true) && $league === 'all') {
             $adjWhere = $scope === 'season' ? $wpdb->prepare(' WHERE season=%s ', $season) : '';
             foreach ((array)$wpdb->get_results("SELECT user_id,COALESCE(SUM(points),0) points FROM $adj $adjWhere GROUP BY user_id", ARRAY_A) as $row) {
                 $adjustments[(int)$row['user_id']] = (float)$row['points'];
@@ -140,7 +164,8 @@ class DT_Ranking_View {
         }
 
         $perfect = [];
-        $perfectSql = "SELECT x.user_id,COUNT(*) perfect_rounds FROM (
+        $perfectSql = "SELECT x.user_id,COUNT(*) perfect_rounds,
+                              SUM(CASE WHEN x.match_count=8 THEN 1 ELSE 0 END) perfect_eight_rounds FROM (
             SELECT p.user_id,r.id round_id,COUNT(p.id) pred_count,
                    SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) good_count,
                    (SELECT COUNT(*) FROM $mat mm WHERE mm.round_id=r.id) match_count
@@ -152,7 +177,10 @@ class DT_Ranking_View {
             HAVING pred_count=match_count AND good_count=match_count AND match_count>0
         ) x GROUP BY x.user_id";
         foreach ((array)$wpdb->get_results($perfectSql, ARRAY_A) as $row) {
-            $perfect[(int)$row['user_id']] = (int)$row['perfect_rounds'];
+            $perfect[(int)$row['user_id']] = [
+                'all'=>(int)$row['perfect_rounds'],
+                'eight'=>(int)$row['perfect_eight_rounds'],
+            ];
         }
 
         $bonusHits = [];
@@ -179,7 +207,8 @@ class DT_Ranking_View {
             $row['user_id'] = $uid;
             $row['predictions'] = (int)$row['predictions'];
             $row['winner_hits'] = (int)$row['winner_hits'];
-            $row['perfect_rounds'] = (int)($perfect[$uid] ?? 0);
+            $row['perfect_rounds'] = (int)($perfect[$uid]['all'] ?? 0);
+            $row['perfect_eight_rounds'] = (int)($perfect[$uid]['eight'] ?? 0);
             $row['bonus_hits'] = (int)($bonusHits[$uid] ?? 0);
             $row['bonus_points'] = $row['bonus_hits'] * $bonusValue;
             $row['points'] = (float)$row['points'] + (float)($adjustments[$uid] ?? 0) + ($row['perfect_rounds'] * $perfectPoints);
