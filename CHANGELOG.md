@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.51 — 2026-08-25
+
+- Na landing page wyrównano górną krawędź S1 i S2 do wysokości slotu H1.
+- Dodano stały punkt odniesienia H1, dzięki czemu wyrównanie działa również wtedy, gdy w H1 nie ma aktywnej kampanii ani makiety.
+- Przeniesiono oznaczenie „REKLAMA” w skyscraperach poza grafikę.
+- S1 i S2 mają teraz osobny box „REKLAMA” wyśrodkowany nad oraz pod slotem.
+- Takie samo oznaczenie jest widoczne również w trybie pomarańczowych makiet testowych.
+- Oba oznaczenia poruszają się razem z pływającą reklamą podczas przewijania strony.
+- Zachowano przycinanie i zaokrąglenie samej grafiki pomimo przeniesienia etykiet poza jej obszar.
+
 ## 0.5.50 — 2026-08-25
 
 - Dodano na landing page rozbudowaną sekcję promującą nagrodę dla lidera miesięcznego rankingu 1LM.

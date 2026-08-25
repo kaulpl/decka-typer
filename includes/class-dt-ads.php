@@ -89,7 +89,8 @@ class DT_Ads {
         $click = add_query_arg([
             'action'=>'dt_ad_click', 'ad'=>(int)$ad->id, 'token'=>self::token($ad),
         ], admin_url('admin-post.php'));
-        echo '<aside class="dt-ad-slot dt-ad-slot-'.esc_attr($slot).'" aria-label="Reklama"><span class="dt-ad-label">REKLAMA</span><a href="'.esc_url($click).'" target="_blank" rel="sponsored noopener noreferrer" data-dt-ad="'.(int)$ad->id.'" data-dt-ad-token="'.esc_attr(self::token($ad)).'" aria-label="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'"><img src="'.esc_url((string)$ad->image_url).'" alt="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'" width="'.(int)$slots[$slot]['width'].'" height="'.(int)$slots[$slot]['height'].'" loading="'.($slot === 'h1' ? 'eager' : 'lazy').'" decoding="async"></a></aside>';
+        $side = in_array($slot, ['s1','s2'], true);
+        echo '<aside class="dt-ad-slot dt-ad-slot-'.esc_attr($slot).'" aria-label="Reklama"><span class="dt-ad-label'.($side?' dt-ad-label-top':'').'">REKLAMA</span><a href="'.esc_url($click).'" target="_blank" rel="sponsored noopener noreferrer" data-dt-ad="'.(int)$ad->id.'" data-dt-ad-token="'.esc_attr(self::token($ad)).'" aria-label="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'"><img src="'.esc_url((string)$ad->image_url).'" alt="'.esc_attr((string)($ad->alt_text ?: $ad->name)).'" width="'.(int)$slots[$slot]['width'].'" height="'.(int)$slots[$slot]['height'].'" loading="'.($slot === 'h1' ? 'eager' : 'lazy').'" decoding="async"></a>'.($side?'<span class="dt-ad-label dt-ad-label-bottom">REKLAMA</span>':'').'</aside>';
     }
 
     public static function render_footer_slot(): void {
@@ -103,7 +104,8 @@ class DT_Ads {
     }
 
     private static function placeholder(string $slot, array $config): void {
-        echo '<aside class="dt-ad-slot dt-ad-slot-preview dt-ad-slot-'.esc_attr($slot).'" aria-label="Symulacja miejsca reklamowego"><div><strong>'.esc_html(strtoupper($slot).' · '.$config['name']).'</strong><span>'.(int)$config['width'].' × '.(int)$config['height'].' px</span><small>'.esc_html((string)$config['location']).'</small></div></aside>';
+        $side = in_array($slot, ['s1','s2'], true);
+        echo '<aside class="dt-ad-slot dt-ad-slot-preview dt-ad-slot-'.esc_attr($slot).'" aria-label="Symulacja miejsca reklamowego">'.($side?'<span class="dt-ad-label dt-ad-label-top">REKLAMA</span>':'').'<div><strong>'.esc_html(strtoupper($slot).' · '.$config['name']).'</strong><span>'.(int)$config['width'].' × '.(int)$config['height'].' px</span><small>'.esc_html((string)$config['location']).'</small></div>'.($side?'<span class="dt-ad-label dt-ad-label-bottom">REKLAMA</span>':'').'</aside>';
     }
 
     private static function active_for_slot(string $slot): ?object {
