@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.50 — 2026-08-25
+
+- Dodano na landing page rozbudowaną sekcję promującą nagrodę dla lidera miesięcznego rankingu 1LM.
+- Wykorzystano grafikę `koszulka-miesiaca-icon-landing-page.png` dodaną do katalogu `assets/img`.
+- Dodano informację o osobnej klasyfikacji każdego miesiąca oraz personalizowanej koszulce Typera Miesiąca od ICON SPORTSWEAR.
+- Dodano przycisk prowadzący bezpośrednio do panelu logowania i rozpoczęcia gry.
+- Przygotowano responsywny układ: grafika z tekstem obok na komputerze oraz układ pionowy na telefonach.
+- Grafika jest ładowana leniwie, aby nie opóźniać wyświetlenia formularza logowania.
+
 ## 0.5.49 — 2026-08-25
 
 - Ustalono produkcyjne wymiary plików reklamowych w jakości 2×: H1 i F1 — 2360 × 250 px, S1 i S2 — 325 × 1210 px.
