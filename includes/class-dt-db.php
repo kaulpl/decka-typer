@@ -180,6 +180,41 @@ class DT_DB {
             KEY created_at (created_at)
         ) $charset;";
 
+        $sql[] = "CREATE TABLE " . self::table('ads') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            name VARCHAR(190) NOT NULL,
+            advertiser VARCHAR(190) NOT NULL,
+            slot_key VARCHAR(30) NOT NULL,
+            image_url TEXT NOT NULL,
+            target_url TEXT NOT NULL,
+            alt_text VARCHAR(255) NOT NULL DEFAULT '',
+            status VARCHAR(20) NOT NULL DEFAULT 'draft',
+            priority SMALLINT NOT NULL DEFAULT 10,
+            starts_at DATETIME NOT NULL,
+            ends_at DATETIME NOT NULL,
+            max_impressions BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            max_clicks BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            notes TEXT NULL,
+            created_by BIGINT UNSIGNED NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            KEY slot_status (slot_key, status),
+            KEY schedule (starts_at, ends_at),
+            KEY advertiser (advertiser)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE " . self::table('ad_stats') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            ad_id BIGINT UNSIGNED NOT NULL,
+            stat_date DATE NOT NULL,
+            impressions BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            clicks BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            UNIQUE KEY ad_date (ad_id, stat_date),
+            KEY stat_date (stat_date)
+        ) $charset;";
+
         foreach ($sql as $statement) dbDelta($statement);
 
         // Version 0.5.34 persisted questions also while the whole site was in test mode.
@@ -387,6 +422,7 @@ class DT_DB {
             'artur_ai_model' => 'gemini-2.5-flash-lite',
             'artur_ai_questions' => 3,
             'artur_ai_instruction' => self::default_artur_ai_instruction(),
+            'ad_slot_preview' => 0,
             'brand_primary' => '#1756A9',
             'brand_accent' => '#F47A24',
             'brand_surface' => '#F5F7FB',
