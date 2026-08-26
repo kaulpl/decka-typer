@@ -69,6 +69,8 @@ class DT_User_Settings {
         );
         wp_localize_script('dt-user-settings', 'DeckaTyperAccountConfig', [
             'favoriteTeamId'=>self::favorite_team_id(get_current_user_id()),
+            'siteUrl'=>self::public_home_url(),
+            'pwaQrUrl'=>DT_URL . 'assets/img/typujkosza-pwa-qr.svg',
         ]);
     }
 

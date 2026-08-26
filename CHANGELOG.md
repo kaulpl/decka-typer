@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+- Na komputerach przycisk dodania PWA otwiera modal z lokalnym kodem QR prowadzącym do TypujKosza.pl.
+- Na telefonach ten sam przycisk uruchamia bezpośrednią instalację PWA albo pokazuje instrukcję właściwą dla iPhone'a lub Androida.
+- Ustawienia powiadomień przebudowano na nowoczesne, dostępne przełączniki suwakowe.
+- Dodano rozwijaną pomoc opisującą wszystkie kanały, rodzaje alertów i terminy przypomnień.
+- Doprecyzowano, że „Tryb standardowy” odpowiada za zwykłe przypomnienia o niedokończonych typowaniach, a alerty terminarzowe mogą działać niezależnie.
+- Dodano w panelu administratora test powiadomień In-App, e-mail i Push dla bieżącego konta wraz z zapisem wyniku w historii.
+
 ## 0.6.0
 - Wprowadzono niezależny zapis pojedynczych meczów bez wymogu jednoczesnego wypełnienia całego kuponu.
 - Każdy mecz blokuje wybór dokładnie o własnej godzinie rozpoczęcia, a kolejka pozostaje otwarta do startu ostatniego spotkania.
