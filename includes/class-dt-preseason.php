@@ -21,6 +21,7 @@ class DT_Preseason {
     public static function assets(): void {
         if (!is_user_logged_in() || !class_exists('DT_Frontend') || !DT_Frontend::is_typer_page()) return;
         wp_enqueue_style('dt-preseason', DT_URL.'assets/css/preseason.css', ['dt-front'], DT_VERSION);
+        wp_enqueue_style('dt-preseason-collapse', DT_URL.'assets/css/preseason-collapse.css', ['dt-preseason'], DT_VERSION);
         wp_enqueue_script('dt-preseason', DT_URL.'assets/js/preseason.js', ['dt-front'], DT_VERSION, true);
     }
 

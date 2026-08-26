@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.56
+- Poprawiono kontrast treści w scrollerze kolejek we wszystkich przeglądarkach.
+- Moduł typowań specjalnych jest widoczny w „Typuj” wyłącznie przed terminem zamknięcia PRE.
+- Moduł PRE jest domyślnie zwinięty i ma ciemny nagłówek z datą zakończenia typowania.
+- Zamknięte prognozy PRE pozostają dostępne do podglądu w „Moich typach”.
+
 ## 0.5.55
 - Dodano zapisane PRE1 i PRE2 do „Moich typów” jako specjalne kolejki w filtrach 1LM, PLK i grup 2LM.
 - Dodano ustawienia punktów za każde trafienie oraz bonus za perfekcyjny komplet oddzielnie dla PRE1 i PRE2.

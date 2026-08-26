@@ -35,3 +35,7 @@ html:has(.decka-typer-standalone),body.decka-typer-standalone{margin:0!important
 .dt-round-nav-wide button{background:rgba(255,255,255,.1);color:#fff}.dt-round-nav-wide button:hover{background:rgba(255,255,255,.17)}
 .dt-league-name-short{display:none}
 @media(max-width:620px){.dt-league-segments{grid-template-columns:repeat(3,minmax(0,1fr))}.dt-league-name-full{display:none}.dt-league-name-short{display:inline}}
+
+/* Keep the native select readable in every browser and theme. */
+.dt-round-nav-wide select{background:#fff!important;color:#102746!important;-webkit-text-fill-color:#102746!important;opacity:1!important;font-weight:850!important}
+.dt-round-nav-wide select option{background:#fff!important;color:#102746!important}
