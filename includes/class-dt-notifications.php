@@ -3,11 +3,13 @@ if (!defined('ABSPATH')) exit;
 
 class DT_Notifications {
     private const META = 'dt_notification_preferences';
+    private const SUBSCRIPTIONS_META = 'dt_onesignal_subscription_ids';
     private const CRON = 'dt_notification_reminders';
     private const ENDPOINT_VERSION = '2';
 
     public static function register(): void {
         add_action(self::CRON, [__CLASS__, 'cron']);
+        add_action('rest_api_init', [__CLASS__, 'rest_routes']);
         add_action('init', [__CLASS__, 'endpoints']);
         add_action('template_redirect', [__CLASS__, 'serve_endpoint'], -100);
         add_action('init', [__CLASS__, 'maybe_flush_rewrite_rules'], 99);
@@ -35,6 +37,33 @@ class DT_Notifications {
     public static function push_ready(): bool {
         return defined('DT_ONESIGNAL_APP_ID') && trim((string)DT_ONESIGNAL_APP_ID)!==''
             && defined('DT_ONESIGNAL_REST_API_KEY') && trim((string)DT_ONESIGNAL_REST_API_KEY)!=='';
+    }
+
+    public static function rest_routes(): void {
+        register_rest_route('decka-typer/v1', '/push-subscription', [
+            'methods'=>'POST',
+            'callback'=>[__CLASS__, 'register_push_subscription'],
+            'permission_callback'=>static fn()=>is_user_logged_in(),
+        ]);
+    }
+
+    public static function register_push_subscription(WP_REST_Request $request): WP_REST_Response|WP_Error {
+        $body=$request->get_json_params();
+        $subscriptionId=sanitize_text_field((string)($body['subscription_id']??''));
+        if (!preg_match('/^[A-Za-z0-9_-]{8,160}$/',$subscriptionId)) {
+            return new WP_Error('invalid_push_subscription','OneSignal nie zwrócił poprawnego identyfikatora urządzenia.',['status'=>422]);
+        }
+        $uid=get_current_user_id();
+        $stored=array_values(array_filter(array_map('sanitize_text_field',(array)get_user_meta($uid,self::SUBSCRIPTIONS_META,true))));
+        $stored=array_values(array_unique(array_merge([$subscriptionId],$stored)));
+        $stored=array_slice($stored,0,10);
+        update_user_meta($uid,self::SUBSCRIPTIONS_META,$stored);
+        return new WP_REST_Response(['ok'=>true,'registered_devices'=>count($stored)]);
+    }
+
+    private static function subscription_ids(int $uid): array {
+        $ids=array_values(array_filter(array_map('sanitize_text_field',(array)get_user_meta($uid,self::SUBSCRIPTIONS_META,true))));
+        return array_values(array_filter($ids,static fn($id)=>preg_match('/^[A-Za-z0-9_-]{8,160}$/',(string)$id)));
     }
 
     public static function endpoints(): void {
@@ -118,6 +147,7 @@ class DT_Notifications {
             'appId'=>self::push_ready()?(string)DT_ONESIGNAL_APP_ID:'',
             'workerPath'=>wp_make_link_relative(home_url('/OneSignalSDKWorker.js')),
             'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
+            'subscriptionUrl'=>rest_url('decka-typer/v1/push-subscription'),'nonce'=>wp_create_nonce('wp_rest'),
         ]);
     }
 
@@ -203,9 +233,22 @@ class DT_Notifications {
             $user=get_userdata($uid);$ok=$user?(bool)wp_mail((string)$user->user_email,$title,$message."\n\n".home_url('/')):false;
             $response=$ok?'wp_mail accepted':'wp_mail failed';
         } elseif (self::push_ready()) {
-            $request=wp_remote_post('https://api.onesignal.com/notifications',[ 'timeout'=>15,'headers'=>['Authorization'=>'Key '.(string)DT_ONESIGNAL_REST_API_KEY,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['app_id'=>(string)DT_ONESIGNAL_APP_ID,'target_channel'=>'push','include_aliases'=>['external_id'=>[(string)$uid]],'headings'=>['pl'=>$title,'en'=>$title],'contents'=>['pl'=>$message,'en'=>$message],'url'=>home_url('/')]) ]);
-            $ok=!is_wp_error($request)&&wp_remote_retrieve_response_code($request)>=200&&wp_remote_retrieve_response_code($request)<300;
-            $response=is_wp_error($request)?$request->get_error_message():(string)wp_remote_retrieve_body($request);
+            $subscriptionIds=self::subscription_ids($uid);
+            $payload=['app_id'=>(string)DT_ONESIGNAL_APP_ID,'target_channel'=>'push','headings'=>['pl'=>$title,'en'=>$title],'contents'=>['pl'=>$message,'en'=>$message],'url'=>home_url('/')];
+            if ($subscriptionIds) $payload['include_subscription_ids']=$subscriptionIds;
+            else $payload['include_aliases']=['external_id'=>[(string)$uid]];
+            $request=wp_remote_post('https://api.onesignal.com/notifications',['timeout'=>15,'headers'=>['Authorization'=>'Key '.(string)DT_ONESIGNAL_REST_API_KEY,'Content-Type'=>'application/json'],'body'=>wp_json_encode($payload)]);
+            if (is_wp_error($request)) {
+                $response=$request->get_error_message();
+            } else {
+                $code=wp_remote_retrieve_response_code($request);
+                $response=(string)wp_remote_retrieve_body($request);
+                $decoded=json_decode($response,true);
+                $providerErrors=is_array($decoded)&&!empty($decoded['errors']);
+                $providerAccepted=is_array($decoded)&&!empty($decoded['id']);
+                $ok=$code>=200&&$code<300&&!$providerErrors&&$providerAccepted;
+                if (!$subscriptionIds) $response='Brak zapisanego urządzenia; próba przez alias external_id. '.$response;
+            }
         } else $response='OneSignal nie jest skonfigurowany';
         $excerpt=function_exists('mb_substr')?mb_substr($response,0,1000):substr($response,0,1000);
         $wpdb->update($table,['status'=>$ok?'sent':'failed','provider_response'=>$excerpt,'sent_at'=>$ok?$now:null],['id'=>$id]);

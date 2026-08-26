@@ -5,6 +5,21 @@
   let oneSignalInitPromise=null;
   const isIos=()=>/iphone|ipad|ipod/i.test(navigator.userAgent);
   const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+  const waitForSubscriptionId=async OneSignal=>{
+    for(let attempt=0;attempt<40;attempt++){
+      const id=String(OneSignal.User?.PushSubscription?.id||'').trim();
+      if(id)return id;
+      await new Promise(resolve=>setTimeout(resolve,250));
+    }
+    throw new Error('OneSignal nie utworzył identyfikatora subskrypcji dla tego urządzenia.');
+  };
+  const saveSubscription=async subscriptionId=>{
+    const response=await fetch(cfg.subscriptionUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-WP-Nonce':cfg.nonce},body:JSON.stringify({subscription_id:subscriptionId})});
+    let data={};
+    try{data=await response.json();}catch(_){}
+    if(!response.ok||!data.ok)throw new Error(data.message||'Nie udało się przypisać urządzenia do konta Typera.');
+    return data;
+  };
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();window.DeckaTyperPwa.installPrompt=event;document.dispatchEvent(new CustomEvent('dt:pwa-ready'));});
   window.DeckaTyperPwa.install=async()=>{
     const prompt=window.DeckaTyperPwa.installPrompt;
@@ -32,7 +47,9 @@
         await OneSignal.login(String(cfg.userId));
         if(OneSignal.User?.PushSubscription?.optIn)await OneSignal.User.PushSubscription.optIn();
         if(OneSignal.User?.PushSubscription?.optedIn===false)throw new Error('Subskrypcja powiadomień nie została aktywowana na tym urządzeniu.');
-        resolve(true);
+        const subscriptionId=await waitForSubscriptionId(OneSignal);
+        await saveSubscription(subscriptionId);
+        resolve({ok:true,subscriptionId});
       }catch(error){
         oneSignalInitPromise=null;
         reject(error);
