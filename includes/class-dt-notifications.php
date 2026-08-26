@@ -75,7 +75,10 @@ class DT_Notifications {
         $subscriptionId=sanitize_text_field((string)($body['subscription_id']??''));
         $uid=get_current_user_id();
         if ($subscriptionId==='' || !in_array($subscriptionId,self::subscription_ids($uid),true)) return new WP_Error('push_subscription_not_registered','To urządzenie nie jest przypisane do zalogowanego konta. Włącz powiadomienia ponownie.',['status'=>422]);
-        $result=self::send_channel($uid,'push','device_test','device-test-'.$uid.'-'.wp_generate_uuid4(),'Test Push TypujKosza.pl','To test bezpośrednio na to urządzenie. Powiadomienia Web Push działają!',0,0,[$subscriptionId]);
+        $delaySeconds=15;
+        $result=self::send_channel($uid,'push','device_test','device-test-'.$uid.'-'.wp_generate_uuid4(),'Test Push TypujKosza.pl','To test bezpośrednio na to urządzenie. Powiadomienia Web Push działają!',0,0,[$subscriptionId],$delaySeconds);
+        $result['deliver_in_seconds']=$delaySeconds;
+        $result['message']=$result['ok']?'Test zaplanowany. Zamknij aplikację lub przejdź do ekranu głównego iPhone’a.':'OneSignal nie przyjął testu.';
         return new WP_REST_Response($result,$result['ok']?200:502);
     }
 
@@ -242,7 +245,7 @@ class DT_Notifications {
         return is_array($rows)?$rows:[];
     }
 
-    private static function send_channel(int $uid,string $channel,string $type,string $eventKey,string $title,string $message,int $roundId,int $matchId,array $forcedSubscriptions=[]): array {
+    private static function send_channel(int $uid,string $channel,string $type,string $eventKey,string $title,string $message,int $roundId,int $matchId,array $forcedSubscriptions=[],int $delaySeconds=0): array {
         global $wpdb;
         $table=DT_DB::table('notifications');$now=current_time('mysql');
         $inserted=$wpdb->insert($table,['user_id'=>$uid,'channel'=>$channel,'event_key'=>$eventKey,'event_type'=>$type,'title'=>$title,'message'=>$message,'round_id'=>$roundId?:null,'match_id'=>$matchId?:null,'status'=>'queued','created_at'=>$now]);
@@ -256,6 +259,7 @@ class DT_Notifications {
         } elseif (self::push_ready()) {
             $subscriptionIds=$forcedSubscriptions?:self::subscription_ids($uid);
             $payload=['app_id'=>(string)DT_ONESIGNAL_APP_ID,'target_channel'=>'push','headings'=>['pl'=>$title,'en'=>$title],'contents'=>['pl'=>$message,'en'=>$message],'url'=>home_url('/')];
+            if ($delaySeconds>0) $payload['send_after']=gmdate('c',time()+$delaySeconds);
             if ($subscriptionIds) $payload['include_subscription_ids']=$subscriptionIds;
             else $payload['include_aliases']=['external_id'=>[(string)$uid]];
             $request=wp_remote_post('https://api.onesignal.com/notifications',['timeout'=>15,'headers'=>['Authorization'=>'Key '.(string)DT_ONESIGNAL_REST_API_KEY,'Content-Type'=>'application/json'],'body'=>wp_json_encode($payload)]);
