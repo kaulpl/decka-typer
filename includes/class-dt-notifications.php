@@ -45,6 +45,11 @@ class DT_Notifications {
             'callback'=>[__CLASS__, 'register_push_subscription'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
+        register_rest_route('decka-typer/v1', '/push-test', [
+            'methods'=>'POST',
+            'callback'=>[__CLASS__, 'test_push_subscription'],
+            'permission_callback'=>static fn()=>is_user_logged_in(),
+        ]);
     }
 
     public static function register_push_subscription(WP_REST_Request $request): WP_REST_Response|WP_Error {
@@ -59,6 +64,16 @@ class DT_Notifications {
         $stored=array_slice($stored,0,10);
         update_user_meta($uid,self::SUBSCRIPTIONS_META,$stored);
         return new WP_REST_Response(['ok'=>true,'registered_devices'=>count($stored)]);
+    }
+
+    public static function test_push_subscription(WP_REST_Request $request): WP_REST_Response|WP_Error {
+        if (!self::push_ready()) return new WP_Error('push_not_configured','OneSignal nie jest skonfigurowany.',['status'=>503]);
+        $body=$request->get_json_params();
+        $subscriptionId=sanitize_text_field((string)($body['subscription_id']??''));
+        $uid=get_current_user_id();
+        if ($subscriptionId==='' || !in_array($subscriptionId,self::subscription_ids($uid),true)) return new WP_Error('push_subscription_not_registered','To urządzenie nie jest przypisane do zalogowanego konta. Włącz powiadomienia ponownie.',['status'=>422]);
+        $result=self::send_channel($uid,'push','device_test','device-test-'.$uid.'-'.wp_generate_uuid4(),'Test Push TypujKosza.pl','To test bezpośrednio na to urządzenie. Powiadomienia Web Push działają!',0,0,[$subscriptionId]);
+        return new WP_REST_Response($result,$result['ok']?200:502);
     }
 
     private static function subscription_ids(int $uid): array {
@@ -147,7 +162,8 @@ class DT_Notifications {
             'appId'=>self::push_ready()?(string)DT_ONESIGNAL_APP_ID:'',
             'workerPath'=>wp_make_link_relative(add_query_arg('dt_onesignal_worker','1',home_url('/'))),
             'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
-            'subscriptionUrl'=>rest_url('decka-typer/v1/push-subscription'),'nonce'=>wp_create_nonce('wp_rest'),
+            'subscriptionUrl'=>rest_url('decka-typer/v1/push-subscription'),
+            'testUrl'=>rest_url('decka-typer/v1/push-test'),'nonce'=>wp_create_nonce('wp_rest'),
         ]);
     }
 
@@ -221,11 +237,11 @@ class DT_Notifications {
         return is_array($rows)?$rows:[];
     }
 
-    private static function send_channel(int $uid,string $channel,string $type,string $eventKey,string $title,string $message,int $roundId,int $matchId): void {
+    private static function send_channel(int $uid,string $channel,string $type,string $eventKey,string $title,string $message,int $roundId,int $matchId,array $forcedSubscriptions=[]): array {
         global $wpdb;
         $table=DT_DB::table('notifications');$now=current_time('mysql');
         $inserted=$wpdb->insert($table,['user_id'=>$uid,'channel'=>$channel,'event_key'=>$eventKey,'event_type'=>$type,'title'=>$title,'message'=>$message,'round_id'=>$roundId?:null,'match_id'=>$matchId?:null,'status'=>'queued','created_at'=>$now]);
-        if (!$inserted) return;
+        if (!$inserted) return ['ok'=>false,'status'=>'failed','response'=>'Nie udało się zapisać testu w historii powiadomień.'];
         $id=(int)$wpdb->insert_id;$ok=false;$response='';
         if ($channel==='inapp') {
             $ok=true;$response='Wiadomość zapisana w aplikacji';
@@ -233,7 +249,7 @@ class DT_Notifications {
             $user=get_userdata($uid);$ok=$user?(bool)wp_mail((string)$user->user_email,$title,$message."\n\n".home_url('/')):false;
             $response=$ok?'wp_mail accepted':'wp_mail failed';
         } elseif (self::push_ready()) {
-            $subscriptionIds=self::subscription_ids($uid);
+            $subscriptionIds=$forcedSubscriptions?:self::subscription_ids($uid);
             $payload=['app_id'=>(string)DT_ONESIGNAL_APP_ID,'target_channel'=>'push','headings'=>['pl'=>$title,'en'=>$title],'contents'=>['pl'=>$message,'en'=>$message],'url'=>home_url('/')];
             if ($subscriptionIds) $payload['include_subscription_ids']=$subscriptionIds;
             else $payload['include_aliases']=['external_id'=>[(string)$uid]];
@@ -251,6 +267,8 @@ class DT_Notifications {
             }
         } else $response='OneSignal nie jest skonfigurowany';
         $excerpt=function_exists('mb_substr')?mb_substr($response,0,1000):substr($response,0,1000);
-        $wpdb->update($table,['status'=>$ok?'sent':'failed','provider_response'=>$excerpt,'sent_at'=>$ok?$now:null],['id'=>$id]);
+        $status=$ok?'sent':'failed';
+        $wpdb->update($table,['status'=>$status,'provider_response'=>$excerpt,'sent_at'=>$ok?$now:null],['id'=>$id]);
+        return ['ok'=>$ok,'status'=>$status,'response'=>$excerpt];
     }
 }

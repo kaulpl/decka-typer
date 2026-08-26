@@ -56,4 +56,11 @@
       }
     }));
   };
+  window.DeckaTyperPwa.testPush=async()=>{
+    const activation=await window.DeckaTyperPwa.enablePush();
+    const response=await fetch(cfg.testUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-WP-Nonce':cfg.nonce},body:JSON.stringify({subscription_id:activation.subscriptionId})});
+    let data={};try{data=await response.json();}catch(_){}
+    if(!response.ok||!data.ok)throw new Error(data.message||data.response||'OneSignal nie dostarczył testu na to urządzenie.');
+    return data;
+  };
 })();

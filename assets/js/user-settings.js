@@ -147,7 +147,7 @@
             <label><span>3 dni przed meczem</span><input type="checkbox" name="notify_reminder_3d" ${checked('reminder_3d')}><i aria-hidden="true"></i></label>
             <label><span>6 godzin przed meczem</span><input type="checkbox" name="notify_reminder_6h" ${checked('reminder_6h')}><i aria-hidden="true"></i></label>
           </div>
-          <div class="dt-notification-actions"><button type="button" class="dt-account-button is-secondary" id="dt-enable-push" ${data.push_ready?'':'disabled'}>Włącz powiadomienia w przeglądarce</button><button type="button" class="dt-account-button is-secondary" id="dt-install-pwa">${isMobileDevice()?'Dodaj TypujKosza.pl do telefonu':'Pokaż kod QR na telefon'}</button></div>
+          <div class="dt-notification-actions"><button type="button" class="dt-account-button is-secondary" id="dt-enable-push" ${data.push_ready?'':'disabled'}>Włącz powiadomienia w przeglądarce</button><button type="button" class="dt-account-button is-secondary" id="dt-test-push-device" ${data.push_ready?'':'disabled'}>Wyślij test na to urządzenie</button><button type="button" class="dt-account-button is-secondary" id="dt-install-pwa">${isMobileDevice()?'Dodaj TypujKosza.pl do telefonu':'Pokaż kod QR na telefon'}</button></div>
           <small>${data.push_ready?'Po włączeniu zaakceptuj systemowe pytanie przeglądarki. Na iPhonie najpierw dodaj stronę do ekranu początkowego przez Udostępnij → Do ekranu początkowego.':'Kanał Push oczekuje na konfigurację OneSignal przez administratora. Powiadomienia e-mail działają niezależnie.'}</small>
 
           <div class="dt-account-save-row"><button type="submit">Zapisz ustawienia</button></div>
@@ -176,6 +176,7 @@
       render(account);
     }));
     target.querySelector('#dt-enable-push')?.addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await window.DeckaTyperPwa?.enablePush();const pushToggle=target.querySelector('[name="notify_push"]');if(pushToggle)pushToggle.checked=true;button.textContent='Powiadomienia włączone';target.querySelector('#dt-profile-settings-form')?.requestSubmit();}catch(error){alert(error.message||'Nie udało się włączyć powiadomień.');button.disabled=false;}});
+    target.querySelector('#dt-test-push-device')?.addEventListener('click',async event=>{const button=event.currentTarget;const label=button.textContent;button.disabled=true;button.textContent='Wysyłanie testu…';try{await window.DeckaTyperPwa?.testPush();button.textContent='Test przyjęty przez OneSignal';alert('OneSignal przyjął test dla tego urządzenia. Powiadomienie powinno pojawić się za chwilę.');}catch(error){alert(error.message||'Nie udało się wysłać testu na to urządzenie.');button.textContent=label;button.disabled=false;}});
     target.querySelector('.dt-notification-info-button')?.addEventListener('click',event=>{const button=event.currentTarget;const help=target.querySelector('#dt-notification-help');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(open));if(help)help.hidden=!open;});
     target.querySelector('#dt-install-pwa')?.addEventListener('click',async()=>{
       if(!isMobileDevice()){showQrModal();return;}

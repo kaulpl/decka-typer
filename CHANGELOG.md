@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5
+- Dodano test Web Push kierowany bezpośrednio na aktualnie używany komputer lub telefon.
+- Test ponownie aktywuje i zapisuje subskrypcję, a następnie wysyła wiadomość dokładnie na jej identyfikator OneSignal.
+- W historii powiadomień administrator widzi pełną odpowiedź dostawcy, co pozwala odróżnić błąd OneSignal od blokady systemowej urządzenia.
+- Endpoint testowy sprawdza, czy wskazana subskrypcja należy do zalogowanego użytkownika.
+
 ## 0.6.4
 - Zmieniono adres Service Workera OneSignal z wirtualnego pliku `/OneSignalSDKWorker.js` na bezpośredni endpoint WordPress `/?dt_onesignal_worker=1`.
 - Endpoint omija reguły serwera przechwytujące nieistniejące pliki `.js`, które powodowały błąd 404 jeszcze przed uruchomieniem WordPressa.
