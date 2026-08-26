@@ -180,6 +180,22 @@ class DT_DB {
             KEY created_at (created_at)
         ) $charset;";
 
+        $sql[] = "CREATE TABLE " . self::table('preseason_predictions') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            season VARCHAR(20) NOT NULL,
+            league_key VARCHAR(20) NOT NULL,
+            group_key VARCHAR(40) NOT NULL DEFAULT '',
+            prediction_type VARCHAR(10) NOT NULL,
+            selections LONGTEXT NOT NULL,
+            points DECIMAL(8,2) NOT NULL DEFAULT 0,
+            submitted_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY user_scope_type (user_id, season, league_key, group_key, prediction_type),
+            KEY season_league (season, league_key, group_key),
+            KEY user_id (user_id)
+        ) $charset;";
+
         $sql[] = "CREATE TABLE " . self::table('ads') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             name VARCHAR(190) NOT NULL,

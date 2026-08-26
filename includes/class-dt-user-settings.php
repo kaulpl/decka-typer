@@ -46,6 +46,7 @@ class DT_User_Settings {
             ['dt-user-settings'],
             DT_VERSION
         );
+        wp_enqueue_style('dt-name-onboarding', DT_URL . 'assets/css/onboarding.css', ['dt-user-settings'], DT_VERSION);
         wp_enqueue_style(
             'dt-favorite-team-ribbon',
             DT_URL . 'assets/css/favorite-team-ribbon.css',
@@ -92,7 +93,19 @@ class DT_User_Settings {
             );
         }
 
-        $favoriteTeamId = max(0, (int)($body['favorite_team_id'] ?? 0));
+        global $wpdb;
+        $duplicate = $wpdb->get_var($wpdb->prepare(
+            "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key=%s AND LOWER(meta_value)=LOWER(%s) AND user_id<>%d LIMIT 1",
+            self::META_RANKING_NAME,
+            $name,
+            $uid
+        ));
+        if ($duplicate) {
+            return new WP_Error('ranking_name_taken','Ta nazwa jest już używana. Wybierz inną.',['status'=>409]);
+        }
+
+        $hasFavoriteTeam = array_key_exists('favorite_team_id', $body);
+        $favoriteTeamId = $hasFavoriteTeam ? max(0, (int)$body['favorite_team_id']) : self::favorite_team_id($uid);
         if ($favoriteTeamId > 0 && !self::team_exists($favoriteTeamId)) {
             return new WP_Error(
                 'invalid_favorite_team',
@@ -102,8 +115,10 @@ class DT_User_Settings {
         }
 
         update_user_meta($uid, self::META_RANKING_NAME, $name);
-        if ($favoriteTeamId > 0) update_user_meta($uid, self::META_FAVORITE_TEAM, $favoriteTeamId);
-        else delete_user_meta($uid, self::META_FAVORITE_TEAM);
+        if ($hasFavoriteTeam) {
+            if ($favoriteTeamId > 0) update_user_meta($uid, self::META_FAVORITE_TEAM, $favoriteTeamId);
+            else delete_user_meta($uid, self::META_FAVORITE_TEAM);
+        }
 
         try {
             DT_Logger::log('account_settings_saved', 'Użytkownik zmienił ustawienia konta Typera.', [
@@ -142,9 +157,10 @@ class DT_User_Settings {
     public static function ranking_name(int $uid, string $fallback = ''): string {
         $name = trim((string)get_user_meta($uid, self::META_RANKING_NAME, true));
         if ($name !== '') return $name;
-        if ($fallback !== '') return $fallback;
         $user = get_userdata($uid);
-        return $user ? (string)$user->display_name : 'Kibic';
+        if ($user && (string)$user->user_login !== '') return (string)$user->user_login;
+        if ($fallback !== '') return $fallback;
+        return 'Kibic';
     }
 
     public static function favorite_team_id(int $uid): int {
@@ -200,7 +216,8 @@ class DT_User_Settings {
             'username'=>(string)$user->user_login,
             'email'=>(string)$user->user_email,
             'display_name'=>(string)$user->display_name,
-            'ranking_name'=>self::ranking_name($uid, (string)$user->display_name),
+            'ranking_name'=>self::ranking_name($uid, (string)$user->user_login),
+            'ranking_name_set'=>trim((string)get_user_meta($uid, self::META_RANKING_NAME, true)) !== '',
             'favorite_team_id'=>$favoriteTeamId,
             'favorite_team_name'=>$favoriteTeamName,
             'teams'=>$teams,

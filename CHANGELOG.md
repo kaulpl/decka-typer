@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.54
+- Dodano obowiązkowy modal ustawienia własnej, unikalnej nazwy użytkownika po pierwszym logowaniu.
+- Nazwa z profilu Google nie jest automatycznie publikowana; jako propozycja używany jest login utworzony z części adresu e-mail.
+- Po zapisaniu nazwy użytkownik trafia bezpośrednio do zakładki „Typuj”, a nazwę może później zmienić w „Moim koncie”.
+- Dodano specjalne kolejki PRE1 i PRE2 dla 1LM, PLK oraz każdej grupy 2LM.
+- PRE1 pozwala przypisać każdej drużynie przedział 1–4, 5–8, 9–12 albo 13–16, maksymalnie cztery drużyny na przedział.
+- PRE2 pozwala wskazać maksymalnie osiem drużyn awansujących do play-off.
+- Typowania PRE są jednorazowe, niezależne od zwykłych kuponów i otwarte do końca 15 października bieżącego sezonu.
+- Prognozy PRE są przechowywane niezależnie od terminarza, dzięki czemu synchronizacja meczów ich nie nadpisuje.
+- Pełny reset danych Typera usuwa również zapisane prognozy PRE, ale nie zmienia pozostałych ustawień wtyczki.
+
 ## 0.5.53
 - Przy pierwszym otwarciu zakładki „Typuj” wybierana jest otwarta kolejka 1LM, a przy jej braku otwarta kolejka innej ligi.
 - W „Moich typach” nierozstrzygnięte kupony są prezentowane przed rozstrzygniętymi.
