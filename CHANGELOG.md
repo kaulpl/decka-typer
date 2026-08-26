@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.11
+- Uproszczono sekcję przypomnień do dwóch przełączników: E-mail oraz Web Push / PWA.
+- Usunięto z ustawień przełączniki rodzajów zdarzeń i terminów, test Push, kod QR oraz osobny przycisk aktywacji powiadomień.
+- Wszystkie typy przypomnień pozostają aktywne w tle; użytkownik wybiera wyłącznie kanał dostarczenia.
+- Włączenie przełącznika Push samo uruchamia zgodę przeglądarki i zapis urządzenia.
+- Dodano jeden mobilny przycisk „Dodaj do ekranu głównego”: na Androidzie uruchamia instalację, a na iPhonie pokazuje instrukcję Safari.
+
 ## 0.6.10
 - Podmieniono ikonę aplikacji instalowanej na ekranie głównym na nowy projekt z `assets/img/app-icon.svg`.
 - Dodano warianty PNG 180×180 dla iPhone’a oraz 192×192 i 512×512 dla Androida i manifestu PWA.

@@ -18,20 +18,9 @@
   const gear=`<svg class="dt-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>`;
   const infoIcon=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.1"/></svg>`;
   const isMobileDevice=()=>matchMedia('(max-width: 760px), (hover: none) and (pointer: coarse)').matches;
-
-  const showQrModal=()=>{
-    let modal=document.getElementById('dt-pwa-qr-modal');
-    if(!modal){
-      modal=document.createElement('dialog');
-      modal.id='dt-pwa-qr-modal';
-      modal.className='dt-pwa-qr-modal';
-      modal.innerHTML=`<div class="dt-pwa-qr-card"><button type="button" class="dt-pwa-qr-close" aria-label="Zamknij">&times;</button><span class="dt-front-kicker">TYPOWANIE ZAWSZE POD RĘKĄ</span><h2>Zeskanuj kod telefonem</h2><p>Otwórz aparat w telefonie, zeskanuj kod i dodaj TypujKosza.pl do ekranu głównego.</p><img src="${esc(accountCfg.pwaQrUrl||'')}" width="260" height="260" alt="Kod QR prowadzący do TypujKosza.pl"><a href="${esc(accountCfg.siteUrl||'/')}" target="_blank" rel="noopener">${esc(accountCfg.siteUrl||'TypujKosza.pl')}</a></div>`;
-      document.body.appendChild(modal);
-      modal.querySelector('.dt-pwa-qr-close')?.addEventListener('click',()=>modal.close());
-      modal.addEventListener('click',event=>{if(event.target===modal)modal.close();});
-    }
-    modal.showModal();
-  };
+  const isIos=()=>/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isAndroid=()=>/android/i.test(navigator.userAgent);
+  const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 
   const tabs=root.querySelector('.dt-tabs');
   const main=root.querySelector('.dt-app-main');
@@ -108,6 +97,7 @@
     const leagueButtons=['1lm','plk','2lm'].map(league=>`<button type="button" data-favorite-league="${league}" class="${favoriteLeague===league?'is-active':''}">${league.toUpperCase()}</button>`).join('');
     const notifications=data.notifications||{};
     const checked=key=>notifications[key]?'checked':'';
+    const installButton=isMobileDevice()&&!isStandalone()?'<button type="button" class="dt-account-button is-secondary" id="dt-install-pwa">Dodaj do ekranu głównego</button>':'';
 
     target.innerHTML=`
       <section class="dt-account-card dt-account-primary">
@@ -128,27 +118,16 @@
           <div class="dt-notification-help" id="dt-notification-help" hidden>
             <strong>Jak działają powiadomienia?</strong>
             <dl>
-              <div><dt>E-mail</dt><dd>Wysyła przypomnienia na adres przypisany do Twojego konta.</dd></div>
-              <div><dt>Web Push / PWA</dt><dd>Pokazuje powiadomienia systemowe w przeglądarce lub w aplikacji dodanej do ekranu telefonu.</dd></div>
-              <div><dt>Tryb standardowy</dt><dd>Włącza zwykłe przypomnienia o niedokończonych typowaniach w wybranych terminach. Wyłączenie go pozostawia tylko wybrane alerty o zmianach terminarza i przełożonych meczach.</dd></div>
-              <div><dt>Zmiany harmonogramu</dt><dd>Informuje, gdy synchronizacja wykryje zmianę daty lub godziny spotkania.</dd></div>
-              <div><dt>Przełożone mecze</dt><dd>Ostrzega o przełożeniu meczu i konieczności ponownego wpisania wyzerowanego typu.</dd></div>
-              <div><dt>Niedokończona kolejka</dt><dd>Podaje ligę, kolejkę oraz liczbę spotkań, których jeszcze nie wytypowano.</dd></div>
-              <div><dt>3 dni / 6 godzin</dt><dd>Określa, jak wcześnie ma przyjść standardowe przypomnienie przed rozpoczęciem meczu.</dd></div>
+              <div><dt>E-mail</dt><dd>Wysyła przypomnienia o typowaniu i zmianach terminów na adres przypisany do Twojego konta.</dd></div>
+              <div><dt>Web Push / PWA</dt><dd>Pokazuje te same przypomnienia jako powiadomienia systemowe na komputerze lub telefonie.</dd></div>
             </dl>
           </div>
           <div class="dt-notification-options">
             <label><span>E-mail</span><input type="checkbox" name="notify_email" ${checked('email')}><i aria-hidden="true"></i></label>
             <label><span>Web Push / PWA</span><input type="checkbox" name="notify_push" ${checked('push')} ${data.push_ready?'':'disabled'}><i aria-hidden="true"></i></label>
-            <label><span>Tryb standardowy</span><input type="checkbox" name="notify_standard" ${checked('standard')}><i aria-hidden="true"></i></label>
-            <label><span>Zmiany harmonogramu</span><input type="checkbox" name="notify_schedule_changes" ${checked('schedule_changes')}><i aria-hidden="true"></i></label>
-            <label><span>Przełożone mecze</span><input type="checkbox" name="notify_postponed" ${checked('postponed')}><i aria-hidden="true"></i></label>
-            <label><span>Niedokończona kolejka</span><input type="checkbox" name="notify_incomplete" ${checked('incomplete')}><i aria-hidden="true"></i></label>
-            <label><span>3 dni przed meczem</span><input type="checkbox" name="notify_reminder_3d" ${checked('reminder_3d')}><i aria-hidden="true"></i></label>
-            <label><span>6 godzin przed meczem</span><input type="checkbox" name="notify_reminder_6h" ${checked('reminder_6h')}><i aria-hidden="true"></i></label>
           </div>
-          <div class="dt-notification-actions"><button type="button" class="dt-account-button is-secondary" id="dt-enable-push" ${data.push_ready?'':'disabled'}>Włącz powiadomienia w przeglądarce</button><button type="button" class="dt-account-button is-secondary" id="dt-test-push-device" ${data.push_ready?'':'disabled'}>Wyślij test Push na ten telefon</button><button type="button" class="dt-account-button is-secondary" id="dt-install-pwa">${isMobileDevice()?'Dodaj TypujKosza.pl do telefonu':'Pokaż kod QR na telefon'}</button></div>
-          <small>${data.push_ready?'Po włączeniu zaakceptuj systemowe pytanie przeglądarki. Na iPhonie najpierw dodaj stronę do ekranu początkowego przez Udostępnij → Do ekranu początkowego.':'Kanał Push oczekuje na konfigurację OneSignal przez administratora. Powiadomienia e-mail działają niezależnie.'}</small>
+          <div class="dt-notification-actions">${installButton}</div>
+          <small>${data.push_ready?'Wybierz kanały, którymi chcesz otrzymywać przypomnienia o typowaniu i zmianach terminów.':'Kanał Push oczekuje na konfigurację OneSignal przez administratora. Powiadomienia e-mail działają niezależnie.'}</small>
 
           <div class="dt-account-save-row"><button type="submit">Zapisz ustawienia</button></div>
           <div id="dt-account-message" class="dt-account-message" aria-live="polite"></div>
@@ -175,13 +154,14 @@
       favoriteLeague=String(button.dataset.favoriteLeague||'1lm');
       render(account);
     }));
-    target.querySelector('#dt-enable-push')?.addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await window.DeckaTyperPwa?.enablePush();const pushToggle=target.querySelector('[name="notify_push"]');if(pushToggle)pushToggle.checked=true;button.textContent='Powiadomienia włączone';target.querySelector('#dt-profile-settings-form')?.requestSubmit();}catch(error){alert(error.message||'Nie udało się włączyć powiadomień.');button.disabled=false;}});
-    target.querySelector('#dt-test-push-device')?.addEventListener('click',async event=>{const button=event.currentTarget;const label=button.textContent;button.disabled=true;button.textContent='Wysyłanie testu…';try{const result=await window.DeckaTyperPwa?.testPush();const seconds=Number(result?.deliver_in_seconds||15);button.textContent='Test Push zaplanowany';alert('Losowy test Push został zaplanowany za '+seconds+' sekund. Zamknij teraz aplikację lub przejdź do ekranu głównego telefonu.');}catch(error){alert(error.message||'Nie udało się wysłać testu na to urządzenie.');button.textContent=label;button.disabled=false;}});
+    target.querySelector('[name="notify_push"]')?.addEventListener('change',async event=>{if(!event.currentTarget.checked)return;event.currentTarget.disabled=true;try{await window.DeckaTyperPwa?.enablePush();event.currentTarget.checked=true;}catch(error){event.currentTarget.checked=false;alert(error.message||'Nie udało się włączyć powiadomień.');}finally{event.currentTarget.disabled=false;}});
     target.querySelector('.dt-notification-info-button')?.addEventListener('click',event=>{const button=event.currentTarget;const help=target.querySelector('#dt-notification-help');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(open));if(help)help.hidden=!open;});
     target.querySelector('#dt-install-pwa')?.addEventListener('click',async()=>{
-      if(!isMobileDevice()){showQrModal();return;}
-      const installed=await window.DeckaTyperPwa?.install();
-      if(!installed)alert(/iphone|ipad|ipod/i.test(navigator.userAgent)?'W Safari wybierz Udostępnij, a następnie „Do ekranu początkowego”.':'Otwórz menu przeglądarki i wybierz „Zainstaluj aplikację” albo „Dodaj do ekranu głównego”.');
+      if(isIos()){alert('Na iPhonie dotknij ikony Udostępnij w Safari, a następnie wybierz „Do ekranu początkowego” i potwierdź „Dodaj”.');return;}
+      if(isAndroid()){
+        const installed=await window.DeckaTyperPwa?.install();
+        if(!installed)alert('Otwórz menu Chrome (trzy kropki) i wybierz „Dodaj do ekranu głównego” albo „Zainstaluj aplikację”.');
+      }
     });
     decorateFavoriteMatches();
   };
@@ -207,8 +187,11 @@
     if(name.length<2||name.length>40){message.textContent='Nazwa musi mieć od 2 do 40 znaków.';message.className='dt-account-message is-error';return;}
     button.disabled=true;message.textContent='Zapisywanie…';message.className='dt-account-message';
     try{
-      const notifications={};
-      ['email','push','standard','schedule_changes','postponed','incomplete','reminder_3d','reminder_6h'].forEach(key=>{notifications[key]=form.querySelector(`[name="notify_${key}"]`)?.checked?1:0;});
+      const notifications={
+        email:form.querySelector('[name="notify_email"]')?.checked?1:0,
+        push:form.querySelector('[name="notify_push"]')?.checked?1:0,
+        standard:1,schedule_changes:1,postponed:1,incomplete:1,reminder_3d:1,reminder_6h:1
+      };
       const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite,notifications})});
       account=data.account||account;
       favoriteTeamId=Number(account?.favorite_team_id||0);
