@@ -1,0 +1,51 @@
+.dt-prediction-filters {
+    margin-bottom: 16px;
+}
+
+.dt-prediction-filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.dt-predictions-table {
+    padding: 0;
+    overflow: hidden;
+}
+
+.dt-predictions-table .dt-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.dt-predictions-table table {
+    min-width: 1120px;
+}
+
+.dt-predictions-table td > small {
+    display: block;
+    margin-top: 3px;
+}
+
+.dt-prediction-selection {
+    min-width: 210px;
+    max-width: 360px;
+    line-height: 1.45;
+}
+
+.dt-predictions-table .dt-badge {
+    white-space: nowrap;
+}
+
+@media (max-width: 782px) {
+    .dt-prediction-filter-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .dt-prediction-filter-actions .button {
+        width: 100%;
+        text-align: center;
+    }
+}

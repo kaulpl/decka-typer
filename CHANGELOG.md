@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.59
+- Przebudowano administracyjną zakładkę „Typy” na kompletną listę danych z całego systemu.
+- Dodano do listy zwykłe typy meczowe oraz prognozy PRE1 i PRE2.
+- Dodano filtry rodzaju, statusu, sezonu, ligi, grupy 2LM i kolejki.
+- Dodano wyszukiwanie po użytkowniku, e-mailu, drużynach, rozgrywkach oraz danych typu.
+- Dodano automatyczną paginację po 40 rekordów z zachowaniem wszystkich filtrów.
+- Rozbudowano tabelę o status rozliczenia, sezon, ligę, kolejkę, punkty i czas zapisu.
+
 ## 0.5.58
 - Ranking miesiąca jest liczony według dat rozpoczęcia poszczególnych meczów, a nie całej kolejki.
 - Kolejki rozgrywane na przełomie miesięcy są automatycznie dzielone pomiędzy właściwe rankingi miesięczne.

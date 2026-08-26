@@ -37,6 +37,7 @@ class DT_Admin {
     public static function assets(string $hook): void {
         if (strpos($hook, 'decka-typer') === false) return;
         wp_enqueue_style('dt-admin', DT_URL . 'assets/css/admin.css', [], DT_VERSION);
+        wp_enqueue_style('dt-admin-predictions', DT_URL . 'assets/css/admin-predictions.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_script('dt-admin', DT_URL . 'assets/js/admin.js', [], DT_VERSION, true);
     }
 
@@ -342,30 +343,157 @@ class DT_Admin {
 
     public static function predictions(): void {
         global $wpdb;
-        $roundId = (int)($_GET['round_id'] ?? 0);
-        $s = DT_DB::settings();
-        $rounds = $wpdb->get_results($wpdb->prepare('SELECT id,title,league_key,group_key FROM ' . DT_DB::table('rounds') . ' WHERE season=%s ORDER BY league_key,group_key,round_no',$s['season']));
-        if (!$roundId && $rounds) $roundId = (int)$rounds[0]->id;
-        $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
-        $total=$roundId?(int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM '.DT_DB::table('predictions').' p JOIN '.DT_DB::table('matches').' m ON m.id=p.match_id WHERE m.round_id=%d',$roundId)):0;
-        $rows = $roundId ? $wpdb->get_results($wpdb->prepare(
-            "SELECT p.*,u.display_name,h.name home_name,a.name away_name,sel.name selected_name,m.score_home,m.score_away
-             FROM " . DT_DB::table('predictions') . " p
-             JOIN {$wpdb->users} u ON u.ID=p.user_id
-             JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
-             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
-             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
-             LEFT JOIN " . DT_DB::table('teams') . " sel ON sel.id=p.selected_team_id
-             WHERE m.round_id=%d ORDER BY u.display_name,m.starts_at,m.id LIMIT %d OFFSET %d", $roundId,$perPage,($dtPage-1)*$perPage
-        )) : [];
-        self::shell('Typy','Kupony są nieedytowalne po zapisaniu.');
-        echo '<div class="dt-toolbar"><form method="get"><input type="hidden" name="page" value="decka-typer-predictions"><select name="round_id" onchange="this.form.submit()">'; foreach($rounds as $r) echo '<option value="'.(int)$r->id.'" '.selected($roundId,$r->id,false).'>'.esc_html($r->title).'</option>'; echo '</select></form></div>';
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Użytkownik</th><th>Mecz</th><th>Typowany zwycięzca</th><th>Punkty</th><th>Zapisano</th></tr></thead><tbody>';
-        foreach ($rows as $r) echo '<tr><td><strong>'.esc_html($r->display_name).'</strong></td><td>'.esc_html($r->home_name).' – '.esc_html($r->away_name).'</td><td>'.esc_html($r->selected_name ?: '—').'</td><td><strong>'.esc_html((string)(int)$r->points).'</strong></td><td>'.esc_html(self::date_pl($r->submitted_at)).'</td></tr>';
-        if (!$rows) echo '<tr><td colspan="5" class="dt-empty">Brak zapisanych typów.</td></tr>';
-        echo '</tbody></table></section>';
-        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-predictions','round_id'=>$roundId]);
+        $type = sanitize_key((string)($_GET['prediction_type'] ?? 'all'));
+        if (!in_array($type, ['all','match','pre1','pre2'], true)) $type = 'all';
+        $statusFilter = sanitize_key((string)($_GET['prediction_status'] ?? 'all'));
+        if (!in_array($statusFilter, ['all','pending','winner','miss'], true)) $statusFilter = 'all';
+        $season = sanitize_text_field(wp_unslash((string)($_GET['season'] ?? 'all')));
+        $league = sanitize_key((string)($_GET['league'] ?? 'all'));
+        if (!in_array($league, ['all','1lm','plk','2lm'], true)) $league = 'all';
+        $group = $league === '2lm' ? strtoupper(sanitize_text_field(wp_unslash((string)($_GET['group'] ?? '')))) : '';
+        $roundId = max(0, (int)($_GET['round_id'] ?? 0));
+        if (in_array($type, ['pre1','pre2'], true)) $roundId = 0;
+        $search = trim(sanitize_text_field(wp_unslash((string)($_GET['s'] ?? ''))));
+        $dtPage = max(1, (int)($_GET['dt_paged'] ?? 1));
+        $perPage = 40;
+
+        $roundsTable = DT_DB::table('rounds');
+        $matchesTable = DT_DB::table('matches');
+        $predictionsTable = DT_DB::table('predictions');
+        $preseasonTable = DT_DB::table('preseason_predictions');
+        $teamsTable = DT_DB::table('teams');
+
+        $seasons = array_values(array_unique(array_filter(array_map('strval', (array)$wpdb->get_col(
+            "SELECT season FROM $roundsTable WHERE season<>'' UNION SELECT season FROM $preseasonTable WHERE season<>'' ORDER BY season DESC"
+        )))));
+        if ($season !== 'all' && !in_array($season, $seasons, true)) $season = 'all';
+
+        $roundFilter = '';
+        if ($season !== 'all') $roundFilter .= $wpdb->prepare(' AND season=%s', $season);
+        if ($league !== 'all') $roundFilter .= $wpdb->prepare(' AND league_key=%s', $league);
+        if ($group !== '') $roundFilter .= $wpdb->prepare(' AND UPPER(group_key)=%s', $group);
+        $rounds = $wpdb->get_results("SELECT id,title,season,league_key,group_key,round_no FROM $roundsTable WHERE 1=1 $roundFilter ORDER BY season DESC,league_key,group_key,round_no,id");
+        $validRoundIds = array_map('intval', wp_list_pluck((array)$rounds, 'id'));
+        if ($roundId && !in_array($roundId, $validRoundIds, true)) $roundId = 0;
+
+        $regularWhere = ' WHERE p.selected_team_id IS NOT NULL';
+        $preWhere = ' WHERE 1=1';
+        if ($season !== 'all') {
+            $regularWhere .= $wpdb->prepare(' AND r.season=%s', $season);
+            $preWhere .= $wpdb->prepare(' AND pp.season=%s', $season);
+        }
+        if ($league !== 'all') {
+            $regularWhere .= $wpdb->prepare(' AND r.league_key=%s', $league);
+            $preWhere .= $wpdb->prepare(' AND pp.league_key=%s', $league);
+        }
+        if ($group !== '') {
+            $regularWhere .= $wpdb->prepare(' AND UPPER(r.group_key)=%s', $group);
+            $preWhere .= $wpdb->prepare(' AND UPPER(pp.group_key)=%s', $group);
+        }
+        if ($roundId) $regularWhere .= $wpdb->prepare(' AND r.id=%d', $roundId);
+        if ($statusFilter === 'pending') $regularWhere .= ' AND (m.score_home IS NULL OR m.score_away IS NULL)';
+        elseif ($statusFilter === 'winner') $regularWhere .= " AND p.scoring_code='winner'";
+        elseif ($statusFilter === 'miss') $regularWhere .= " AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND (p.scoring_code<>'winner' OR p.scoring_code IS NULL)";
+
+        if ($search !== '') {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $regularWhere .= $wpdb->prepare(
+                ' AND (u.display_name LIKE %s OR u.user_email LIKE %s OR h.name LIKE %s OR a.name LIKE %s OR sel.name LIKE %s OR r.title LIKE %s OR r.league_key LIKE %s OR p.scoring_code LIKE %s)',
+                $like, $like, $like, $like, $like, $like, $like, $like
+            );
+            $preTeamSearch='';
+            foreach ((array)$wpdb->get_col($wpdb->prepare("SELECT id FROM $teamsTable WHERE name LIKE %s LIMIT 30",$like)) as $teamId) {
+                $preTeamSearch .= $wpdb->prepare(' OR pp.selections REGEXP %s','(^|[^0-9])'.(int)$teamId.'([^0-9]|$)');
+            }
+            $preWhere .= $wpdb->prepare(
+                ' AND (u.display_name LIKE %s OR u.user_email LIKE %s OR pp.prediction_type LIKE %s OR pp.league_key LIKE %s OR pp.group_key LIKE %s OR pp.selections LIKE %s'.$preTeamSearch.')',
+                $like, $like, $like, $like, $like, $like
+            );
+        }
+
+        $parts = [];
+        if (in_array($type, ['all','match'], true)) {
+            $parts[] = "SELECT p.id source_id,'match' prediction_type,p.user_id,u.display_name,u.user_email,
+                        r.season,r.league_key,r.group_key,r.id round_id,r.round_no,r.title round_title,
+                        CONCAT(h.name,' – ',a.name) context_label,sel.name selection_data,
+                        p.points,p.scoring_code,m.score_home,m.score_away,p.submitted_at
+                 FROM $predictionsTable p
+                 JOIN {$wpdb->users} u ON u.ID=p.user_id
+                 JOIN $matchesTable m ON m.id=p.match_id
+                 JOIN $roundsTable r ON r.id=m.round_id
+                 JOIN $teamsTable h ON h.id=m.home_team_id
+                 JOIN $teamsTable a ON a.id=m.away_team_id
+                 LEFT JOIN $teamsTable sel ON sel.id=p.selected_team_id
+                 $regularWhere";
+        }
+        if (!$roundId && in_array($type, ['all','pre1','pre2'], true) && in_array($statusFilter,['all','pending'],true)) {
+            if ($type !== 'all') $preWhere .= $wpdb->prepare(' AND pp.prediction_type=%s', $type);
+            $parts[] = "SELECT pp.id source_id,pp.prediction_type,pp.user_id,u.display_name,u.user_email,
+                        pp.season,pp.league_key,pp.group_key,0 round_id,0 round_no,UPPER(pp.prediction_type) round_title,
+                        'Typowanie przedsezonowe' context_label,pp.selections selection_data,
+                        pp.points,'pending' scoring_code,NULL score_home,NULL score_away,pp.submitted_at
+                 FROM $preseasonTable pp
+                 JOIN {$wpdb->users} u ON u.ID=pp.user_id
+                 $preWhere";
+        }
+
+        $union = $parts ? implode(' UNION ALL ', $parts) : '';
+        $total = $union !== '' ? (int)$wpdb->get_var("SELECT COUNT(*) FROM ($union) dt_all_types") : 0;
+        $pages = max(1, (int)ceil($total / $perPage));
+        if ($dtPage > $pages) $dtPage = $pages;
+        $offset = ($dtPage - 1) * $perPage;
+        $rows = $union !== '' ? $wpdb->get_results("SELECT * FROM ($union) dt_all_types ORDER BY submitted_at DESC,prediction_type,source_id DESC LIMIT ".(int)$perPage.' OFFSET '.(int)$offset) : [];
+
+        $teamNames = [];
+        foreach ((array)$wpdb->get_results("SELECT id,name FROM $teamsTable") as $team) $teamNames[(int)$team->id] = (string)$team->name;
+
+        self::shell('Typy','Wszystkie zapisane typy meczowe oraz prognozy PRE1/PRE2. Łącznie: '.number_format_i18n($total).'.');
+        echo '<form method="get" class="dt-card dt-prediction-filters"><input type="hidden" name="page" value="decka-typer-predictions"><div class="dt-form-3">';
+        echo '<label>Rodzaj<select name="prediction_type"><option value="all" '.selected($type,'all',false).'>Wszystkie typy</option><option value="match" '.selected($type,'match',false).'>Typy meczowe</option><option value="pre1" '.selected($type,'pre1',false).'>PRE1</option><option value="pre2" '.selected($type,'pre2',false).'>PRE2</option></select></label>';
+        echo '<label>Status<select name="prediction_status"><option value="all" '.selected($statusFilter,'all',false).'>Wszystkie statusy</option><option value="pending" '.selected($statusFilter,'pending',false).'>Oczekujące</option><option value="winner" '.selected($statusFilter,'winner',false).'>Trafione</option><option value="miss" '.selected($statusFilter,'miss',false).'>Nietrafione</option></select></label>';
+        echo '<label>Sezon<select name="season"><option value="all">Wszystkie sezony</option>'; foreach ($seasons as $item) echo '<option value="'.esc_attr($item).'" '.selected($season,$item,false).'>'.esc_html($item).'</option>'; echo '</select></label>';
+        echo '<label>Liga<select name="league"><option value="all" '.selected($league,'all',false).'>Wszystkie ligi</option><option value="1lm" '.selected($league,'1lm',false).'>1LM</option><option value="plk" '.selected($league,'plk',false).'>PLK</option><option value="2lm" '.selected($league,'2lm',false).'>2LM</option></select></label>';
+        echo '<label>Grupa 2LM<input name="group" value="'.esc_attr($group).'" placeholder="A, B, C lub D"></label>';
+        echo '<label>Kolejka<select name="round_id"><option value="0">Wszystkie kolejki</option>'; foreach ((array)$rounds as $round) { $label=strtoupper((string)$round->league_key).($round->group_key?' · grupa '.strtoupper((string)$round->group_key):'').' · '.$round->title.' · '.$round->season; echo '<option value="'.(int)$round->id.'" '.selected($roundId,(int)$round->id,false).'>'.esc_html($label).'</option>'; } echo '</select></label>';
+        echo '<label>Wyszukaj<input type="search" name="s" value="'.esc_attr($search).'" placeholder="Użytkownik, e-mail, drużyna, status…"></label></div><div class="dt-prediction-filter-actions"><button class="button button-primary">Filtruj i wyszukaj</button><a class="button" href="'.esc_url(admin_url('admin.php?page=decka-typer-predictions')).'">Wyczyść filtry</a></div></form>';
+
+        echo '<section class="dt-card dt-predictions-table"><div class="dt-table-scroll"><table class="widefat dt-table"><thead><tr><th>Rodzaj</th><th>Użytkownik</th><th>Liga</th><th>Kolejka / mecz</th><th>Oddany typ</th><th>Status</th><th>Punkty</th><th>Zapisano</th></tr></thead><tbody>';
+        foreach ((array)$rows as $row) {
+            $uid=(int)$row->user_id;
+            $displayName=class_exists('DT_User_Settings')?DT_User_Settings::ranking_name($uid,(string)$row->display_name):(string)$row->display_name;
+            $isPre=in_array((string)$row->prediction_type,['pre1','pre2'],true);
+            $typeLabel=$isPre?strtoupper((string)$row->prediction_type):'MECZ';
+            $leagueLabel=strtoupper((string)$row->league_key).($row->group_key?' · '.$row->group_key:'').' · '.$row->season;
+            $context=$isPre?$typeLabel:((string)$row->round_title.' · '.(string)$row->context_label);
+            $selection=$isPre?self::preseason_selection_label((string)$row->prediction_type,(string)$row->selection_data,$teamNames):(string)($row->selection_data?:'—');
+            if ($isPre) $status=self::badge('Oczekuje na rozliczenie','orange');
+            elseif ($row->score_home === null || $row->score_away === null) $status=self::badge('Oczekuje','neutral');
+            elseif ($row->scoring_code === 'winner') $status=self::badge('Trafiony','green');
+            else $status=self::badge('Nietrafiony','red');
+            echo '<tr><td>'.self::badge($typeLabel,$isPre?'orange':'blue').'</td><td><strong>'.esc_html($displayName).'</strong><small class="dt-muted">'.esc_html((string)$row->user_email).'</small></td><td>'.esc_html($leagueLabel).'</td><td>'.esc_html($context).'</td><td class="dt-prediction-selection">'.esc_html($selection).'</td><td>'.$status.'</td><td><strong>'.esc_html((string)(float)$row->points).'</strong></td><td>'.esc_html(self::date_pl((string)$row->submitted_at)).'</td></tr>';
+        }
+        if (!$rows) echo '<tr><td colspan="8" class="dt-empty">Brak zapisanych typów spełniających wybrane kryteria.</td></tr>';
+        echo '</tbody></table></div></section>';
+
+        $paginationArgs=['page'=>'decka-typer-predictions','prediction_type'=>$type,'prediction_status'=>$statusFilter,'season'=>$season,'league'=>$league,'group'=>$group,'round_id'=>$roundId,'s'=>$search];
+        if ($total > $perPage) {
+            $base=add_query_arg(array_merge($paginationArgs,['dt_paged'=>'%#%']),admin_url('admin.php'));
+            echo '<nav class="dt-pagination" aria-label="Stronicowanie">'.wp_kses_post(paginate_links(['base'=>$base,'format'=>'','current'=>$dtPage,'total'=>$pages,'mid_size'=>2,'end_size'=>1,'prev_text'=>'←','next_text'=>'→'])).'</nav>';
+        }
         self::end_shell();
+    }
+
+    private static function preseason_selection_label(string $type, string $json, array $teamNames): string {
+        $data=json_decode($json,true);
+        if (!is_array($data) || !$data) return '—';
+        if ($type === 'pre1') {
+            $items=[];
+            foreach ($data as $teamId=>$bracket) $items[] = ($teamNames[(int)$teamId] ?? 'Drużyna #'.(int)$teamId).': '.$bracket;
+            return implode('; ', $items);
+        }
+        $items=[];
+        foreach ($data as $teamId) $items[]=$teamNames[(int)$teamId] ?? 'Drużyna #'.(int)$teamId;
+        return implode(', ', $items);
     }
 
     public static function ranking(): void {
