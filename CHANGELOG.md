@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.7
+- Test powiadomienia na urządzeniu jest planowany z 15-sekundowym opóźnieniem zamiast wysyłki w chwili, gdy PWA znajduje się na pierwszym planie.
+- Po uruchomieniu testu aplikacja wyraźnie prosi o przejście do ekranu głównego lub zamknięcie PWA, aby iOS mógł pokazać systemowy baner.
+- Onboarding po włączeniu powiadomień pozostaje widoczny z instrukcją testu zamiast znikać przed przejściem aplikacji do tła.
+- Odpowiedź endpointu zawiera czas pozostały do zaplanowanej wysyłki.
+
 ## 0.6.6
 - Dodano onboarding powiadomień wyświetlany automatycznie po pierwszym uruchomieniu aplikacji z ekranu głównego iPhone’a.
 - Jedno kliknięcie uruchamia systemową zgodę iOS, aktywuje OneSignal, zapisuje urządzenie, włącza preferencję Push i wysyła test.

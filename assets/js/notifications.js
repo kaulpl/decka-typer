@@ -83,8 +83,7 @@
         await window.DeckaTyperPwa.testPush();
         localStorage.setItem(onboardingKey,'enabled');localStorage.removeItem(onboardingKey+'-later');
         const toggle=document.querySelector('[name="notify_push"]');if(toggle)toggle.checked=true;
-        modal.classList.add('is-success');enable.textContent='Powiadomienia są włączone';status.textContent='Gotowe! Wysłaliśmy też test na tego iPhone’a.';
-        setTimeout(()=>closeOnboarding(modal),2400);
+        modal.classList.add('is-success');enable.textContent='Przejdź teraz do ekranu głównego';status.textContent='Gotowe! Test nadejdzie za około 15 sekund. Zamknij aplikację lub przesuń ją do tła, aby zobaczyć systemowe powiadomienie.';
       }catch(error){
         enable.disabled=false;later.disabled=false;enable.textContent='Spróbuj ponownie';status.textContent=error.message||'Nie udało się włączyć powiadomień.';
       }
