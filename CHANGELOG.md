@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4
+- Zmieniono adres Service Workera OneSignal z wirtualnego pliku `/OneSignalSDKWorker.js` na bezpośredni endpoint WordPress `/?dt_onesignal_worker=1`.
+- Endpoint omija reguły serwera przechwytujące nieistniejące pliki `.js`, które powodowały błąd 404 jeszcze przed uruchomieniem WordPressa.
+- Zachowano pełny zakres Service Workera `/` dzięki nagłówkowi `Service-Worker-Allowed`.
+- Podniesiono wersję endpointów PWA, aby po aktualizacji odświeżyć konfigurację i zasoby.
+
 ## 0.6.3
 - Zapisujemy przy koncie użytkownika rzeczywisty identyfikator subskrypcji OneSignal dla każdego komputera i telefonu.
 - Powiadomienia są kierowane bezpośrednio na zarejestrowane identyfikatory urządzeń zamiast polegać wyłącznie na aliasie `external_id`.
