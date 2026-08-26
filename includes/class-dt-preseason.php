@@ -1,7 +1,7 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-/** Special PRE1/PRE2 predictions kept separate from ordinary match coupons. */
+/** Special preseason predictions kept separate from ordinary match coupons. */
 class DT_Preseason {
     private const TYPES = ['pre1','pre2'];
     private const BRACKETS = ['1-4','5-8','9-12','13-16'];
@@ -30,7 +30,7 @@ class DT_Preseason {
     }
 
     public static function save(WP_REST_Request $request): WP_REST_Response|WP_Error {
-        if (!self::is_open()) return new WP_Error('preseason_closed','Typowania PRE1 i PRE2 są już zamknięte.',['status'=>409]);
+        if (!self::is_open()) return new WP_Error('preseason_closed','Typowania PRE - FinalRanking i PRE - PlayOFF są już zamknięte.',['status'=>409]);
         $body = $request->get_json_params();
         if (!is_array($body)) $body=[];
         $league = sanitize_key((string)($body['league_key']??''));
@@ -52,12 +52,12 @@ class DT_Preseason {
                 if (!isset($allowed[$teamId]) || !in_array($bracket,self::BRACKETS,true)) continue;
                 $clean[(string)$teamId]=$bracket;$counts[$bracket]++;
             }
-            if (count($clean)!==count($teams)) return new WP_Error('pre1_incomplete','W PRE1 wybierz przedział miejsca dla każdej drużyny.',['status'=>422]);
+            if (count($clean)!==count($teams)) return new WP_Error('pre1_incomplete','W PRE - FinalRanking wybierz przedział miejsca dla każdej drużyny.',['status'=>422]);
             if (max($counts)>4) return new WP_Error('pre1_limit','W jednym przedziale mogą znaleźć się maksymalnie cztery drużyny.',['status'=>422]);
         } else {
             foreach ($raw as $teamId) { $teamId=(int)$teamId;if(isset($allowed[$teamId]))$clean[]=$teamId; }
             $clean=array_values(array_unique($clean));
-            if (!$clean || count($clean)>8) return new WP_Error('pre2_limit','W PRE2 wybierz od jednej do maksymalnie ośmiu drużyn.',['status'=>422]);
+            if (!$clean || count($clean)>8) return new WP_Error('pre2_limit','W PRE - PlayOFF wybierz od jednej do maksymalnie ośmiu drużyn.',['status'=>422]);
         }
 
         global $wpdb;

@@ -147,7 +147,8 @@
       const scoring=preseasonData.scoring||{};
       const hitPoints=Number(scoring[`${row.type}_hit`]||0),perfect=Number(scoring[`${row.type}_perfect`]||0);
       const meta=`${entries.length} typów · ${hitPoints} pkt za trafienie${perfect?` · +${perfect} pkt za komplet`:''}`;
-      return `<details class="dt-coupon dt-pre-coupon is-league-${esc(row.league)}"><summary class="dt-coupon-summary"><div class="dt-coupon-title"><small>${esc(leagueLabel)}</small><strong>${esc(row.type.toUpperCase())}</strong></div><div class="dt-coupon-meta">${esc(meta)}</div><span class="dt-coupon-chevron" aria-hidden="true">⌄</span></summary><div class="dt-coupon-body">${entries.map(([name,value])=>`<div class="dt-pre-coupon-row"><strong>${esc(name)}</strong><span>${esc(value)}</span></div>`).join('')}</div></details>`;
+      const typeLabel=row.type==='pre1'?'PRE - FinalRanking':'PRE - PlayOFF';
+      return `<details class="dt-coupon dt-pre-coupon is-league-${esc(row.league)}"><summary class="dt-coupon-summary"><div class="dt-coupon-title"><small>${esc(leagueLabel)}</small><strong>${esc(typeLabel)}</strong></div><div class="dt-coupon-meta">${esc(meta)}</div><span class="dt-coupon-chevron" aria-hidden="true">⌄</span></summary><div class="dt-coupon-body">${entries.map(([name,value])=>`<div class="dt-pre-coupon-row"><strong>${esc(name)}</strong><span>${esc(value)}</span></div>`).join('')}</div></details>`;
     }).join('');
     return `<section class="dt-coupon-section is-pre"><h2>TYPOWANIA SPECJALNE PRE</h2><div class="dt-coupon-section-list">${cards}</div></section>`;
   };
