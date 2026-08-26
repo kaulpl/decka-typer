@@ -121,6 +121,23 @@ class DT_Notifications {
         if (!empty($prefs['push'])) self::send_channel($uid,'push',$type,$eventKey,$title,$message,$roundId,$matchId);
     }
 
+    public static function send_admin_test(int $uid): array {
+        global $wpdb;
+        $eventKey='admin-test-'.$uid.'-'.wp_generate_uuid4();
+        $title='Test powiadomień TypujKosza.pl';
+        $message='Jeśli widzisz tę wiadomość, kanał powiadomień działa poprawnie. Artur melduje gotowość!';
+        $channels=['inapp','email'];
+        if (self::push_ready()) $channels[]='push';
+        foreach ($channels as $channel) self::send_channel($uid,$channel,'admin_test',$eventKey,$title,$message,0,0);
+
+        $rows=$wpdb->get_results($wpdb->prepare(
+            'SELECT channel,status FROM '.DT_DB::table('notifications').' WHERE user_id=%d AND event_key=%s ORDER BY id ASC',
+            $uid,
+            $eventKey
+        ),ARRAY_A);
+        return is_array($rows)?$rows:[];
+    }
+
     private static function send_channel(int $uid,string $channel,string $type,string $eventKey,string $title,string $message,int $roundId,int $matchId): void {
         global $wpdb;
         $table=DT_DB::table('notifications');$now=current_time('mysql');
