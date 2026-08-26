@@ -97,8 +97,6 @@
   const renderUser=me=>{
     if(!me)return;
     const chip=$('#dt-user-chip');if(chip)chip.innerHTML=`<img src="${esc(me.avatar)}" alt=""><span><b>${esc(me.display_name)}</b><small>${me.rank?`#${me.rank} w rankingu`:'Czas na pierwszy kupon'}</small></span>`;
-    const ranks=$('#dt-league-ranks'),leagueRanks=me.league_ranks||{};
-    if(ranks)ranks.innerHTML=['1lm','plk','2lm'].map(key=>`<span>${key.toUpperCase()} <b>${leagueRanks[key]?.rank?`#${leagueRanks[key].rank}`:'#–'}</b></span>`).join('');
   };
   const renderAchievements=me=>{
     const box=$('#dt-achievement-leagues');if(!box||!me)return;
@@ -124,7 +122,7 @@
     const present=new Set((state.boot.rounds||[]).map(r=>String(r.league_key||'1lm')));
     const available=['1lm','plk','2lm'].filter(key=>present.has(key));
     const groups=[...new Set((state.boot.rounds||[]).filter(r=>String(r.league_key)==='2lm').map(r=>normalizeGroup(r.group_key)).filter(Boolean))];
-    box.innerHTML=`<div class="dt-segmented dt-league-segments">${available.map(key=>`<button type="button" data-league="${esc(key)}" class="${state.league===key?'is-active':''}">${esc(labels[key]||key.toUpperCase())}</button>`).join('')}</div>${state.league==='2lm'?`<div class="dt-segmented dt-group-segments">${groups.map(group=>`<button type="button" data-group="${esc(group)}" class="${normalizeGroup(state.group)===group?'is-active':''}">GRUPA ${esc(group)}</button>`).join('')}</div>`:''}`;
+    box.innerHTML=`<div class="dt-segmented dt-league-segments">${available.map(key=>`<button type="button" data-league="${esc(key)}" class="${state.league===key?'is-active':''}"><span class="dt-league-name-full">${esc(labels[key]||key.toUpperCase())}</span><span class="dt-league-name-short">${esc(key.toUpperCase())}</span></button>`).join('')}</div>${state.league==='2lm'?`<div class="dt-segmented dt-group-segments">${groups.map(group=>`<button type="button" data-group="${esc(group)}" class="${normalizeGroup(state.group)===group?'is-active':''}">GRUPA ${esc(group)}</button>`).join('')}</div>`:''}`;
   };
   const updateNav=()=>{
     if(!state.boot||!state.round)return;

@@ -79,10 +79,14 @@ class DT_Preseason {
                 foreach (self::groups() as $group) $catalog[]=['league_key'=>$league,'group_key'=>$group,'teams'=>self::teams($league,$group)];
             } else $catalog[]=['league_key'=>$league,'group_key'=>'','teams'=>self::teams($league,'')];
         }
-        $rows=$wpdb->get_results($wpdb->prepare('SELECT league_key,group_key,prediction_type,selections,submitted_at FROM '.DT_DB::table('preseason_predictions').' WHERE user_id=%d AND season=%s',$uid,$season),ARRAY_A);
+        $rows=$wpdb->get_results($wpdb->prepare('SELECT league_key,group_key,prediction_type,selections,points,submitted_at FROM '.DT_DB::table('preseason_predictions').' WHERE user_id=%d AND season=%s',$uid,$season),ARRAY_A);
         $submissions=[];
-        foreach((array)$rows as $row){$key=$row['league_key'].'|'.$row['group_key'].'|'.$row['prediction_type'];$submissions[$key]=['selections'=>json_decode((string)$row['selections'],true)?:[],'submitted_at'=>$row['submitted_at']];}
-        return ['season'=>$season,'deadline'=>self::deadline()->format(DateTimeInterface::ATOM),'is_open'=>self::is_open(),'brackets'=>self::BRACKETS,'catalog'=>$catalog,'submissions'=>$submissions];
+        foreach((array)$rows as $row){$key=$row['league_key'].'|'.$row['group_key'].'|'.$row['prediction_type'];$submissions[$key]=['selections'=>json_decode((string)$row['selections'],true)?:[],'points'=>(float)$row['points'],'submitted_at'=>$row['submitted_at']];}
+        $settings=DT_DB::settings();
+        return ['season'=>$season,'deadline'=>self::deadline()->format(DateTimeInterface::ATOM),'is_open'=>self::is_open(),'brackets'=>self::BRACKETS,'catalog'=>$catalog,'submissions'=>$submissions,'scoring'=>[
+            'pre1_hit'=>(float)($settings['pre1_hit_points']??1),'pre1_perfect'=>(float)($settings['pre1_perfect_bonus']??0),
+            'pre2_hit'=>(float)($settings['pre2_hit_points']??1),'pre2_perfect'=>(float)($settings['pre2_perfect_bonus']??0),
+        ]];
     }
 
     private static function groups(): array {

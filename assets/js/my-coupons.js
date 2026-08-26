@@ -14,6 +14,7 @@
   const fmtBonus=v=>Number.isInteger(Number(v||0))?String(Number(v||0)):Number(v||0).toFixed(1).replace('.',',');
 
   let lastHistory=[];
+  let preseasonData=null;
   let activeLeague='all',activeGroup='';
   let rendering=false;
   let refreshTimer=null;
@@ -23,6 +24,13 @@
     if(cfg.nonce)headers['X-WP-Nonce']=cfg.nonce;
     const response=await fetch(cfg.root+'me',{credentials:'same-origin',headers});
     if(!response.ok)throw new Error('Nie udało się pobrać historii typów.');
+    return response.json();
+  };
+  const apiPreseason=async()=>{
+    const headers={'Content-Type':'application/json'};
+    if(cfg.nonce)headers['X-WP-Nonce']=cfg.nonce;
+    const response=await fetch(cfg.root+'preseason',{credentials:'same-origin',headers});
+    if(!response.ok)throw new Error('Nie udało się pobrać typowań PRE.');
     return response.json();
   };
 
@@ -117,26 +125,56 @@
       section('ZAMKNIĘTE TYPOWANIA ROZSTRZYGNIĘTE',settled,'settled');
   };
 
-  const render=history=>{
+  const preseasonCoupons=()=>{
+    if(!preseasonData)return '';
+    const normalizeGroup=value=>String(value||'').trim().toUpperCase();
+    const catalog=new Map((preseasonData.catalog||[]).map(scope=>[`${scope.league_key}|${normalizeGroup(scope.group_key)}`,scope]));
+    const rows=Object.entries(preseasonData.submissions||{}).map(([key,submission])=>{
+      const [league,rawGroup,type]=key.split('|'),group=normalizeGroup(rawGroup);
+      return {league,group,type,submission,scope:catalog.get(`${league}|${group}`)};
+    }).filter(row=>(activeLeague==='all'||row.league===activeLeague)&&(activeLeague!=='2lm'||!activeGroup||row.group===normalizeGroup(activeGroup)));
+    const order={pre1:0,pre2:1},leagueOrder={'1lm':0,plk:1,'2lm':2};
+    rows.sort((a,b)=>(leagueOrder[a.league]??9)-(leagueOrder[b.league]??9)||a.group.localeCompare(b.group,'pl')||(order[a.type]??9)-(order[b.type]??9));
+    if(!rows.length)return '';
+    const cards=rows.map(row=>{
+      const teams=new Map((row.scope?.teams||[]).map(team=>[String(team.id),team]));
+      const selections=row.submission?.selections||[];
+      const entries=row.type==='pre1'
+        ? Object.entries(selections).map(([id,value])=>[teams.get(String(id))?.name||`Drużyna #${id}`,value])
+        : selections.map(id=>[teams.get(String(id))?.name||`Drużyna #${id}`,'PLAY-OFF']);
+      entries.sort((a,b)=>a[0].localeCompare(b[0],'pl'));
+      const leagueLabel=row.league==='2lm'?`2LM${row.group?` · GRUPA ${row.group}`:''}`:row.league.toUpperCase();
+      const scoring=preseasonData.scoring||{};
+      const hitPoints=Number(scoring[`${row.type}_hit`]||0),perfect=Number(scoring[`${row.type}_perfect`]||0);
+      const meta=`${entries.length} typów · ${hitPoints} pkt za trafienie${perfect?` · +${perfect} pkt za komplet`:''}`;
+      return `<details class="dt-coupon dt-pre-coupon is-league-${esc(row.league)}"><summary class="dt-coupon-summary"><div class="dt-coupon-title"><small>${esc(leagueLabel)}</small><strong>${esc(row.type.toUpperCase())}</strong></div><div class="dt-coupon-meta">${esc(meta)}</div><span class="dt-coupon-chevron" aria-hidden="true">⌄</span></summary><div class="dt-coupon-body">${entries.map(([name,value])=>`<div class="dt-pre-coupon-row"><strong>${esc(name)}</strong><span>${esc(value)}</span></div>`).join('')}</div></details>`;
+    }).join('');
+    return `<section class="dt-coupon-section is-pre"><h2>TYPOWANIA SPECJALNE PRE</h2><div class="dt-coupon-section-list">${cards}</div></section>`;
+  };
+
+  const render=(history,preseason=preseasonData)=>{
     lastHistory=Array.isArray(history)?history:[];
+    preseasonData=preseason||preseasonData;
     rendering=true;
-    if(!lastHistory.length){
+    if(!lastHistory.length&&!Object.keys(preseasonData?.submissions||{}).length){
       box.innerHTML='<div class="dt-empty-front">Nie masz jeszcze zapisanych typów.</div>';
     }else{
       const normalizeGroup=value=>String(value||'').trim().toUpperCase();
-      const groups=[...new Set(lastHistory.filter(x=>String(x.league_key)==='2lm').map(x=>normalizeGroup(x.group_key)).filter(Boolean))].sort();
+      const preGroups=(preseasonData?.catalog||[]).filter(x=>String(x.league_key)==='2lm').map(x=>normalizeGroup(x.group_key));
+      const groups=[...new Set([...lastHistory.filter(x=>String(x.league_key)==='2lm').map(x=>normalizeGroup(x.group_key)),...preGroups].filter(Boolean))].sort();
       if(activeLeague==='2lm'&&groups.length&&!groups.includes(normalizeGroup(activeGroup)))activeGroup=groups[0];
       const filtered=lastHistory.filter(x=>(activeLeague==='all'||String(x.league_key||'1lm')===activeLeague)&&(activeLeague!=='2lm'||!activeGroup||normalizeGroup(x.group_key)===normalizeGroup(activeGroup)));
       const labels={all:'Wszystkie',plk:'PLK','1lm':'1LM','2lm':'2LM'};
       const grouped=groupHistory(filtered);
-      box.innerHTML=`<div class="dt-coupon-filters"><div class="dt-filter-segmented">${['all','1lm','plk','2lm'].map(l=>`<button type="button" data-coupon-league="${esc(l)}" class="${activeLeague===l?'is-active':''}">${esc(labels[l]||l)}</button>`).join('')}</div>${activeLeague==='2lm'&&groups.length?`<div class="dt-filter-segmented dt-filter-groups">${groups.map(g=>`<button type="button" data-coupon-group="${esc(g)}" class="${normalizeGroup(activeGroup)===g?'is-active':''}">GRUPA ${esc(g)}</button>`).join('')}</div>`:''}</div>${grouped.length?couponSections(grouped):'<div class="dt-empty-front">Brak typów dla wybranego zakresu.</div>'}`;
+      const preHtml=preseasonCoupons(),regularHtml=grouped.length?couponSections(grouped):'';
+      box.innerHTML=`<div class="dt-coupon-filters"><div class="dt-filter-segmented">${['all','1lm','plk','2lm'].map(l=>`<button type="button" data-coupon-league="${esc(l)}" class="${activeLeague===l?'is-active':''}">${esc(labels[l]||l)}</button>`).join('')}</div>${activeLeague==='2lm'&&groups.length?`<div class="dt-filter-segmented dt-filter-groups">${groups.map(g=>`<button type="button" data-coupon-group="${esc(g)}" class="${normalizeGroup(activeGroup)===g?'is-active':''}">GRUPA ${esc(g)}</button>`).join('')}</div>`:''}</div>${preHtml}${regularHtml}${!preHtml&&!regularHtml?'<div class="dt-empty-front">Brak typów dla wybranego zakresu.</div>':''}`;
     }
     box.dataset.couponView='1';
     queueMicrotask(()=>{rendering=false;});
   };
 
   const refresh=async()=>{
-    try{const me=await apiMe();render(me.history||[]);}catch(_){/* Base frontend keeps its own error handling. */}
+    try{const [me,pre]=await Promise.all([apiMe(),apiPreseason()]);render(me.history||[],pre);}catch(_){/* Base frontend keeps its own error handling. */}
   };
 
   const observer=new MutationObserver(()=>{
