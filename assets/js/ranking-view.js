@@ -64,7 +64,8 @@
       const monthSelect=document.createElement('select');
       monthSelect.className='dt-ranking-select';
       monthSelect.setAttribute('aria-label','Wybierz miesiąc');
-      monthSelect.innerHTML=months.map(item=>`<option value="${esc(item)}" ${item===month?'selected':''}>${esc(monthLabel(item))}</option>`).join('');
+      monthSelect.innerHTML=months.length?months.map(item=>`<option value="${esc(item)}" ${item===month?'selected':''}>${esc(monthLabel(item))}</option>`).join(''):'<option value="">Brak miesięcy z zapisanymi typami</option>';
+      monthSelect.disabled=!months.length;
       monthSelect.addEventListener('change',()=>{month=monthSelect.value||'';load();});
       filters.appendChild(monthSelect);
     }else if(scope==='round'){

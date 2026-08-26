@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.58
+- Ranking miesiąca jest liczony według dat rozpoczęcia poszczególnych meczów, a nie całej kolejki.
+- Kolejki rozgrywane na przełomie miesięcy są automatycznie dzielone pomiędzy właściwe rankingi miesięczne.
+- Miesiąc pojawia się w selektorze już po zapisaniu pierwszego typu do meczu zaplanowanego w tym miesiącu.
+- Nierozstrzygnięte typy są widoczne w rankingu miesiąca i otrzymują punkty po wpisaniu wyniku meczu.
+- Dodano czytelny komunikat, gdy dla danego filtra nie ma jeszcze miesięcy z typami.
+
 ## 0.5.57
 - Przeniesiono typowania specjalne nad wybór lig zwykłych kolejek.
 - Dodano spójny przycisk z podwójną strzałką do rozwijania modułu PRE.
