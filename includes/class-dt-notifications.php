@@ -5,7 +5,7 @@ class DT_Notifications {
     private const META = 'dt_notification_preferences';
     private const SUBSCRIPTIONS_META = 'dt_onesignal_subscription_ids';
     private const CRON = 'dt_notification_reminders';
-    private const ENDPOINT_VERSION = '2';
+    private const ENDPOINT_VERSION = '3';
 
     public static function register(): void {
         add_action(self::CRON, [__CLASS__, 'cron']);
@@ -145,7 +145,7 @@ class DT_Notifications {
         wp_localize_script('dt-notifications','DeckaTyperNotifications',[
             'userId'=>get_current_user_id(),'pushReady'=>self::push_ready(),
             'appId'=>self::push_ready()?(string)DT_ONESIGNAL_APP_ID:'',
-            'workerPath'=>wp_make_link_relative(home_url('/OneSignalSDKWorker.js')),
+            'workerPath'=>wp_make_link_relative(add_query_arg('dt_onesignal_worker','1',home_url('/'))),
             'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
             'subscriptionUrl'=>rest_url('decka-typer/v1/push-subscription'),'nonce'=>wp_create_nonce('wp_rest'),
         ]);
