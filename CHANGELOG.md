@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.6
+- Dodano onboarding powiadomień wyświetlany automatycznie po pierwszym uruchomieniu aplikacji z ekranu głównego iPhone’a.
+- Jedno kliknięcie uruchamia systemową zgodę iOS, aktywuje OneSignal, zapisuje urządzenie, włącza preferencję Push i wysyła test.
+- Po pomyślnej konfiguracji okno nie pojawia się ponownie; opcja „Może później” odkłada je na 24 godziny.
+- Dodano mobilny, pełnoekranowy interfejs zgodny z identyfikacją TypujKosza.pl oraz czytelny stan powodzenia i błędu.
+
 ## 0.6.5
 - Dodano test Web Push kierowany bezpośrednio na aktualnie używany komputer lub telefon.
 - Test ponownie aktywuje i zapisuje subskrypcję, a następnie wysyła wiadomość dokładnie na jej identyfikator OneSignal.
