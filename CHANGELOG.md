@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.60
+- Dodano nagłówek „WYBIERZ LIGĘ” nad przełącznikiem lig w zakładce „Typuj”.
+- Zmniejszono odstęp między wyborem ligi a nagłówkiem i wyborem kolejki do standardowego rytmu modułów.
+- Zmieniono prezentowane nazwy PRE1 i PRE2 na „PRE - FinalRanking” oraz „PRE - PlayOFF” we wszystkich widokach użytkownika i administratora.
+
 ## 0.5.59
 - Przebudowano administracyjną zakładkę „Typy” na kompletną listę danych z całego systemu.
 - Dodano do listy zwykłe typy meczowe oraz prognozy PRE1 i PRE2.
