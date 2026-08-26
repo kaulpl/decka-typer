@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.8
+- Okno aktywacji powiadomień zamyka się automatycznie po pomyślnym zapisaniu zgody i zaplanowaniu testu.
+- Przycisk w ustawieniach wysyła wyłącznie Push na bieżący telefon, bez wiadomości e-mail i powiadomienia wewnątrz aplikacji.
+- Test losuje realistyczny komunikat o zmianie terminu meczu albo o dwóch dniach do zamknięcia typowania.
+- Treść testu wykorzystuje rzeczywistą nazwę najbliższej kolejki oraz ligę PLK, 1LM lub 2LM z bazy.
+
 ## 0.6.7
 - Test powiadomienia na urządzeniu jest planowany z 15-sekundowym opóźnieniem zamiast wysyłki w chwili, gdy PWA znajduje się na pierwszym planie.
 - Po uruchomieniu testu aplikacja wyraźnie prosi o przejście do ekranu głównego lub zamknięcie PWA, aby iOS mógł pokazać systemowy baner.

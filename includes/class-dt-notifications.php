@@ -76,10 +76,37 @@ class DT_Notifications {
         $uid=get_current_user_id();
         if ($subscriptionId==='' || !in_array($subscriptionId,self::subscription_ids($uid),true)) return new WP_Error('push_subscription_not_registered','To urządzenie nie jest przypisane do zalogowanego konta. Włącz powiadomienia ponownie.',['status'=>422]);
         $delaySeconds=15;
-        $result=self::send_channel($uid,'push','device_test','device-test-'.$uid.'-'.wp_generate_uuid4(),'Test Push TypujKosza.pl','To test bezpośrednio na to urządzenie. Powiadomienia Web Push działają!',0,0,[$subscriptionId],$delaySeconds);
+        $copy=self::device_test_copy();
+        $result=self::send_channel($uid,'push','device_test','device-test-'.$uid.'-'.wp_generate_uuid4(),$copy['title'],$copy['message'],(int)$copy['round_id'],0,[$subscriptionId],$delaySeconds);
+        $result['test_variant']=$copy['variant'];
         $result['deliver_in_seconds']=$delaySeconds;
         $result['message']=$result['ok']?'Test zaplanowany. Zamknij aplikację lub przejdź do ekranu głównego iPhone’a.':'OneSignal nie przyjął testu.';
         return new WP_REST_Response($result,$result['ok']?200:502);
+    }
+
+    private static function device_test_copy(): array {
+        global $wpdb;
+        $round=$wpdb->get_row(
+            "SELECT id,title,league_key,group_key FROM ".DT_DB::table('rounds')."
+             WHERE status IN ('open','published') OR (closes_at IS NOT NULL AND closes_at>NOW())
+             ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END,closes_at ASC,id DESC LIMIT 1"
+        );
+        $roundTitle=$round&&trim((string)$round->title)!==''?(string)$round->title:'najbliższa kolejka';
+        $leagueKey=$round?strtolower((string)$round->league_key):'1lm';
+        $league=$leagueKey==='plk'?'PLK':($leagueKey==='2lm'?'2LM':'1LM');
+        if ($leagueKey==='2lm' && $round && trim((string)$round->group_key)!=='') $league.=' · grupa '.strtoupper((string)$round->group_key);
+        if (random_int(0,1)===0) {
+            return [
+                'variant'=>'schedule_change','round_id'=>$round?(int)$round->id:0,
+                'title'=>'Zmiana terminu meczu · '.$league,
+                'message'=>'Termin meczu w kolejce „'.$roundTitle.'” został zmieniony. Sprawdź swoje typowanie.',
+            ];
+        }
+        return [
+            'variant'=>'closing_reminder','round_id'=>$round?(int)$round->id:0,
+            'title'=>'2 dni do zamknięcia · '.$roundTitle.' · '.$league,
+            'message'=>'Nie przegap typowania! Uzupełnij swoje typy przed zamknięciem kolejki.',
+        ];
     }
 
     private static function subscription_ids(int $uid): array {
