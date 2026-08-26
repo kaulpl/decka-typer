@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.55
+- Dodano zapisane PRE1 i PRE2 do „Moich typów” jako specjalne kolejki w filtrach 1LM, PLK i grup 2LM.
+- Dodano ustawienia punktów za każde trafienie oraz bonus za perfekcyjny komplet oddzielnie dla PRE1 i PRE2.
+- Na telefonach nazwy lig w wyborze typowania są skrócone do 1LM, PLK i 2LM oraz mieszczą się w jednym rzędzie.
+- Usunięto skrót miejsc użytkownika z głównej nawigacji.
+- Nawigacja aplikacji i scroller kolejek otrzymały ciemnoniebieskie tło z białą typografią.
+
 ## 0.5.54
 - Dodano obowiązkowy modal ustawienia własnej, unikalnej nazwy użytkownika po pierwszym logowaniu.
 - Nazwa z profilu Google nie jest automatycznie publikowana; jako propozycja używany jest login utworzony z części adresu e-mail.
