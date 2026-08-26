@@ -63,7 +63,10 @@ class DT_Notifications {
         $stored=array_values(array_unique(array_merge([$subscriptionId],$stored)));
         $stored=array_slice($stored,0,10);
         update_user_meta($uid,self::SUBSCRIPTIONS_META,$stored);
-        return new WP_REST_Response(['ok'=>true,'registered_devices'=>count($stored)]);
+        $preferences=self::preferences($uid);
+        $preferences['push']=1;
+        update_user_meta($uid,self::META,$preferences);
+        return new WP_REST_Response(['ok'=>true,'registered_devices'=>count($stored),'push_enabled'=>true]);
     }
 
     public static function test_push_subscription(WP_REST_Request $request): WP_REST_Response|WP_Error {
@@ -163,7 +166,9 @@ class DT_Notifications {
             'workerPath'=>wp_make_link_relative(add_query_arg('dt_onesignal_worker','1',home_url('/'))),
             'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
             'subscriptionUrl'=>rest_url('decka-typer/v1/push-subscription'),
-            'testUrl'=>rest_url('decka-typer/v1/push-test'),'nonce'=>wp_create_nonce('wp_rest'),
+            'testUrl'=>rest_url('decka-typer/v1/push-test'),
+            'iconUrl'=>class_exists('DT_Brand')?DT_Brand::mark_url():DT_URL.'assets/img/typujkosza-mark.png',
+            'nonce'=>wp_create_nonce('wp_rest'),
         ]);
     }
 
