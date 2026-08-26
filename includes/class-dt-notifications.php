@@ -4,11 +4,14 @@ if (!defined('ABSPATH')) exit;
 class DT_Notifications {
     private const META = 'dt_notification_preferences';
     private const CRON = 'dt_notification_reminders';
+    private const ENDPOINT_VERSION = '2';
 
     public static function register(): void {
         add_action(self::CRON, [__CLASS__, 'cron']);
         add_action('init', [__CLASS__, 'endpoints']);
-        add_action('template_redirect', [__CLASS__, 'serve_endpoint']);
+        add_action('template_redirect', [__CLASS__, 'serve_endpoint'], -100);
+        add_action('init', [__CLASS__, 'maybe_flush_rewrite_rules'], 99);
+        add_filter('redirect_canonical', [__CLASS__, 'disable_endpoint_redirect'], 10, 2);
         add_action('wp_head', [__CLASS__, 'head'], 3);
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue'], 50);
         if (!wp_next_scheduled(self::CRON)) wp_schedule_event(time() + 300, 'dt_custom_sync', self::CRON);
@@ -40,19 +43,68 @@ class DT_Notifications {
         add_filter('query_vars',static function(array $vars): array {$vars[]='dt_pwa_manifest';$vars[]='dt_onesignal_worker';return $vars;});
     }
 
+    public static function maybe_flush_rewrite_rules(): void {
+        if ((string)get_option('dt_notification_endpoint_version', '') === self::ENDPOINT_VERSION) return;
+        flush_rewrite_rules(false);
+        update_option('dt_notification_endpoint_version', self::ENDPOINT_VERSION, false);
+    }
+
+    private static function request_path(): string {
+        $requestUri = isset($_SERVER['REQUEST_URI']) ? wp_unslash((string)$_SERVER['REQUEST_URI']) : '';
+        return (string)wp_parse_url($requestUri, PHP_URL_PATH);
+    }
+
+    private static function is_manifest_request(): bool {
+        return (bool)get_query_var('dt_pwa_manifest') || self::request_path() === wp_make_link_relative(home_url('/typkosza-manifest.webmanifest'));
+    }
+
+    private static function is_worker_request(): bool {
+        return (bool)get_query_var('dt_onesignal_worker') || self::request_path() === wp_make_link_relative(home_url('/OneSignalSDKWorker.js'));
+    }
+
+    public static function disable_endpoint_redirect($redirect, $requested) {
+        if (self::is_manifest_request() || self::is_worker_request()) return false;
+        return $redirect;
+    }
+
     public static function serve_endpoint(): void {
-        if (get_query_var('dt_pwa_manifest')) {
-            nocache_headers();header('Content-Type: application/manifest+json; charset=utf-8');
-            echo wp_json_encode(['name'=>'TypujKosza.pl','short_name'=>'TypujKosza','start_url'=>home_url('/'),'scope'=>'/','display'=>'standalone','background_color'=>'#f5f7fb','theme_color'=>'#071f43','icons'=>[['src'=>DT_URL.'assets/img/typujkosza-pwa-512.png','sizes'=>'512x512','type'=>'image/png','purpose'=>'any maskable']]],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);exit;
+        if (self::is_manifest_request()) {
+            status_header(200);
+            nocache_headers();
+            header('Content-Type: application/manifest+json; charset=utf-8');
+            $scope = trailingslashit(wp_make_link_relative(home_url('/')));
+            $icon = class_exists('DT_Brand') ? DT_Brand::mark_url() : DT_URL.'assets/img/typujkosza-mark.png';
+            echo wp_json_encode([
+                'id'=>$scope,
+                'name'=>'TypujKosza.pl',
+                'short_name'=>'TypujKosza',
+                'start_url'=>$scope,
+                'scope'=>$scope,
+                'display'=>'standalone',
+                'background_color'=>'#f5f7fb',
+                'theme_color'=>'#071f43',
+                'icons'=>[
+                    ['src'=>$icon,'sizes'=>'any','type'=>'image/png','purpose'=>'any'],
+                    ['src'=>DT_URL.'assets/img/typujkosza-pwa-512.png','sizes'=>'512x512','type'=>'image/png','purpose'=>'maskable'],
+                ],
+            ],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+            exit;
         }
-        if (get_query_var('dt_onesignal_worker')) {
-            nocache_headers();header('Content-Type: application/javascript; charset=utf-8');
-            echo "importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js');";exit;
+        if (self::is_worker_request()) {
+            status_header(200);
+            nocache_headers();
+            header('Content-Type: application/javascript; charset=utf-8');
+            header('Service-Worker-Allowed: /');
+            header('X-Content-Type-Options: nosniff');
+            echo "importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js');";
+            exit;
         }
     }
 
     public static function head(): void {
+        $icon = class_exists('DT_Brand') ? DT_Brand::mark_url() : DT_URL.'assets/img/typujkosza-mark.png';
         echo '<link rel="manifest" href="'.esc_url(home_url('/typkosza-manifest.webmanifest')).'">' . "\n";
+        echo '<link rel="apple-touch-icon" href="'.esc_url($icon).'">' . "\n";
         echo '<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="TypujKosza">' . "\n";
     }
 
@@ -64,7 +116,8 @@ class DT_Notifications {
         wp_localize_script('dt-notifications','DeckaTyperNotifications',[
             'userId'=>get_current_user_id(),'pushReady'=>self::push_ready(),
             'appId'=>self::push_ready()?(string)DT_ONESIGNAL_APP_ID:'',
-            'workerPath'=>'/OneSignalSDKWorker.js','homeUrl'=>home_url('/'),
+            'workerPath'=>wp_make_link_relative(home_url('/OneSignalSDKWorker.js')),
+            'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
         ]);
     }
 

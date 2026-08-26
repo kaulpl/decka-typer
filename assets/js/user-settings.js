@@ -175,7 +175,7 @@
       favoriteLeague=String(button.dataset.favoriteLeague||'1lm');
       render(account);
     }));
-    target.querySelector('#dt-enable-push')?.addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await window.DeckaTyperPwa?.enablePush();button.textContent='Powiadomienia włączone';}catch(error){alert(error.message||'Nie udało się włączyć powiadomień.');button.disabled=false;}});
+    target.querySelector('#dt-enable-push')?.addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await window.DeckaTyperPwa?.enablePush();const pushToggle=target.querySelector('[name="notify_push"]');if(pushToggle)pushToggle.checked=true;button.textContent='Powiadomienia włączone';target.querySelector('#dt-profile-settings-form')?.requestSubmit();}catch(error){alert(error.message||'Nie udało się włączyć powiadomień.');button.disabled=false;}});
     target.querySelector('.dt-notification-info-button')?.addEventListener('click',event=>{const button=event.currentTarget;const help=target.querySelector('#dt-notification-help');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(open));if(help)help.hidden=!open;});
     target.querySelector('#dt-install-pwa')?.addEventListener('click',async()=>{
       if(!isMobileDevice()){showQrModal();return;}
