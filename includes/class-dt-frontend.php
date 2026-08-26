@@ -78,6 +78,7 @@ class DT_Frontend {
         wp_enqueue_style('dt-front', DT_URL . 'assets/css/frontend.css', [], DT_VERSION);
         wp_enqueue_style('dt-countdowns', DT_URL . 'assets/css/countdowns.css', ['dt-front'], DT_VERSION);
         wp_enqueue_style('dt-match-insights', DT_URL . 'assets/css/match-insights.css', ['dt-front'], DT_VERSION);
+        wp_enqueue_style('dt-expand-controls', DT_URL . 'assets/css/expand-controls.css', ['dt-match-insights'], DT_VERSION);
         wp_enqueue_style('dt-artur-ai', DT_URL . 'assets/css/artur-ai.css', ['dt-front'], DT_VERSION);
         wp_enqueue_style('dt-mobile-nav', DT_URL . 'assets/css/mobile-nav.css', ['dt-front', 'dt-user-settings'], DT_VERSION);
         wp_enqueue_script('dt-front', DT_URL . 'assets/js/frontend.js', [], DT_VERSION, true);

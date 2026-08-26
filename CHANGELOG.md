@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.57
+- Przeniesiono typowania specjalne nad wybór lig zwykłych kolejek.
+- Dodano spójny przycisk z podwójną strzałką do rozwijania modułu PRE.
+- Ten sam przycisk zastosowano przy rozwijaniu statystyk meczu.
+- Na telefonach wszystkie grupy 2LM w typowaniach PRE mieszczą się w jednym rzędzie.
+
 ## 0.5.56
 - Poprawiono kontrast treści w scrollerze kolejek we wszystkich przeglądarkach.
 - Moduł typowań specjalnych jest widoczny w „Typuj” wyłącznie przed terminem zamknięcia PRE.
