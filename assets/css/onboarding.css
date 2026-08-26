@@ -1,0 +1,12 @@
+.dt-name-onboarding{width:min(560px,calc(100% - 28px));border:0;border-radius:22px;padding:0;box-shadow:0 28px 90px rgba(4,18,42,.3)}
+.dt-name-onboarding::backdrop{background:rgba(5,17,38,.68);backdrop-filter:blur(5px)}
+.dt-name-onboarding form{display:grid;gap:11px;padding:28px}
+.dt-name-onboarding h2{margin:0;font-size:27px;line-height:1.15;color:var(--dt-ink)}
+.dt-name-onboarding p{margin:0 0 5px;color:var(--dt-muted);font-size:14px;line-height:1.55}
+.dt-name-onboarding label{font-size:14px;font-weight:850;color:#35435a}
+.dt-name-onboarding input{width:100%;height:50px;border:2px solid #d7e1ee;border-radius:13px;padding:0 14px;font-size:16px;font-weight:800;outline:none}
+.dt-name-onboarding input:focus{border-color:var(--dt-primary);box-shadow:0 0 0 4px rgba(23,86,169,.11)}
+.dt-name-onboarding small{font-size:14px;line-height:1.45;color:#7d899b}
+.dt-name-onboarding button{min-height:48px;margin-top:5px;border:0;border-radius:12px;background:var(--dt-primary);color:#fff;font-size:14px;font-weight:900;cursor:pointer}
+.dt-name-onboarding button:disabled{opacity:.55}.dt-onboarding-message{min-height:20px;color:#a52f45;font-size:14px;font-weight:750}
+@media(max-width:620px){.dt-name-onboarding form{padding:21px}.dt-name-onboarding h2{font-size:22px}}

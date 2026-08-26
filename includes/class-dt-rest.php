@@ -477,7 +477,7 @@ class DT_REST {
 
         return [
             'user_id'=>$uid,
-            'display_name'=>$user ? $user->display_name : 'Kibic',
+            'display_name'=>class_exists('DT_User_Settings') ? DT_User_Settings::ranking_name($uid, $user ? (string)$user->user_login : 'Kibic') : ($user ? $user->display_name : 'Kibic'),
             'avatar'=>get_avatar_url($uid, ['size'=>96]),
             'predictions'=>(int) ($row['predictions'] ?? 0),
             'submissions'=>$submissions,

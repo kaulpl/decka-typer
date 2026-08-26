@@ -169,4 +169,24 @@
   root.addEventListener('click',e=>{
     if(e.target.closest('[data-tab="settings"]'))load(true);
   });
+
+  const requireRankingName=async()=>{
+    try{
+      const data=await api('account');
+      if(data.ranking_name_set)return;
+      const modal=document.createElement('dialog');
+      modal.className='dt-name-onboarding';
+      modal.innerHTML=`<form method="dialog"><span class="dt-front-kicker">WITAJ W TYPOWANIU</span><h2>Ustaw nazwę, która będzie przy Tobie wyświetlana</h2><p>Logujesz się jako <strong>${esc(data.username)}</strong>. Wybierz własną nazwę widoczną w rankingach i przy Twoich typach.</p><label for="dt-onboarding-name">Twoja nazwa w TypujKosza.pl</label><input id="dt-onboarding-name" type="text" minlength="2" maxlength="40" autocomplete="nickname" value="${esc(data.username)}" required autofocus><small>Od 2 do 40 znaków. Nazwę będzie można później zmienić w „Moim koncie”.</small><button type="submit">Zapisz nazwę i przejdź do typowania</button><div class="dt-onboarding-message" aria-live="polite"></div></form>`;
+      root.appendChild(modal);modal.showModal();
+      modal.addEventListener('cancel',e=>e.preventDefault());
+      modal.querySelector('form').addEventListener('submit',async e=>{
+        e.preventDefault();const input=modal.querySelector('input'),button=modal.querySelector('button'),message=modal.querySelector('.dt-onboarding-message'),name=String(input.value||'').trim();
+        if(name.length<2||name.length>40){message.textContent='Nazwa musi mieć od 2 do 40 znaków.';return;}
+        button.disabled=true;message.textContent='Zapisywanie…';
+        try{await api('account',{method:'POST',body:JSON.stringify({ranking_name:name})});window.location.reload();}
+        catch(err){message.textContent=err.message;button.disabled=false;}
+      });
+    }catch(_){/* Formularz pojawi się ponownie po następnym odświeżeniu. */}
+  };
+  requireRankingName();
 })();

@@ -666,7 +666,7 @@ class DT_Admin {
             // Delete dependent data first, then the complete sports catalogue. This
             // also removes manually entered scores and locks, so the following sync
             // always rebuilds leagues from their official sources.
-            foreach (['predictions','round_submissions','point_adjustments','artur_ai','matches','rounds','teams'] as $table) {
+            foreach (['predictions','round_submissions','point_adjustments','artur_ai','preseason_predictions','matches','rounds','teams'] as $table) {
                 if ($wpdb->query('DELETE FROM '.DT_DB::table($table)) === false) throw new RuntimeException($wpdb->last_error ?: 'Błąd czyszczenia tabeli '.$table);
             }
             if ($wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->usermeta} WHERE meta_key IN (%s,%s)",'dt_ranking_name','dt_favorite_team_id')) === false) {
