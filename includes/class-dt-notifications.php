@@ -150,7 +150,9 @@ class DT_Notifications {
             nocache_headers();
             header('Content-Type: application/manifest+json; charset=utf-8');
             $scope = trailingslashit(wp_make_link_relative(home_url('/')));
-            $icon = class_exists('DT_Brand') ? DT_Brand::mark_url() : DT_URL.'assets/img/typujkosza-mark.png';
+            $iconSvg = DT_URL.'assets/img/app-icon.svg';
+            $icon192 = DT_URL.'assets/img/app-icon-192.png';
+            $icon512 = DT_URL.'assets/img/app-icon-512.png';
             echo wp_json_encode([
                 'id'=>$scope,
                 'name'=>'TypujKosza.pl',
@@ -161,8 +163,9 @@ class DT_Notifications {
                 'background_color'=>'#f5f7fb',
                 'theme_color'=>'#071f43',
                 'icons'=>[
-                    ['src'=>$icon,'sizes'=>'any','type'=>'image/png','purpose'=>'any'],
-                    ['src'=>DT_URL.'assets/img/typujkosza-pwa-512.png','sizes'=>'512x512','type'=>'image/png','purpose'=>'maskable'],
+                    ['src'=>$iconSvg,'sizes'=>'any','type'=>'image/svg+xml','purpose'=>'any'],
+                    ['src'=>$icon192,'sizes'=>'192x192','type'=>'image/png','purpose'=>'any'],
+                    ['src'=>$icon512,'sizes'=>'512x512','type'=>'image/png','purpose'=>'any maskable'],
                 ],
             ],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
             exit;
@@ -179,9 +182,9 @@ class DT_Notifications {
     }
 
     public static function head(): void {
-        $icon = class_exists('DT_Brand') ? DT_Brand::mark_url() : DT_URL.'assets/img/typujkosza-mark.png';
+        $appleIcon = DT_URL.'assets/img/app-icon-180.png';
         echo '<link rel="manifest" href="'.esc_url(home_url('/typkosza-manifest.webmanifest')).'">' . "\n";
-        echo '<link rel="apple-touch-icon" href="'.esc_url($icon).'">' . "\n";
+        echo '<link rel="apple-touch-icon" sizes="180x180" href="'.esc_url($appleIcon).'">' . "\n";
         echo '<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="TypujKosza">' . "\n";
     }
 
@@ -197,7 +200,7 @@ class DT_Notifications {
             'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
             'subscriptionUrl'=>rest_url('decka-typer/v1/push-subscription'),
             'testUrl'=>rest_url('decka-typer/v1/push-test'),
-            'iconUrl'=>class_exists('DT_Brand')?DT_Brand::mark_url():DT_URL.'assets/img/typujkosza-mark.png',
+            'iconUrl'=>DT_URL.'assets/img/app-icon-192.png',
             'nonce'=>wp_create_nonce('wp_rest'),
         ]);
     }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.10
+- Podmieniono ikonę aplikacji instalowanej na ekranie głównym na nowy projekt z `assets/img/app-icon.svg`.
+- Dodano warianty PNG 180×180 dla iPhone’a oraz 192×192 i 512×512 dla Androida i manifestu PWA.
+- Manifest wskazuje nową ikonę SVG oraz właściwe rozmiary PNG, w tym wariant maskowalny dla Androida.
+- Nowa ikona jest używana również w onboardingu powiadomień.
+
 ## 0.6.9
 - Rozszerzono automatyczny onboarding powiadomień na telefony z Androidem.
 - Na Androidzie okno aktywacji pojawia się przy pierwszym wejściu w Chrome lub z zainstalowanej PWA, jeśli zgoda nie została jeszcze udzielona.
