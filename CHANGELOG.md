@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3
+- Zapisujemy przy koncie użytkownika rzeczywisty identyfikator subskrypcji OneSignal dla każdego komputera i telefonu.
+- Powiadomienia są kierowane bezpośrednio na zarejestrowane identyfikatory urządzeń zamiast polegać wyłącznie na aliasie `external_id`.
+- Aktywacja Push kończy się sukcesem dopiero po utworzeniu subskrypcji i zapisaniu jej w WordPressie.
+- Test administratora nie oznacza już odpowiedzi OneSignal jako wysłanej tylko na podstawie kodu HTTP 2xx; sprawdza identyfikator komunikatu i błędy dostawcy.
+- Historia powiadomień pokazuje jako błąd sytuację, w której OneSignal nie zaakceptował żadnego rzeczywistego odbiorcy.
+
 ## 0.6.2
 - Naprawiono błąd 404 pliku `/OneSignalSDKWorker.js`, który blokował rejestrację Service Workera i Web Push.
 - Endpointy manifestu i Workera są rozpoznawane niezależnie od stanu reguł permalinków, a reguły WordPressa są jednorazowo odświeżane po aktualizacji.
