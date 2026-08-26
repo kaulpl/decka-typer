@@ -20,7 +20,7 @@
   const state={boot:null,round:null,picks:new Map(),tab:'picks',rankMode:'season',saving:false,league:'',group:''};
 
   const icon=n=>{
-    const p={calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',alert:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.6 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.6a2 2 0 0 0-3.4 0z"/>'};
+    const p={calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',alert:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.6 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.6a2 2 0 0 0-3.4 0z"/>',chevDownDouble:'<path d="m7 7 5 5 5-5"/><path d="m7 12 5 5 5-5"/>'};
     return `<svg class="dt-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${p[n]||p.check}</svg>`;
   };
   const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
@@ -181,7 +181,7 @@
         <button type="button" class="dt-team-choice ${homeClass}" data-team-choice data-match="${m.id}" data-team="${m.home_team_id}" aria-disabled="${canPick?'false':'true'}">${teamLogo(m.home_name,m.home_logo)}<strong>${esc(m.home_name)}</strong><span class="dt-choice-mark">${pick===Number(m.home_team_id)?'TWÓJ TYP':'GOSPODARZ'}</span></button>
         <div class="dt-vs-mark">VS</div>
         <button type="button" class="dt-team-choice ${awayClass}" data-team-choice data-match="${m.id}" data-team="${m.away_team_id}" aria-disabled="${canPick?'false':'true'}">${teamLogo(m.away_name,m.away_logo)}<strong>${esc(m.away_name)}</strong><span class="dt-choice-mark">${pick===Number(m.away_team_id)?'TWÓJ TYP':'GOŚĆ'}</span></button>
-      </div>${result}<details class="dt-match-more"><summary><span aria-hidden="true">▾</span> Zobacz statystyki <span aria-hidden="true">▾</span></summary><div class="dt-match-insights-grid">${teamInsights(m.home_name,m.home_insights,'home')}${teamInsights(m.away_name,m.away_insights,'away')}</div></details>${arturButton?`<div class="dt-artur-ai-action is-mobile">${arturButton}</div>`:''}</article>`;
+      </div>${result}<details class="dt-match-more"><summary>Zobacz statystyki <span class="dt-expand-icon">${icon('chevDownDouble')}</span></summary><div class="dt-match-insights-grid">${teamInsights(m.home_name,m.home_insights,'home')}${teamInsights(m.away_name,m.away_insights,'away')}</div></details>${arturButton?`<div class="dt-artur-ai-action is-mobile">${arturButton}</div>`:''}</article>`;
   };
   const bindTeamChoices=()=>{
     $$('[data-team-choice]').forEach(btn=>btn.addEventListener('click',()=>{

@@ -1,0 +1,24 @@
+.dt-match-more > summary .dt-expand-icon {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    border: 1px solid #d9e4f2;
+    border-radius: 10px;
+    background: #eef4fb;
+    color: var(--dt-primary);
+    box-shadow: 0 3px 9px rgba(18, 48, 88, .08);
+}
+
+.dt-match-more > summary .dt-expand-icon .dt-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.dt-match-more[open] > summary .dt-expand-icon {
+    background: var(--dt-primary);
+    border-color: var(--dt-primary);
+    color: #fff;
+}

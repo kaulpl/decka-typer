@@ -77,6 +77,11 @@
     transition: transform .18s ease;
 }
 
+.dt-pre-chevron svg {
+    width: 19px;
+    height: 19px;
+}
+
 .dt-preseason[open] .dt-pre-chevron {
     transform: rotate(180deg);
 }
@@ -117,5 +122,18 @@
 
     .dt-pre-body {
         padding: 13px 14px 15px;
+    }
+
+    .dt-pre-groups {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 4px !important;
+        width: 100%;
+    }
+
+    .dt-pre-groups button {
+        min-width: 0;
+        padding: 7px 3px;
+        font-size: 12px;
     }
 }
