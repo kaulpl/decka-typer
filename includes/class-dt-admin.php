@@ -816,7 +816,7 @@ class DT_Admin {
             else $failed[]=$label;
         }
         $message=$sent?'Test wysłany: '.implode(', ',$sent).'.':'Nie udało się wysłać testu.';
-        if ($failed) $message.=' Niepowodzenie: '.implode(', ',$failed).'.'; sprawdź historię powiadomień.';
+        if ($failed) $message.=' Niepowodzenie: '.implode(', ',$failed).'. Sprawdź historię powiadomień.';
         self::redirect('decka-typer-settings',$message,$failed?'error':'success');
     }
 
