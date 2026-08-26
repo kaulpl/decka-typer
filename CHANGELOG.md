@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.61
+- Zmniejszono moduł odliczania do startu lig do jednego, niskiego wiersza.
+- Zastąpiono pełne nazwy lig skrótami 1LM, PLK i 2LM oraz skrócono zapis czasu.
+- Zachowano jednorzędowy, elastyczny układ również na telefonach.
+
 ## 0.5.60
 - Dodano nagłówek „WYBIERZ LIGĘ” nad przełącznikiem lig w zakładce „Typuj”.
 - Zmniejszono odstęp między wyborem ligi a nagłówkiem i wyborem kolejki do standardowego rytmu modułów.
