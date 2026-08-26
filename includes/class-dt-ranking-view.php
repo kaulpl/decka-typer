@@ -116,7 +116,11 @@ class DT_Ranking_View {
              FROM ".DT_DB::table('matches')." m
              JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id
              WHERE r.season=%s $leagueSql $groupSql
-               AND m.starts_at IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
+               AND m.starts_at IS NOT NULL
+               AND EXISTS (
+                   SELECT 1 FROM ".DT_DB::table('predictions')." p
+                   WHERE p.match_id=m.id AND p.selected_team_id IS NOT NULL
+               )
              ORDER BY month_key DESC",
             $season
         ));
