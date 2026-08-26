@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2
+- Naprawiono błąd 404 pliku `/OneSignalSDKWorker.js`, który blokował rejestrację Service Workera i Web Push.
+- Endpointy manifestu i Workera są rozpoznawane niezależnie od stanu reguł permalinków, a reguły WordPressa są jednorazowo odświeżane po aktualizacji.
+- Worker OneSignal otrzymał wymagany typ MIME, nagłówek `Service-Worker-Allowed` i ochronę przed błędną interpretacją treści.
+- Poprawiono aktywację powiadomień w PWA na iPhonie: kontrolę uruchomienia z ekranu początkowego, kolejność zgody, logowania i aktywacji subskrypcji.
+- Po udanej aktywacji Push preferencja użytkownika jest automatycznie zaznaczana i zapisywana.
+- Dodano `apple-touch-icon` oraz sygnet/favikon TypujKosza.pl jako główną ikonę manifestu PWA.
+
 ## 0.6.1
 - Na komputerach przycisk dodania PWA otwiera modal z lokalnym kodem QR prowadzącym do TypujKosza.pl.
 - Na telefonach ten sam przycisk uruchamia bezpośrednią instalację PWA albo pokazuje instrukcję właściwą dla iPhone'a lub Androida.
