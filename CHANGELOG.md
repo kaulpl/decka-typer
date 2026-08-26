@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.9
+- Rozszerzono automatyczny onboarding powiadomień na telefony z Androidem.
+- Na Androidzie okno aktywacji pojawia się przy pierwszym wejściu w Chrome lub z zainstalowanej PWA, jeśli zgoda nie została jeszcze udzielona.
+- Na iPhonie zachowano wymóg uruchomienia aplikacji z ikony na ekranie głównym.
+- Ujednolicono treść onboardingu dla iPhone’a i Androida oraz zachowano automatyczny test Push i zamknięcie okna po powodzeniu.
+
 ## 0.6.8
 - Okno aktywacji powiadomień zamyka się automatycznie po pomyślnym zapisaniu zgody i zaplanowaniu testu.
 - Przycisk w ustawieniach wysyła wyłącznie Push na bieżący telefon, bez wiadomości e-mail i powiadomienia wewnątrz aplikacji.
