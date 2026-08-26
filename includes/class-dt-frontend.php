@@ -157,21 +157,19 @@ class DT_Frontend {
         ), ARRAY_A);
         $starts = [];
         foreach ((array)$rows as $row) $starts[(string)$row['league_key']] = (string)$row['starts_at'];
-        $names = (array)($settings['league_names'] ?? []);
-        $fallback = ['1lm'=>'1 Liga Mężczyzn','plk'=>'ORLEN Basket Liga','2lm'=>'2 Liga Mężczyzn'];
         $now = current_datetime()->getTimestamp();
 
-        echo '<section class="dt-league-countdowns" aria-labelledby="dt-league-countdowns-title"><div class="dt-front-inner"><div class="dt-countdown-heading"><span>SEZON ' . esc_html((string)($settings['season'] ?? '')) . '</span><strong id="dt-league-countdowns-title">Odliczanie do startu lig</strong></div><div class="dt-league-countdown-grid">';
+        echo '<section class="dt-league-countdowns" aria-labelledby="dt-league-countdowns-title"><div class="dt-front-inner"><div class="dt-countdown-heading"><strong id="dt-league-countdowns-title">START LIG</strong><span>' . esc_html((string)($settings['season'] ?? '')) . '</span></div><div class="dt-league-countdown-grid">';
         foreach (['1lm','plk','2lm'] as $key) {
             $mysql = $starts[$key] ?? '';
             $start = $mysql !== '' ? new DateTimeImmutable($mysql, wp_timezone()) : null;
             $timestamp = $start ? $start->getTimestamp() : false;
             $iso = $start ? $start->format(DATE_ATOM) : '';
             $state = $timestamp === false ? 'is-tbd' : ($timestamp <= $now ? 'is-started' : 'is-upcoming');
-            echo '<article class="dt-league-countdown ' . esc_attr($state) . '"><div><span class="dt-league-code">' . esc_html(strtoupper($key)) . '</span><strong>' . esc_html((string)($names[$key] ?? $fallback[$key])) . '</strong></div>';
-            if ($state === 'is-upcoming') echo '<div class="dt-countdown-clock" data-countdown-target="' . esc_attr($iso) . '" data-countdown-expired="Liga wystartowała"><small>Do startu pozostało</small><strong data-countdown-value>—</strong></div>';
-            elseif ($state === 'is-started') echo '<div class="dt-countdown-status">Liga wystartowała</div>';
-            else echo '<div class="dt-countdown-status">Termin do potwierdzenia</div>';
+            echo '<article class="dt-league-countdown ' . esc_attr($state) . '"><span class="dt-league-code">' . esc_html(strtoupper($key)) . '</span>';
+            if ($state === 'is-upcoming') echo '<div class="dt-countdown-clock" data-countdown-target="' . esc_attr($iso) . '" data-countdown-compact="1" data-countdown-expired="START"><strong data-countdown-value>—</strong></div>';
+            elseif ($state === 'is-started') echo '<div class="dt-countdown-status">START</div>';
+            else echo '<div class="dt-countdown-status">BRAK DATY</div>';
             echo '</article>';
         }
         echo '</div></div></section>';
