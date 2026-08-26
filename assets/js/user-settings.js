@@ -90,6 +90,8 @@
     const leagueTeams=teams.filter(team=>(team.leagues||[]).map(String).map(x=>x.toLowerCase()).includes(favoriteLeague));
     const teamOptions=['<option value="0">Wybierz drużynę</option>',...leagueTeams.map(team=>`<option value="${Number(team.id||0)}" ${Number(team.id||0)===favoriteTeamId?'selected':''}>${esc(team.name)}</option>`)].join('');
     const leagueButtons=['1lm','plk','2lm'].map(league=>`<button type="button" data-favorite-league="${league}" class="${favoriteLeague===league?'is-active':''}">${league.toUpperCase()}</button>`).join('');
+    const notifications=data.notifications||{};
+    const checked=key=>notifications[key]?'checked':'';
 
     target.innerHTML=`
       <section class="dt-account-card dt-account-primary">
@@ -104,6 +106,21 @@
           <div class="dt-favorite-league-picker" role="group" aria-label="Wybierz ligę ulubionej drużyny">${leagueButtons}</div>
           <div class="dt-account-select-wrap"><select id="dt-favorite-team" name="favorite_team_id">${teamOptions}</select></div>
           <small>Najpierw wybierz ligę, a następnie jedną z aktualnych drużyn. Jej mecze będą oznaczone niebieską szarfą „ULUBIONA DRUŻYNA”.</small>
+
+          <div class="dt-account-form-divider"></div>
+          <span class="dt-front-kicker">PRZYPOMNIENIA</span>
+          <div class="dt-notification-options">
+            <label><input type="checkbox" name="notify_email" ${checked('email')}> E-mail</label>
+            <label><input type="checkbox" name="notify_push" ${checked('push')} ${data.push_ready?'':'disabled'}> Web Push / PWA</label>
+            <label><input type="checkbox" name="notify_standard" ${checked('standard')}> Tryb standardowy</label>
+            <label><input type="checkbox" name="notify_schedule_changes" ${checked('schedule_changes')}> Zmiany harmonogramu</label>
+            <label><input type="checkbox" name="notify_postponed" ${checked('postponed')}> Przełożone mecze</label>
+            <label><input type="checkbox" name="notify_incomplete" ${checked('incomplete')}> Niedokończona kolejka i liczba pozostałych meczów</label>
+            <label><input type="checkbox" name="notify_reminder_3d" ${checked('reminder_3d')}> 3 dni przed meczem</label>
+            <label><input type="checkbox" name="notify_reminder_6h" ${checked('reminder_6h')}> 6 godzin przed meczem</label>
+          </div>
+          <div class="dt-notification-actions"><button type="button" class="dt-account-button is-secondary" id="dt-enable-push" ${data.push_ready?'':'disabled'}>Włącz powiadomienia w przeglądarce</button><button type="button" class="dt-account-button is-secondary" id="dt-install-pwa">Dodaj TypujKosza.pl do ekranu telefonu</button></div>
+          <small>${data.push_ready?'Po włączeniu zaakceptuj systemowe pytanie przeglądarki. Na iPhonie najpierw dodaj stronę do ekranu początkowego przez Udostępnij → Do ekranu początkowego.':'Kanał Push oczekuje na konfigurację OneSignal przez administratora. Powiadomienia e-mail działają niezależnie.'}</small>
 
           <div class="dt-account-save-row"><button type="submit">Zapisz ustawienia</button></div>
           <div id="dt-account-message" class="dt-account-message" aria-live="polite"></div>
@@ -130,6 +147,8 @@
       favoriteLeague=String(button.dataset.favoriteLeague||'1lm');
       render(account);
     }));
+    target.querySelector('#dt-enable-push')?.addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await window.DeckaTyperPwa?.enablePush();button.textContent='Powiadomienia włączone';}catch(error){alert(error.message||'Nie udało się włączyć powiadomień.');button.disabled=false;}});
+    target.querySelector('#dt-install-pwa')?.addEventListener('click',async()=>{const installed=await window.DeckaTyperPwa?.install();if(!installed)alert('Android/Chrome: otwórz menu przeglądarki i wybierz „Zainstaluj aplikację”. iPhone/Safari: Udostępnij → Do ekranu początkowego.');});
     decorateFavoriteMatches();
   };
 
@@ -154,7 +173,9 @@
     if(name.length<2||name.length>40){message.textContent='Nazwa musi mieć od 2 do 40 znaków.';message.className='dt-account-message is-error';return;}
     button.disabled=true;message.textContent='Zapisywanie…';message.className='dt-account-message';
     try{
-      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite})});
+      const notifications={};
+      ['email','push','standard','schedule_changes','postponed','incomplete','reminder_3d','reminder_6h'].forEach(key=>{notifications[key]=form.querySelector(`[name="notify_${key}"]`)?.checked?1:0;});
+      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite,notifications})});
       account=data.account||account;
       favoriteTeamId=Number(account?.favorite_team_id||0);
       accountCfg.favoriteTeamId=favoriteTeamId;

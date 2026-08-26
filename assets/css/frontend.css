@@ -39,3 +39,4 @@ html:has(.decka-typer-standalone),body.decka-typer-standalone{margin:0!important
 /* Keep the native select readable in every browser and theme. */
 .dt-round-nav-wide select{background:#fff!important;color:#102746!important;-webkit-text-fill-color:#102746!important;opacity:1!important;font-weight:850!important}
 .dt-round-nav-wide select option{background:#fff!important;color:#102746!important}
+.dt-meta-pill.is-warning{background:#fff7e2;border-color:#f4d88d;color:#8a6100}.dt-pick-progress{font-weight:900}

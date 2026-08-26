@@ -31,6 +31,11 @@ class DT_REST {
         $current = self::pick_current_round($rounds);
         $roundData = $current ? self::round_payload((int) $current['id'], true) : null;
         $me = is_user_logged_in() ? self::me_payload(get_current_user_id(), (string) $settings['season']) : null;
+        $notices=[];
+        if (is_user_logged_in() && class_exists('DT_Notifications')) {
+            global $wpdb;
+            $notices=$wpdb->get_results($wpdb->prepare("SELECT DISTINCT event_key,event_type,title,message,created_at FROM ".DT_DB::table('notifications')." WHERE user_id=%d AND event_type='schedule_change' AND created_at>=DATE_SUB(%s,INTERVAL 7 DAY) ORDER BY created_at DESC LIMIT 5",get_current_user_id(),current_time('mysql')),ARRAY_A);
+        }
 
         return new WP_REST_Response([
             'version'=>DT_VERSION,
@@ -42,6 +47,7 @@ class DT_REST {
             'current_round'=>$roundData,
             'ranking'=>DT_Scoring::ranking((string) $settings['season'], 10),
             'me'=>$me,
+            'notices'=>$notices,
             'server_time'=>current_time('mysql'),
             'scoring'=>['winner'=>(float) $settings['points_winner']],
         ]);
@@ -332,6 +338,9 @@ class DT_REST {
                 'points'=>(float) $prediction['points'],
                 'scoring_code'=>$prediction['scoring_code'],
             ] : null;
+            $match['can_pick'] = is_user_logged_in() && $isOpen && !$prediction
+                && !empty($match['start_time_known']) && !empty($match['starts_at'])
+                && (string)$match['starts_at'] > $now;
             unset($match['source_hash']);
         }
         unset($match);
@@ -345,13 +354,17 @@ class DT_REST {
         $round['is_open'] = $isOpen;
         $round['display_status'] = $isOpen ? 'open' : 'closed';
         $round['closes_at_iso'] = self::iso_datetime($round['closes_at'] ?? null);
-        $round['submission'] = $submission ? [
+        $savedCount=count($predMap);
+        $totalCount=count($matches);
+        $round['submission'] = $savedCount ? [
             'submitted'=>true,
-            'submitted_at'=>$submission['submitted_at'],
-            'submitted_at_iso'=>self::iso_datetime($submission['submitted_at']),
-            'prediction_count'=>(int) $submission['prediction_count'],
+            'complete'=>$savedCount >= $totalCount,
+            'submitted_at'=>$submission['submitted_at'] ?? null,
+            'submitted_at_iso'=>self::iso_datetime($submission['submitted_at'] ?? null),
+            'prediction_count'=>$savedCount,
         ] : ['submitted'=>false];
-        $round['can_submit'] = is_user_logged_in() && $isOpen && !$submission;
+        $round['prediction_progress']=['selected'=>$savedCount,'total'=>$totalCount,'remaining'=>max(0,$totalCount-$savedCount)];
+        $round['can_submit'] = is_user_logged_in() && $isOpen && (bool)array_filter($matches,static fn(array $match): bool=>!empty($match['can_pick']));
         return $round;
     }
 

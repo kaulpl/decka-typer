@@ -231,6 +231,40 @@ class DT_DB {
             KEY stat_date (stat_date)
         ) $charset;";
 
+        $sql[] = "CREATE TABLE " . self::table('notifications') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            channel VARCHAR(20) NOT NULL,
+            event_key VARCHAR(190) NOT NULL,
+            event_type VARCHAR(40) NOT NULL,
+            title VARCHAR(190) NOT NULL,
+            message TEXT NOT NULL,
+            round_id BIGINT UNSIGNED NULL,
+            match_id BIGINT UNSIGNED NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'queued',
+            provider_response TEXT NULL,
+            sent_at DATETIME NULL,
+            created_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY user_event_channel (user_id,event_key,channel),
+            KEY status_created (status,created_at),
+            KEY user_id (user_id),
+            KEY event_type (event_type)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE " . self::table('schedule_changes') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            match_id BIGINT UNSIGNED NOT NULL,
+            round_id BIGINT UNSIGNED NOT NULL,
+            old_starts_at DATETIME NULL,
+            new_starts_at DATETIME NULL,
+            reset_count INT UNSIGNED NOT NULL DEFAULT 0,
+            detected_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            KEY match_id (match_id),
+            KEY detected_at (detected_at)
+        ) $charset;";
+
         foreach ($sql as $statement) dbDelta($statement);
 
         // Preserve campaigns created with the original 0.5.44 slot names.
@@ -364,7 +398,8 @@ class DT_DB {
     }
 
     /**
-     * Recalculate every round from its earliest match with a confirmed tip-off.
+     * Open from the earliest confirmed tip-off and keep the round available until
+     * the final confirmed match starts. Individual matches enforce their own lock.
      * The database status is useful for lists, while opens_at/closes_at make the
      * rule auditable and let submission endpoints enforce the deadline exactly.
      */
@@ -376,25 +411,25 @@ class DT_DB {
         $updated = $wpdb->query($wpdb->prepare(
             "UPDATE `$rounds` r
              JOIN (
-                 SELECT round_id, MIN(starts_at) AS first_match
+                 SELECT round_id, MIN(starts_at) AS first_match, MAX(starts_at) AS last_match
                  FROM `$matches`
                  WHERE start_time_known=1 AND starts_at IS NOT NULL
                  GROUP BY round_id
              ) schedule ON schedule.round_id=r.id
              SET r.opens_at=CASE WHEN r.manual_availability=1 THEN r.opens_at ELSE DATE_SUB(schedule.first_match, INTERVAL 7 DAY) END,
-                 r.closes_at=CASE WHEN r.manual_availability=1 THEN LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) ELSE schedule.first_match END,
+                 r.closes_at=CASE WHEN r.manual_availability=1 THEN GREATEST(COALESCE(r.closes_at,schedule.last_match),schedule.last_match) ELSE schedule.last_match END,
                  r.status=CASE
-                     WHEN %s>=LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) THEN 'closed'
+                     WHEN %s>=GREATEST(COALESCE(r.closes_at,schedule.last_match),schedule.last_match) THEN 'closed'
                      WHEN r.manual_availability=1 THEN 'open'
                      WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
                      ELSE 'draft'
                  END,
                  r.updated_at=%s
              WHERE (r.manual_availability=0 AND COALESCE(r.opens_at,'')<>DATE_SUB(schedule.first_match, INTERVAL 7 DAY))
-                OR (r.manual_availability=0 AND COALESCE(r.closes_at,'')<>schedule.first_match)
-                OR (r.manual_availability=1 AND r.closes_at>schedule.first_match)
+                OR (r.manual_availability=0 AND COALESCE(r.closes_at,'')<>schedule.last_match)
+                OR (r.manual_availability=1 AND r.closes_at<schedule.last_match)
                 OR r.status<>CASE
-                    WHEN %s>=LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) THEN 'closed'
+                    WHEN %s>=GREATEST(COALESCE(r.closes_at,schedule.last_match),schedule.last_match) THEN 'closed'
                     WHEN r.manual_availability=1 THEN 'open'
                     WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
                     ELSE 'draft'
@@ -411,6 +446,8 @@ class DT_DB {
     public static function deactivate(): void {
         $timestamp = wp_next_scheduled('dt_sync_schedule');
         if ($timestamp) wp_unschedule_event($timestamp, 'dt_sync_schedule');
+        $notificationTimestamp = wp_next_scheduled('dt_notification_reminders');
+        if ($notificationTimestamp) wp_unschedule_event($notificationTimestamp, 'dt_notification_reminders');
         flush_rewrite_rules();
     }
 
