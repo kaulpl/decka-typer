@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+- Wprowadzono niezależny zapis pojedynczych meczów bez wymogu jednoczesnego wypełnienia całego kuponu.
+- Każdy mecz blokuje wybór dokładnie o własnej godzinie rozpoczęcia, a kolejka pozostaje otwarta do startu ostatniego spotkania.
+- Dodano liczniki „Wytypowano x/y” oraz „Pozostały x mecze” i przypomnienie Artura o dwóch brakujących wyborach.
+- Zmiana terminu wytypowanego meczu zeruje wyłącznie jego typ, aktualizuje postęp kuponu i prosi użytkownika o ponowny wybór.
+- Dodano preferencje e-mail, Web Push/PWA, zmian terminarza, przełożeń i niedokończonych kolejek oraz przypomnienia 3 dni i 6 godzin przed meczem.
+- Dodano instalowalny manifest PWA, integrację OneSignal Web Push oraz instrukcję dodania TypujKosza.pl do ekranu telefonu.
+- Synchronizacja terminarza ponownie planuje dostępność kolejek oraz wszystkie powiązane przypomnienia.
+- Dodano administracyjny moduł „Powiadomienia” z historią kanałów, treści, odbiorców i statusów wysyłki.
+
 ## 0.5.61
 - Zmniejszono moduł odliczania do startu lig do jednego, niskiego wiersza.
 - Zastąpiono pełne nazwy lig skrótami 1LM, PLK i 2LM oraz skrócono zapis czasu.

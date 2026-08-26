@@ -43,6 +43,12 @@
     helper.hidden=false;helper.classList.add('is-show');clearTimeout(avatarTimer);
     avatarTimer=setTimeout(()=>{helper.classList.remove('is-show');setTimeout(()=>helper.hidden=true,220);},duration);
   };
+  const avatarMessage=(message,duration=6500)=>{
+    const helper=$('#dt-avatar-helper'),item=cfg.avatar?.warning;if(!helper||!item)return;
+    helper.querySelector('img').src=item.url||'';helper.querySelector('.dt-avatar-bubble').textContent=message;
+    helper.hidden=false;helper.classList.add('is-show');clearTimeout(avatarTimer);
+    avatarTimer=setTimeout(()=>{helper.classList.remove('is-show');setTimeout(()=>helper.hidden=true,220);},duration);
+  };
   const toast=(msg,error=false)=>{
     const t=$('#dt-toast');if(!t)return;
     t.textContent=msg;t.classList.toggle('is-error',error);t.classList.add('is-show');
@@ -71,12 +77,12 @@
       state.league=String(state.round?.league_key||preferredLeague(boot.rounds||[]));
       state.group=state.league==='2lm'?String(state.round?.group_key||preferredGroup(boot.rounds||[])):'';
       hydratePicks();renderUser(boot.me);renderAchievements(boot.me);renderLeagueRounds();renderRoundSelector();renderRound(state.round);renderRanking(boot.ranking||[]);renderMine(boot.me);
+      const notice=(boot.notices||[])[0];if(notice&&!sessionStorage.getItem(`dt-notice-${notice.event_key}`)){sessionStorage.setItem(`dt-notice-${notice.event_key}`,'1');toast(notice.message,true);setTimeout(()=>avatarMessage(notice.message,8500),500);}
       setTimeout(()=>avatar('welcome'),500);
     }catch(e){toast(e.message,true);const box=$('#dt-matches');if(box)box.innerHTML='<div class="dt-empty-front">Nie udało się załadować Typera. Odśwież stronę za chwilę.</div>';}
   };
   const hydratePicks=()=>{
     state.picks.clear();
-    (state.round?.matches||[]).forEach(m=>{if(m.prediction?.selected_team_id)state.picks.set(Number(m.id),Number(m.prediction.selected_team_id));});
   };
   const preferredLeague=rounds=>{
     const open1lm=rounds.find(r=>r.is_open&&String(r.league_key)==='1lm');
@@ -136,7 +142,7 @@
     avatar('thinking',3000);
     try{state.round=await api(`round/${id}`);hydratePicks();renderLeagueRounds();renderRoundSelector();renderRound(state.round);if(state.rankMode==='round')loadRanking('round');}catch(e){toast(e.message,true);}
   };
-  const hasUnsavedPicks=()=>!!(state.round?.can_submit&&state.picks.size);
+  const hasUnsavedPicks=()=>state.picks.size>0;
   const renderRound=round=>{
     if(!round){
       $('#dt-round-title').textContent='Brak dostępnej kolejki';
@@ -146,12 +152,15 @@
     }
     $('#dt-round-title').textContent=displayRoundTitle(round);
     const matches=round.matches||[];
-    const submitted=!!round.submission?.submitted;
+    const submitted=!!round.submission?.complete;
     const open=!!round.is_open;
     const meta=[];
     if(open&&round.closes_at_iso)meta.push(`<span class="dt-meta-pill is-accent">${icon('clock')}Typowanie do ${esc(fmtDate(round.closes_at_iso,true))}</span>`);
     else meta.push(`<span class="dt-meta-pill">${icon('lock')}Typowanie zamknięte</span>`);
-    if(submitted)meta.push(`<span class="dt-meta-pill is-success">${icon('check')}Kupon zapisany</span>`);
+    const serverProgress=round.prediction_progress||{selected:0,total:matches.length,remaining:matches.length};
+    const progress={total:Number(serverProgress.total||matches.length),selected:Math.min(Number(serverProgress.total||matches.length),Number(serverProgress.selected||0)+state.picks.size)};progress.remaining=Math.max(0,progress.total-progress.selected);
+    meta.push(`<span class="dt-meta-pill is-success dt-pick-progress">${icon('check')}Wytypowano ${progress.selected}/${progress.total}</span>`);
+    if(progress.remaining>0)meta.push(`<span class="dt-meta-pill is-warning">${icon('alert')}Pozostały ${progress.remaining} mecze</span>`);
     meta.push(`<span class="dt-meta-pill">${icon('target')}${matches.length} meczów</span>`);
     $('#dt-round-meta').innerHTML=meta.join('');
     $('#dt-matches').innerHTML=matches.length?matches.map(matchCard).join(''):'<div class="dt-empty-front">Brak meczów w tej kolejce.</div>';
@@ -159,16 +168,21 @@
     if(!open&&!submitted)avatar('closed');
     else if(submitted&&resolved.length===matches.length&&matches.length){const hits=resolved.filter(m=>Number(m.prediction?.points||0)>0).length;avatar(hits===matches.length?'perfect':(hits===0?'missed':'thinking'));}
     bindTeamChoices();updateNav();updateSaveDock();
+    if(progress.remaining===2&&round.can_submit&&!sessionStorage.getItem(`dt-artur-missing-${round.id}`)){
+      sessionStorage.setItem(`dt-artur-missing-${round.id}`,'1');
+      setTimeout(()=>avatarMessage('Dwa mecze zostały bez gospodarza w Twoim kuponie. Piłka sama się nie wytypuje.'),900);
+    }
   };
   const matchCard=m=>{
     const decka=!!m.featured||/decka pelplin/i.test(`${m.home_name} ${m.away_name}`);
     const pick=state.picks.get(Number(m.id))||Number(m.prediction?.selected_team_id||0);
-    const canPick=!!state.round?.can_submit;
+    const canPick=!!m.can_pick;
     const homeClass=pick?pick===Number(m.home_team_id)?'is-selected':'is-rejected':'';
     const awayClass=pick?pick===Number(m.away_team_id)?'is-selected':'is-rejected':'';
     const timing=m.start_time_known?fmtDate(m.starts_at_iso,true):`${fmtDate(m.starts_at_iso,false)} · godzina do potwierdzenia`;
     const showCountdown=!!cfg.showCountdowns&&!!m.start_time_known&&!!m.starts_at_iso&&new Date(m.starts_at_iso).getTime()>Date.now();
     const resultKnown=m.score_home!==null&&m.score_home!==undefined&&m.score_away!==null&&m.score_away!==undefined;
+    const matchState=m.prediction?'zapisano':(canPick?'wybierz zwycięzcę':(m.start_time_known?'zamknięte':'czeka na termin'));
     let result='';
     if(resultKnown){
       const pts=m.prediction?`${Number(m.prediction.points||0).toFixed(0)} pkt`:'';
@@ -176,7 +190,7 @@
     }
     const arturButton=cfg.arturAiEnabled&&(canPick||cfg.siteMode==='test')?`<button type="button" class="dt-artur-ai-open" data-artur-ai data-round="${state.round.id}" data-match="${m.id}" data-home="${esc(m.home_name)}" data-away="${esc(m.away_name)}" aria-label="Koło ratunkowe Artura"><span aria-hidden="true">🛟</span><strong>Koło ratunkowe Artura</strong></button>`:'';
     return `<article class="dt-match ${decka?'is-decka':''} ${canPick?'':'is-locked'}" data-match-card="${m.id}">
-      <div class="dt-match-head"><div class="dt-match-timing"><span class="dt-date">${icon('calendar')}${esc(timing)}</span>${showCountdown?`<span class="dt-match-countdown" data-countdown-target="${esc(m.starts_at_iso)}" data-countdown-hide-expired="1" aria-label="Do meczu pozostało"><span class="dt-countdown-icon" aria-hidden="true">${icon('clock')}</span><span class="dt-visually-hidden">Do meczu pozostało: </span><strong data-countdown-value>—</strong></span>`:''}</div><div class="dt-match-head-actions">${arturButton?`<div class="dt-artur-ai-action is-desktop">${arturButton}</div>`:''}<span class="dt-lock-pill ${canPick?'is-open':''}">${icon(canPick?'check':'lock')}${canPick?'wybierz zwycięzcę':'zamknięte'}</span></div></div>
+      <div class="dt-match-head"><div class="dt-match-timing"><span class="dt-date">${icon('calendar')}${esc(timing)}</span>${showCountdown?`<span class="dt-match-countdown" data-countdown-target="${esc(m.starts_at_iso)}" data-countdown-hide-expired="1" aria-label="Do meczu pozostało"><span class="dt-countdown-icon" aria-hidden="true">${icon('clock')}</span><span class="dt-visually-hidden">Do meczu pozostało: </span><strong data-countdown-value>—</strong></span>`:''}</div><div class="dt-match-head-actions">${arturButton?`<div class="dt-artur-ai-action is-desktop">${arturButton}</div>`:''}<span class="dt-lock-pill ${canPick||m.prediction?'is-open':''}">${icon(canPick||m.prediction?'check':'lock')}${esc(matchState)}</span></div></div>
       <div class="dt-winner-grid">
         <button type="button" class="dt-team-choice ${homeClass}" data-team-choice data-match="${m.id}" data-team="${m.home_team_id}" aria-disabled="${canPick?'false':'true'}">${teamLogo(m.home_name,m.home_logo)}<strong>${esc(m.home_name)}</strong><span class="dt-choice-mark">${pick===Number(m.home_team_id)?'TWÓJ TYP':'GOSPODARZ'}</span></button>
         <div class="dt-vs-mark">VS</div>
@@ -185,25 +199,25 @@
   };
   const bindTeamChoices=()=>{
     $$('[data-team-choice]').forEach(btn=>btn.addEventListener('click',()=>{
-      if(!state.round?.can_submit)return;
+      const match=state.round?.matches?.find(m=>Number(m.id)===Number(btn.dataset.match));
+      if(!match?.can_pick)return;
       state.picks.set(Number(btn.dataset.match),Number(btn.dataset.team));
-      const match=state.round?.matches?.find(m=>Number(m.id)===Number(btn.dataset.match));if(match?.is_bonus)avatar('bonus');
+      if(match?.is_bonus)avatar('bonus');
       renderRound(state.round);
     }));
   };
   const updateSaveDock=()=>{
     const dock=$('#dt-save-dock'),button=$('#dt-save-all'),label=$('#dt-save-count');if(!dock||!button||!label)return;
     if(!state.round){label.textContent='Brak otwartej kolejki';button.disabled=true;return;}
-    const total=(state.round.matches||[]).length,selected=state.picks.size;
-    if(state.round.submission?.submitted){label.textContent='Kupon zapisany';dock.classList.add('is-locked');button.disabled=true;button.querySelector('span').textContent='Zapisano';return;}
-    if(!state.round.is_open){label.textContent='Typowanie zamknięte';dock.classList.add('is-locked');button.disabled=true;return;}
+    const total=(state.round.matches||[]).length,saved=Number(state.round.prediction_progress?.selected||0),selected=Math.min(total,saved+state.picks.size);
+    if(!state.round.is_open&&!state.picks.size){label.textContent=`Wytypowano ${saved}/${total}`;dock.classList.add('is-locked');button.disabled=true;return;}
     dock.classList.remove('is-locked');button.querySelector('span').textContent='Zapisz typy';
-    label.textContent=selected===total&&total?`Komplet: ${selected}/${total}`:`Wybrano ${selected}/${total}`;
-    button.disabled=total===0||state.saving;
+    label.textContent=`Wytypowano ${selected}/${total}`;
+    button.disabled=state.picks.size===0||state.saving;
   };
   const openSubmitModal=()=>{
     if(!state.round?.can_submit)return;
-    const total=(state.round.matches||[]).length;if(state.picks.size!==total){toast('Wytypuj zwycięzcę każdego meczu.',true);avatar('warning');return;}
+    if(!state.picks.size){toast('Wybierz co najmniej jeden mecz.',true);return;}
     $('#dt-submit-modal')?.showModal();
   };
   const closeSubmitModal=()=>$('#dt-submit-modal')?.close();
@@ -213,7 +227,7 @@
     const payload={round_id:Number(state.round.id),picks:[...state.picks.entries()].map(([match_id,team_id])=>({match_id,team_id}))};
     try{
       await api('submission',{method:'POST',body:JSON.stringify(payload)});
-      toast('Kupon zapisany. Typów nie można już edytować.');
+      toast(state.picks.size===1?'Typ meczu został zapisany.':'Wybrane typy zostały zapisane.');
       avatar('saved');
       state.round=await api(`round/${state.round.id}`);hydratePicks();renderRound(state.round);
       const me=await api('me');if(state.boot)state.boot.me=me;renderUser(me);renderMine(me);

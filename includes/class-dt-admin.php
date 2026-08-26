@@ -23,6 +23,7 @@ class DT_Admin {
             ['decka-typer-predictions','Typy','predictions'],
             ['decka-typer-users','Użytkownicy','users'],
             ['decka-typer-feedback','Feedback','feedback'],
+            ['decka-typer-notifications','Powiadomienia','notifications'],
             ['decka-typer-stats','Statystyki','stats'],
             ['decka-typer-sync','Synchronizacja danych PZKosz','sync'],
             ['decka-typer-logs','Historia','logs'],
@@ -541,6 +542,19 @@ class DT_Admin {
         self::end_shell();
     }
 
+    public static function notifications(): void {
+        global $wpdb;
+        $table=DT_DB::table('notifications');$page=max(1,(int)($_GET['dt_paged']??1));$perPage=40;
+        $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM $table");
+        $rows=$wpdb->get_results($wpdb->prepare("SELECT n.*,u.display_name,u.user_email FROM $table n LEFT JOIN {$wpdb->users} u ON u.ID=n.user_id ORDER BY n.created_at DESC,n.id DESC LIMIT %d OFFSET %d",$perPage,($page-1)*$perPage));
+        self::shell('Powiadomienia','Historia wysłanych i nieudanych przypomnień Web Push/PWA oraz e-mail. Łącznie: '.number_format_i18n($total).'.');
+        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Data</th><th>Użytkownik</th><th>Kanał</th><th>Zdarzenie</th><th>Wiadomość</th><th>Status</th></tr></thead><tbody>';
+        foreach ((array)$rows as $row) echo '<tr><td>'.esc_html(self::date_pl((string)$row->created_at)).'</td><td><strong>'.esc_html((string)($row->display_name?:'Użytkownik #'.$row->user_id)).'</strong><small class="dt-muted">'.esc_html((string)$row->user_email).'</small></td><td>'.self::badge(strtoupper((string)$row->channel),'blue').'</td><td>'.esc_html((string)$row->event_type).'</td><td><strong>'.esc_html((string)$row->title).'</strong><small class="dt-muted">'.esc_html((string)$row->message).'</small></td><td>'.self::badge((string)$row->status,$row->status==='sent'?'green':($row->status==='failed'?'red':'orange')).'</td></tr>';
+        if (!$rows) echo '<tr><td colspan="6" class="dt-empty">Historia powiadomień jest jeszcze pusta.</td></tr>';
+        echo '</tbody></table></section>';
+        self::pagination($total,$perPage,$page,['page'=>'decka-typer-notifications']);self::end_shell();
+    }
+
     public static function stats(): void {
         global $wpdb;
         $s = DT_DB::settings();
@@ -587,6 +601,8 @@ class DT_Admin {
         echo '</div><div class="dt-form-3"><label>Adres terminarza PLK<input type="url" name="source_plk_url" value="' . esc_attr($s['source_plk_url']) . '"></label><label>Adres terminarza 1LM<input type="url" name="source_1lm_url" value="' . esc_attr($s['source_1lm_url']) . '"></label><label>Adres terminarza 2LM<input type="url" name="source_2lm_url" value="' . esc_attr($s['source_2lm_url']) . '"></label></div><div class="dt-form-2"><label class="dt-check"><input type="checkbox" name="sync_enabled" value="1" ' . checked(!empty($s['sync_enabled']),true,false) . '><span><strong>Automatyczna synchronizacja danych PZKosz</strong><small>Pobieraj terminarze, wyniki, drużyny i dostępne logotypy.</small></span></label><label>Synchronizuj co ile minut<input type="number" min="5" max="1440" step="5" name="sync_interval_minutes" value="'.esc_attr((int)($s['sync_interval_minutes']??60)).'"></label></div></section>';
         echo '<section class="dt-card"><span class="dt-eyebrow">PUNKTACJA</span><h2>Zasady Typera</h2><div class="dt-form-3"><label>Punkty za poprawnego zwycięzcę<input type="number" name="points_winner" step="1" value="' . esc_attr($s['points_winner']) . '"></label><label>Bonus za perfekcyjną kolejkę<input type="number" name="perfect_round_bonus" step="1" value="' . esc_attr($s['perfect_round_bonus']) . '"></label><label>Dodatkowe punkty za mecz BONUS<input type="number" min="0" step="1" name="bonus_points" value="'.esc_attr(class_exists('DT_Bonus')?DT_Bonus::points():0).'"></label></div><h3>Typowania specjalne PRE</h3><div class="dt-form-2"><label>PRE - FinalRanking — punkty za każdą trafioną drużynę<input type="number" min="0" step="1" name="pre1_hit_points" value="'.esc_attr((float)($s['pre1_hit_points']??1)).'"></label><label>PRE - FinalRanking — bonus za perfekcyjny komplet<input type="number" min="0" step="1" name="pre1_perfect_bonus" value="'.esc_attr((float)($s['pre1_perfect_bonus']??0)).'"></label><label>PRE - PlayOFF — punkty za każdą trafioną drużynę<input type="number" min="0" step="1" name="pre2_hit_points" value="'.esc_attr((float)($s['pre2_hit_points']??1)).'"></label><label>PRE - PlayOFF — bonus za perfekcyjny komplet<input type="number" min="0" step="1" name="pre2_perfect_bonus" value="'.esc_attr((float)($s['pre2_perfect_bonus']??0)).'"></label></div><p class="dt-muted">Punktacja PRE zostanie użyta podczas rozliczenia końcowej tabeli i składu play-off. Zmiana wartości nie usuwa zapisanych prognoz.</p><p class="dt-muted">Użytkownik wybiera wyłącznie zwycięzcę. Dokładny wynik nie jest typowany. W każdej kolejce można wskazać maksymalnie jeden mecz BONUS.</p></section>';
         echo '<section class="dt-card"><span class="dt-eyebrow">ODLICZANIE</span><h2>Liczniki startu lig i meczów</h2><label class="dt-check"><input type="checkbox" name="show_countdowns" value="1" ' . checked(!empty($s['show_countdowns']),true,false) . '><span><strong>Pokazuj odliczanie użytkownikom</strong><small>Wyświetla trzy liczniki startu lig na stronie głównej i w aplikacji oraz czas pozostały do rozpoczęcia każdego meczu w zakładce „Typuj”.</small></span></label></section>';
+        $pushReady=class_exists('DT_Notifications')&&DT_Notifications::push_ready();
+        echo '<section class="dt-card"><span class="dt-eyebrow">POWIADOMIENIA</span><h2>Web Push, PWA i e-mail</h2><div class="dt-sync-state"><span class="dt-dot '.($pushReady?'is-on':'').'"></span><div><strong>'.($pushReady?'OneSignal Web Push jest skonfigurowany':'Web Push oczekuje na konfigurację OneSignal').'</strong><small>E-mail działa przez wp_mail. Dla Push dodaj w wp-config.php stałe DT_ONESIGNAL_APP_ID i DT_ONESIGNAL_REST_API_KEY.</small></div></div><p class="dt-muted">Preferencje kanałów i terminów każdy użytkownik ustawia samodzielnie w „Moim koncie”. Aktualizacja nie nadpisuje tych ustawień.</p></section>';
         echo '<section class="dt-card"><span class="dt-eyebrow">REKLAMY</span><h2>Symulacja slotów reklamowych</h2><label class="dt-check"><input type="checkbox" name="ad_slot_preview" value="1" '.checked(!empty($s['ad_slot_preview']),true,false).'><span><strong>Pokazuj testowe miejsca reklamowe</strong><small>Wymiar przygotowywanej grafiki: H1 i F1 — 2360 × 250 px; S1 i S2 — 325 × 1210 px. Makiety są skalowane do rzeczywistego miejsca w interfejsie. Zwykli użytkownicy widzą wyłącznie aktywne kampanie.</small></span></label><p class="dt-muted"><a href="'.esc_url(admin_url('admin.php?page=decka-typer-ads')).'">Przejdź do zarządzania kampaniami →</a></p></section>';
         $aiKeyReady = defined('DT_GEMINI_API_KEY') && trim((string)DT_GEMINI_API_KEY) !== '';
         echo '<section class="dt-card"><span class="dt-eyebrow">ARTUR AI</span><h2>Koło ratunkowe Artura</h2><div class="dt-sync-state"><span class="dt-dot '.($aiKeyReady?'is-on':'').'"></span><div><strong>'.($aiKeyReady?'Klucz Gemini jest skonfigurowany':'Brak klucza DT_GEMINI_API_KEY').'</strong><small>Klucz jest odczytywany bezpiecznie z pliku wp-config.php i nie jest zapisywany w bazie.</small></div></div><label class="dt-check"><input type="checkbox" name="artur_ai_enabled" value="1" '.checked(!empty($s['artur_ai_enabled']),true,false).'><span><strong>Włącz Koło ratunkowe Artura</strong><small>Każdy użytkownik może wybrać jeden mecz w kolejce i zadać Arturowi pytania dotyczące tego spotkania.</small></span></label><div class="dt-inline-warning">W trybie testowym pytania nie mają limitu, nie przypisują koła do meczu i nie są trwale zapisywane. Tryb produkcyjny stosuje limit oraz blokadę jednego meczu na kolejkę.</div><div class="dt-form-2"><label>Model Gemini<input name="artur_ai_model" value="'.esc_attr((string)($s['artur_ai_model']??'gemini-2.5-flash-lite')).'" maxlength="100"></label><label>Liczba pytań po użyciu koła<input type="number" name="artur_ai_questions" min="1" max="5" value="'.esc_attr((int)($s['artur_ai_questions']??3)).'"></label></div><label>Instrukcja osobowości i odpowiedzi<textarea name="artur_ai_instruction" rows="8" maxlength="4000">'.esc_textarea((string)($s['artur_ai_instruction']??DT_DB::default_artur_ai_instruction())).'</textarea></label><p class="dt-muted">Instrukcję możesz dowolnie zmieniać. Aktualizacje wtyczki nie nadpiszą treści zapisanej w bazie danych.</p></section>';
@@ -730,7 +746,19 @@ class DT_Admin {
         if(!$m) self::redirect('decka-typer-matches','Nie znaleziono meczu.','error');
         $start=self::mysql_datetime($_POST['starts_at']??''); $sh=self::nullable_int($_POST['score_home']??''); $sa=self::nullable_int($_POST['score_away']??'');
         $data=['starts_at'=>$start?:$m->starts_at,'start_time_known'=>1,'score_home'=>$sh,'score_away'=>$sa,'status'=>($sh!==null&&$sa!==null)?'finished':'scheduled','manual_lock'=>!empty($_POST['manual_lock'])?1:0,'updated_at'=>current_time('mysql')];
+        $resetUsers=[];
+        if ((string)$data['starts_at']!==(string)$m->starts_at) {
+            $predictionTable=DT_DB::table('predictions');$submissionTable=DT_DB::table('round_submissions');$matchTable=DT_DB::table('matches');
+            $resetUsers=array_map('intval',(array)$wpdb->get_col($wpdb->prepare("SELECT user_id FROM $predictionTable WHERE match_id=%d",$id)));
+            $wpdb->delete($predictionTable,['match_id'=>$id],['%d']);
+            foreach ($resetUsers as $resetUid) {
+                $count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $predictionTable p JOIN $matchTable mm ON mm.id=p.match_id WHERE p.user_id=%d AND mm.round_id=%d",$resetUid,(int)$m->round_id));
+                if ($count) $wpdb->update($submissionTable,['prediction_count'=>$count],['user_id'=>$resetUid,'round_id'=>(int)$m->round_id],['%d'],['%d','%d']);
+                else $wpdb->delete($submissionTable,['user_id'=>$resetUid,'round_id'=>(int)$m->round_id],['%d','%d']);
+            }
+        }
         $wpdb->update(DT_DB::table('matches'),$data,['id'=>$id]);
+        if ($resetUsers && class_exists('DT_Notifications')) DT_Notifications::schedule_changed($id,(int)$m->round_id,(string)$m->starts_at,(string)$data['starts_at'],$resetUsers);
         if($sh!==null&&$sa!==null) DT_Scoring::recalc_match($id);
         DT_Logger::log('match_updated','Administrator poprawił mecz.',['match_id'=>$id,'manual_lock'=>$data['manual_lock']]);
         self::redirect('decka-typer-matches','Mecz zaktualizowany.','success',['round_id'=>(int)$m->round_id]);

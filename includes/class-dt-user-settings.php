@@ -119,11 +119,15 @@ class DT_User_Settings {
             if ($favoriteTeamId > 0) update_user_meta($uid, self::META_FAVORITE_TEAM, $favoriteTeamId);
             else delete_user_meta($uid, self::META_FAVORITE_TEAM);
         }
+        $notificationPreferences=class_exists('DT_Notifications')
+            ? DT_Notifications::save_preferences($uid,is_array($body['notifications']??null)?$body['notifications']:DT_Notifications::preferences($uid))
+            : [];
 
         try {
             DT_Logger::log('account_settings_saved', 'Użytkownik zmienił ustawienia konta Typera.', [
                 'ranking_name'=>$name,
                 'favorite_team_id'=>$favoriteTeamId,
+                'notifications'=>$notificationPreferences,
             ], 'info', $uid);
         } catch (Throwable $ignored) {}
 
@@ -221,6 +225,8 @@ class DT_User_Settings {
             'favorite_team_id'=>$favoriteTeamId,
             'favorite_team_name'=>$favoriteTeamName,
             'teams'=>$teams,
+            'notifications'=>class_exists('DT_Notifications')?DT_Notifications::preferences($uid):[],
+            'push_ready'=>class_exists('DT_Notifications')&&DT_Notifications::push_ready(),
             'registered_at'=>(string)$user->user_registered,
             'providers'=>array_values(array_unique($providers)),
             'password_url'=>wp_lostpassword_url($returnUrl),

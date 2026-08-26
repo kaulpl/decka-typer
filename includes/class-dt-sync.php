@@ -473,7 +473,23 @@ class DT_Sync {
             } else {
                 $changed = $existing->source_hash !== $hash;
                 $hadScore = $existing->score_home !== null && $existing->score_away !== null;
+                $scheduleChanged=(string)$existing->starts_at!==(string)$startsAt && !empty($existing->starts_at) && !empty($startsAt);
+                $resetUsers=[];
+                if ($scheduleChanged) {
+                    $predictionTable=DT_DB::table('predictions');
+                    $resetUsers=array_map('intval',(array)$wpdb->get_col($wpdb->prepare("SELECT user_id FROM $predictionTable WHERE match_id=%d",(int)$existing->id)));
+                    if ($resetUsers) {
+                        $wpdb->delete($predictionTable,['match_id'=>(int)$existing->id],['%d']);
+                        $submissionTable=DT_DB::table('round_submissions');
+                        foreach ($resetUsers as $resetUid) {
+                            $count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $predictionTable p JOIN $table mm ON mm.id=p.match_id WHERE p.user_id=%d AND mm.round_id=%d",$resetUid,$roundId));
+                            if ($count) $wpdb->update($submissionTable,['prediction_count'=>$count],['user_id'=>$resetUid,'round_id'=>$roundId],['%d'],['%d','%d']);
+                            else $wpdb->delete($submissionTable,['user_id'=>$resetUid,'round_id'=>$roundId],['%d','%d']);
+                        }
+                    }
+                }
                 $wpdb->update($table, $data, ['id'=>(int) $existing->id]);
+                if ($scheduleChanged && class_exists('DT_Notifications')) DT_Notifications::schedule_changed((int)$existing->id,$roundId,(string)$existing->starts_at,(string)$startsAt,$resetUsers);
                 if ($changed) $out['matches_updated']++;
                 if ($match['score_home'] !== null && $match['score_away'] !== null && ($changed || !$hadScore)) {
                     $out['scores'] += DT_Scoring::recalc_match((int) $existing->id);
