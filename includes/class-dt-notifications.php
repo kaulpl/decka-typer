@@ -101,7 +101,7 @@ class DT_Notifications {
 
     private static function remind_match(object $match,string $window): void {
         global $wpdb;
-        $users=$wpdb->get_col("SELECT DISTINCT u.ID FROM {$wpdb->users} u WHERE EXISTS(SELECT 1 FROM ".DT_DB::table('predictions')." p WHERE p.user_id=u.ID) OR EXISTS(SELECT 1 FROM ".DT_DB::table('round_submissions')." s WHERE s.user_id=u.ID)");
+        $users=$wpdb->get_col($wpdb->prepare("SELECT DISTINCT u.ID FROM {$wpdb->users} u WHERE EXISTS(SELECT 1 FROM ".DT_DB::table('predictions')." p WHERE p.user_id=u.ID) OR EXISTS(SELECT 1 FROM ".DT_DB::table('round_submissions')." s WHERE s.user_id=u.ID) OR EXISTS(SELECT 1 FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key=%s)",self::META));
         foreach ((array)$users as $uid) {
             $uid=(int)$uid;$prefs=self::preferences($uid);
             if (empty($prefs['standard']) || empty($prefs['incomplete']) || empty($prefs['reminder_'.$window])) continue;
