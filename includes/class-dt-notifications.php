@@ -9,6 +9,7 @@ class DT_Notifications {
 
     public static function register(): void {
         add_action(self::CRON, [__CLASS__, 'cron']);
+        add_action('dt_admin_push_test_batch', [__CLASS__, 'send_admin_test_batch'], 10, 2);
         add_action('rest_api_init', [__CLASS__, 'rest_routes']);
         add_action('init', [__CLASS__, 'endpoints']);
         add_action('template_redirect', [__CLASS__, 'serve_endpoint'], -100);
@@ -321,21 +322,26 @@ class DT_Notifications {
         if (!empty($prefs['push'])) self::send_channel($uid,'push',$type,$eventKey,$title,$message,$roundId,$matchId);
     }
 
-    public static function send_admin_test(int $uid): array {
-        global $wpdb;
-        $eventKey='admin-test-'.$uid.'-'.wp_generate_uuid4();
-        $copy=self::render_template('test');
-        $title=$copy['title'];
-        $message=$copy['message'];
-        $channels=['push'];
-        foreach ($channels as $channel) self::send_channel($uid,$channel,'admin_test',$eventKey,$title,$message,0,0,[],15);
+    public static function queue_admin_test(): array {
+        $result=['queued'=>0,'failed'=>0];
+        if (!self::push_ready()) return $result;
+        $eventKey='admin-test-all-'.wp_generate_uuid4();
+        // Snapshot account IDs; check consent again when each batch executes.
+        $ids=array_values(array_filter(array_map('intval',get_users(['fields'=>'ID'])),static fn($uid)=>!empty(self::preferences($uid)['push'])));
+        foreach (array_chunk($ids,5) as $index=>$batch) {
+            $ok=wp_schedule_single_event(time()+15+$index*30,'dt_admin_push_test_batch',[$batch,$eventKey],true);
+            $result[($ok===true)?'queued':'failed']+=count($batch);
+        }
+        return $result;
+    }
 
-        $rows=$wpdb->get_results($wpdb->prepare(
-            'SELECT channel,status FROM '.DT_DB::table('notifications').' WHERE user_id=%d AND event_key=%s ORDER BY id ASC',
-            $uid,
-            $eventKey
-        ),ARRAY_A);
-        return is_array($rows)?$rows:[];
+    public static function send_admin_test_batch(array $ids,string $eventKey): void {
+        $copy=self::render_template('test');
+        $title=self::notification_title('TEST - '.preg_replace('/^TypujKosza\.pl\s*-\s*/u','',$copy['title']));
+        foreach (array_unique(array_map('intval',$ids)) as $uid) {
+            if ($uid<=0 || !get_userdata($uid) || empty(self::preferences($uid)['push'])) continue;
+            self::send_channel($uid,'push','admin_test',$eventKey,$title,$copy['message'],0,0);
+        }
     }
 
     private static function send_channel(int $uid,string $channel,string $type,string $eventKey,string $title,string $message,int $roundId,int $matchId,array $forcedSubscriptions=[],int $delaySeconds=0): array {

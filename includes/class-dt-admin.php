@@ -616,7 +616,7 @@ class DT_Admin {
         $pushReady=class_exists('DT_Notifications')&&DT_Notifications::push_ready();
         echo '<section class="dt-card"><span class="dt-eyebrow">POWIADOMIENIA</span><h2>Web Push / PWA</h2><div class="dt-sync-state"><span class="dt-dot '.($pushReady?'is-on':'').'"></span><div><strong>'.($pushReady?'OneSignal Web Push jest skonfigurowany':'Web Push oczekuje na konfigurację OneSignal').'</strong><small>Przypomnienia e-mail są wyłączone. Dla Push dodaj w wp-config.php stałe DT_ONESIGNAL_APP_ID i DT_ONESIGNAL_REST_API_KEY.</small></div></div><p class="dt-muted">Web Push każdy użytkownik włącza samodzielnie w „Moim koncie”. Aktualizacja nie nadpisuje tych ustawień.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" class="dt-section"><input type="hidden" name="action" value="dt_test_notifications">';
         wp_nonce_field('dt_test_notifications');
-        echo '<button type="submit" class="button dt-button"><span class="dashicons dashicons-bell"></span> Wyślij test na moje konto administratora</button><p class="dt-muted">Test wyśle wyłącznie Push na urządzenia tego konta, z opóźnieniem 15 sekund. Przejdź do ekranu głównego telefonu. Odpowiedź OneSignal znajdziesz w historii; przyjęcie wysyłki nie potwierdza wyświetlenia banera.</p></form></section>';
+        echo '<label><input type="checkbox" name="confirm_broadcast" value="1" required> Potwierdzam wysłanie testu do wszystkich użytkowników z włączonym Web Push.</label><p><button type="submit" class="button dt-button"><span class="dashicons dashicons-bell"></span> Wyślij test Push do wszystkich</button></p><p class="dt-muted">Test wyśle wyłącznie Push do wszystkich kont z włączonymi powiadomieniami, także administratorów. Wysyłka w partiach przez WP-Cron rozpocznie się najwcześniej za 15 sekund i zależy od uruchamiania zadań na stronie. Używany jest szablon „Ręczny test powiadomień” z oznaczeniem TEST w tytule. Wyniki znajdziesz w historii; przyjęcie wysyłki nie potwierdza wyświetlenia banera.</p></form></section>';
         self::notification_templates_form();
         echo '<section class="dt-card dt-danger-zone"><span class="dt-eyebrow">NARZĘDZIA TESTOWE</span><h2>Wyczyść dane Typera</h2><p>Usuwa wszystkie typy, punkty, wyniki, mecze, kolejki i drużyny, a następnie ponownie synchronizuje PLK, 1LM oraz 2LM. Konta WordPress, reklamy, Feedback, ustawienia Artura, AI i pozostała konfiguracja pozostają bez zmian.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Usunąć bezpowrotnie dane typerskie i sportowe, a następnie pobrać ligi od nowa?\')"><input type="hidden" name="action" value="dt_reset_typer_data">';
         wp_nonce_field('dt_reset_typer_data');
@@ -827,16 +827,19 @@ class DT_Admin {
 
     public static function test_notifications(): void {
         self::guard('dt_test_notifications');
-        $rows=class_exists('DT_Notifications')?DT_Notifications::send_admin_test(get_current_user_id()):[];
-        $sent=[];$failed=[];
-        foreach ($rows as $row) {
-            $label=strtoupper((string)($row['channel']??''));
-            if (($row['status']??'')==='sent') $sent[]=$label;
-            else $failed[]=$label;
+        if (($_POST['confirm_broadcast']??'')!=='1') {
+            self::redirect('decka-typer-settings','Zaznacz potwierdzenie wysyłki testu do wszystkich.','error');
+            return;
         }
-        $message=$sent?'Test przyjęty do wysyłki za około 15 sekund: '.implode(', ',$sent).'.':'Nie udało się wysłać testu.';
-        if ($failed) $message.=' Niepowodzenie: '.implode(', ',$failed).'. Sprawdź historię powiadomień.';
-        self::redirect('decka-typer-settings',$message,$failed?'error':'success');
+        if (!class_exists('DT_Notifications') || !DT_Notifications::push_ready()) {
+            self::redirect('decka-typer-settings','OneSignal nie jest skonfigurowany.','error');
+            return;
+        }
+        $result=DT_Notifications::queue_admin_test();
+        $message='Zaplanowano test Push dla '.$result['queued'].' kont z włączonymi powiadomieniami. Wysyłka partiami przez WP-Cron, najwcześniej za 15 sekund. Wyniki sprawdzisz w historii.';
+        if (!$result['queued'] && !$result['failed']) $message='Brak użytkowników z włączonym Web Push. Nie zaplanowano wysyłki.';
+        if ($result['failed']) $message.=' Nie udało się zaplanować wysyłki dla '.$result['failed'].' kont.';
+        self::redirect('decka-typer-settings',$message,$result['failed']?'error':'success');
     }
 
     public static function save_avatar(): void {

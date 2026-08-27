@@ -41,7 +41,7 @@ echo "Notification templates: OK\n";
 
 // Existing email preferences must no longer dispatch reminders.
 $meta=['push'=>1,'email'=>1,'standard'=>1];
-function get_user_meta($uid,$key,$single=true) { global $meta; return $key==='dt_notification_preferences'?$meta:[]; }
+function get_user_meta($uid,$key,$single=true) { global $meta,$broadcastMeta; return $key==='dt_notification_preferences'?($broadcastMeta[$uid]??$meta):[]; }
 function update_user_meta($uid,$key,$value) { global $meta; if ($key==='dt_notification_preferences') $meta=$value; }
 function wp_parse_args($args,$defaults) { return array_merge($defaults,$args); }
 function get_current_user_id() { return 7; }
@@ -56,3 +56,42 @@ DT_Notifications::register_push_subscription(new WP_REST_Request(['subscription_
 check($meta['push']===1,'Explicit activation enables Push');
 check(!array_key_exists('email',$meta),'Email removed on preference update');
 echo "Push preferences: OK\n";
+
+// Broadcast tests use fake cron/database/HTTP only; no real recipients.
+define('DT_ONESIGNAL_APP_ID','test-app');
+define('DT_ONESIGNAL_REST_API_KEY','test-key');
+$broadcastMeta=[];$scheduled=[];$http=[];$scheduleFail=false;
+function get_users($args) { return range(1,12); }
+function get_userdata($uid) { return $uid!==12; }
+function wp_generate_uuid4() { return 'test-uuid'; }
+function wp_schedule_single_event($time,$hook,$args,$errors=false) { global $scheduled,$scheduleFail; $scheduled[]=[$time,$hook,$args]; return !$scheduleFail; }
+function current_time($format) { return '2026-08-27 12:00:00'; }
+function home_url($path) { return 'https://example.test'.$path; }
+function wp_json_encode($value) { return json_encode($value); }
+function wp_remote_post($url,$args) { global $http; $http[]=json_decode($args['body'],true); return []; }
+function is_wp_error($value) { return $value instanceof WP_Error; }
+function wp_remote_retrieve_response_code($value) { return 200; }
+function wp_remote_retrieve_body($value) { return '{"id":"accepted-test"}'; }
+class DT_DB { static function table($name) { return $name; } }
+$wpdb=new class {
+ public $insert_id=0; public $rows=[];
+ function insert($table,$row) { $key=$row['user_id'].'/'.$row['event_key'].'/'.$row['channel']; if(isset($this->rows[$key]))return false; $this->rows[$key]=$row; $this->insert_id++;return 1; }
+ function update($table,$values,$where) { return 1; }
+};
+foreach(range(1,12) as $uid)$broadcastMeta[$uid]=['push'=>$uid===2?0:1];
+$result=DT_Notifications::queue_admin_test();
+check($result===['queued'=>11,'failed'=>0],'All opted-in accounts queued');
+check(count($scheduled)===3,'Broadcast split into small batches');
+check(count($http)===0,'Admin action schedules without sending');
+$broadcastMeta[3]=['push'=>0];
+foreach($scheduled as $event)DT_Notifications::send_admin_test_batch(...$event[2]);
+check(count($http)===9,'Skip opt-out at execution and deleted account');
+foreach($wpdb->rows as $row)check($row['channel']==='push' && !in_array($row['user_id'],[2,3,12]),'Only consenting Push recipients');
+foreach($http as $payload)check(str_starts_with($payload['headings']['pl'],'TypujKosza.pl - TEST - '),'Explicit test branding');
+foreach($scheduled as $event)DT_Notifications::send_admin_test_batch(...$event[2]);
+check(count($http)===9,'Same campaign cannot resend a processed recipient');
+$scheduleFail=true;$result=DT_Notifications::queue_admin_test();
+check($result===['queued'=>0,'failed'=>10],'Cron failures are not reported as queued');
+foreach(range(1,12) as $uid)$broadcastMeta[$uid]=['push'=>0];
+check(DT_Notifications::queue_admin_test()===['queued'=>0,'failed'=>0],'Empty audience does not enqueue');
+echo "Broadcast Push: OK\n";

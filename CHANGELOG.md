@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.17
+- Administracyjny test Push do wszystkich kont z włączonym Web Push, po obowiązkowym potwierdzeniu.
+- Wysyłka w partiach przez WP-Cron; ponowna kontrola zgody przed wysłaniem, oznaczenie TEST i edytowalny szablon.
+- Panel raportuje liczbę zaplanowanych kont oraz błędy planowania; odpowiedzi OneSignal pozostają w historii.
+
 ## 0.6.16
 - Android: próba aktywacji przy odmowie zgody otwiera instrukcję odblokowania powiadomień w Chrome i ustawieniach telefonu.
 - Przycisk „Sprawdź ponownie i włącz” weryfikuje zgodę, rejestruje subskrypcję i zapisuje urządzenie; zamyka instrukcję dopiero po udanym zapisie.
