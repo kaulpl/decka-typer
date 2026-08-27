@@ -7,6 +7,30 @@
   const isAndroid=()=>/android/i.test(navigator.userAgent);
   const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
   const permissionState=()=>window.Notification?.permission||'default';
+  let permissionHelp=null;
+  // Chrome cannot reliably deep-link a web page to native permission settings.
+  // Only an explicit retry may request permission and activate the account.
+  const showPermissionHelp=()=>{
+    if(!isAndroid()||permissionHelp)return;
+    const modal=document.createElement('dialog');
+    permissionHelp=modal;
+    modal.className='dt-push-permission-help';
+    modal.setAttribute('aria-labelledby','dt-push-permission-title');
+    modal.innerHTML='<div class="dt-push-onboarding-card"><h2 id="dt-push-permission-title">Zezwól na powiadomienia w Chrome</h2><p>Przeglądarka zgłasza brak zgody. Strona nie może sama zmienić ustawień ani ponownie wyświetlić pytania przy aktywnej blokadzie.</p><ol><li>Otwórz <strong>typujkosza.pl w Chrome</strong>. Jeśli używasz aplikacji z ikony, przejdź na chwilę do Chrome.</li><li>Dotknij ikony po lewej stronie adresu → <strong>Uprawnienia → Powiadomienia → Zezwól</strong>.</li><li>Jeśli nie widzisz tej opcji: menu Chrome <strong>⋮ → Ustawienia → Ustawienia witryn → Powiadomienia</strong>. Znajdź TypujKosza.pl i zezwól na powiadomienia. Sprawdź też, czy witryny mogą pytać o zgodę.</li><li>Jeśli blokada pozostaje: <strong>Ustawienia telefonu → Aplikacje → Chrome → Powiadomienia</strong>. Zezwól na powiadomienia. Nazwy opcji mogą różnić się zależnie od telefonu.</li><li>Wróć do tego okna i naciśnij przycisk poniżej. Jeżeli strona się przeładuje, ponownie włącz Web Push w „Moje konto”.</li></ol><div class="dt-push-onboarding-actions"><button type="button" class="dt-push-onboarding-enable">Sprawdź ponownie i włącz</button><button type="button" class="dt-push-onboarding-later">Zamknij</button></div><small class="dt-push-onboarding-status" role="status" aria-live="polite"></small></div>';
+    const retry=modal.querySelector('.dt-push-onboarding-enable'),close=modal.querySelector('.dt-push-onboarding-later'),status=modal.querySelector('.dt-push-onboarding-status');
+    modal.addEventListener('close',()=>{permissionHelp=null;modal.remove();});
+    close.addEventListener('click',()=>modal.close());
+    retry.addEventListener('click',async()=>{
+      retry.disabled=true;status.textContent='Sprawdzanie zgody i rejestracja urządzenia…';
+      try{
+        await pwa.enablePush();
+        const onboarding=document.querySelector('.dt-push-onboarding');if(onboarding)closeOnboarding(onboarding);
+        modal.close();
+      }catch(error){status.textContent=error.message;}
+      finally{retry.disabled=false;}
+    });
+    document.body.appendChild(modal);modal.showModal();
+  };
   const storage={get:key=>{try{return localStorage.getItem(key);}catch(_){return null;}},set:(key,value)=>{try{localStorage.setItem(key,value);}catch(_){}},remove:key=>{try{localStorage.removeItem(key);}catch(_){}}};
   const publish=(message,active=false)=>{pwa.state={ready:!!sdk,active,message};document.dispatchEvent(new CustomEvent('dt:push-state',{detail:pwa.state}));};
   const blockedMessage=()=>isIos()?'Nie uzyskano zgody na powiadomienia w tej instalacji PWA. Otwórz TypujKosza z ikony na ekranie głównym. Jeśli po kliknięciu nie pojawia się pytanie i nie ma wpisu w ustawieniach iPhone’a, zgłoś ten komunikat — nie potwierdza on istnienia blokady w ustawieniach.':'Powiadomienia są zablokowane. W ustawieniach tej witryny w przeglądarce zezwól na powiadomienia. Sprawdź też uprawnienia przeglądarki w ustawieniach Androida.';
@@ -72,7 +96,7 @@
     if(isIos()&&!isStandalone())return Promise.reject(new Error('Na iPhonie otwórz aplikację z ikony na ekranie głównym.'));
     if(!sdk)return Promise.reject(new Error(pwa.state.message||'Poczekaj na przygotowanie powiadomień.'));
     if(activating)return Promise.reject(new Error('Aktywacja już trwa.'));
-    if(!isIos()&&permissionState()==='denied')return Promise.reject(new Error(blockedMessage()));
+    if(!isIos()&&permissionState()==='denied'){publish(blockedMessage());showPermissionHelp();return Promise.reject(new Error(blockedMessage()));}
     const nativeIos=isIos();
     const attempt={stage:'permission',before:permissionState(),result:'pending',pwa:isStandalone(),secure:window.isSecureContext===true,gesture:navigator.userActivation?.isActive??'unknown',top:window.top===window.self};
     const diagnostic=()=>`[PUSH-IOS-1: etap=${attempt.stage}; przed=${attempt.before}; wynik=${attempt.result}; teraz=${permissionState()}; PWA=${attempt.pwa}; HTTPS=${attempt.secure}; gest=${attempt.gesture}; top=${attempt.top}; SDK=${!!sdk.Notifications.permission}]`;
@@ -103,7 +127,7 @@
         await saveSubscription(id,true);cfg.pushEnabled=true;
         publish('To urządzenie ma aktywną subskrypcję Web Push.',true);
         return {ok:true,subscriptionId:id};
-      }catch(error){const failure=new Error(nativeIos?error.message+' '+diagnostic():error.message);publish(failure.message);throw failure;}
+      }catch(error){const failure=new Error(nativeIos?error.message+' '+diagnostic():error.message);publish(failure.message);if(!nativeIos&&permissionState()==='denied')showPermissionHelp();throw failure;}
       finally{activating=false;}
     })();
   };

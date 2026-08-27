@@ -8,7 +8,7 @@ async function setup({permission='default',enabled=false,active=false,ios=false,
   const subscription={id:active?'existing-id':null,token:active?'existing-token':null,optedIn:active,addEventListener:(name,fn)=>listeners.subscription=fn,optIn:async()=>{subscription.id='fresh-id';subscription.token='fresh-token';subscription.optedIn=true;},optOut:async()=>{subscription.optedIn=false;}};
   const sdk={init:async options=>{initCount++;initOptions=options;},login:async()=>{calls.push('login');},User:{PushSubscription:subscription},Notifications:{permission:permission==='granted',addEventListener:(name,fn)=>listeners.permission=fn,requestPermission:()=>{promptCount++;calls.push('permission');sdk.Notifications.permission=grantRequest&&!staleSdk;context.window.Notification.permission=grantRequest?'granted':'denied';return Promise.resolve();}}};
   const cfg={userId:2,pushReady:true,pushEnabled:enabled,appId:'app',workerScope:'/',workerPath:'/?dt_onesignal_worker=1',welcome:{title:'Powitanie',message:'Dziękujemy'},subscriptionUrl:'/subscription',preferenceUrl:'/preference'};
-  const context={window:{DeckaTyperNotifications:cfg,Notification:{permission,requestPermission:()=>{nativeCount++;calls.push('native');if(nativeError)throw Error('native failed');context.window.Notification.permission=grantRequest?'granted':'denied';return Promise.resolve(grantRequest?'granted':'denied');}},isSecureContext:true,PushManager:class{},matchMedia:()=>({matches:ios}),addEventListener:(name,fn)=>listeners[name]=fn,OneSignalDeferred:{push:fn=>fn(sdk)}},navigator:{userAgent:ios?'iPhone':'Android',userActivation:{isActive:true},serviceWorker:{getRegistration:async()=>({active:{},pushManager:{getSubscription:async()=>subscription.token?{}:null}})}},document:{readyState:'complete',visibilityState:'visible',addEventListener:(name,fn)=>listeners[name]=fn,dispatchEvent(){},querySelector:()=>null,createElement:()=>{const children={};const el={classList:{add(){},remove(){}},setAttribute(){},querySelector:selector=>children[selector]??=({addEventListener(){}}),remove(){}};elements.push(el);return el;},body:{appendChild(){}}},localStorage:{getItem:()=>{if(storageThrows)throw Error('blocked');return null;},setItem(){if(storageThrows)throw Error('blocked');},removeItem(){}},requestAnimationFrame:fn=>fn(),setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),CustomEvent:class{},AbortController,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:!(failSave&&url==='/subscription'),json:async()=>({ok:!(failSave&&url==='/subscription'),message:'save failed'})};}};
+  const context={window:{DeckaTyperNotifications:cfg,Notification:{permission,requestPermission:()=>{nativeCount++;calls.push('native');if(nativeError)throw Error('native failed');context.window.Notification.permission=grantRequest?'granted':'denied';return Promise.resolve(grantRequest?'granted':'denied');}},isSecureContext:true,PushManager:class{},matchMedia:()=>({matches:ios}),addEventListener:(name,fn)=>listeners[name]=fn,OneSignalDeferred:{push:fn=>fn(sdk)}},navigator:{userAgent:ios?'iPhone':'Android',userActivation:{isActive:true},serviceWorker:{getRegistration:async()=>({active:{},pushManager:{getSubscription:async()=>subscription.token?{}:null}})}},document:{readyState:'complete',visibilityState:'visible',addEventListener:(name,fn)=>listeners[name]=fn,dispatchEvent(){},querySelector:()=>null,createElement:()=>{const children={},events={};const el={classList:{add(){},remove(){}},setAttribute(){},addEventListener:(name,fn)=>events[name]=fn,showModal(){this.open=true;},close(){this.open=false;events.close?.();},querySelector:selector=>children[selector]??=({addEventListener(name,fn){this[name]=fn;}}),remove(){this.removed=true;}};elements.push(el);return el;},body:{appendChild(){}}},localStorage:{getItem:()=>{if(storageThrows)throw Error('blocked');return null;},setItem(){if(storageThrows)throw Error('blocked');},removeItem(){}},requestAnimationFrame:fn=>fn(),setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),CustomEvent:class{},AbortController,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:!(failSave&&url==='/subscription'),json:async()=>({ok:!(failSave&&url==='/subscription'),message:'save failed'})};}};
   context.window.top=context.window;context.window.self=context.window;
   vm.runInNewContext(source,context);await flush();
   return {pwa:context.window.DeckaTyperPwa,calls,cfg,sdk,context,subscription,requests,elements,get initCount(){return initCount;},get promptCount(){return promptCount;},get nativeCount(){return nativeCount;},get initOptions(){return initOptions;},async change(){listeners.subscription();for(const [id,t] of timers){if(t.ms===200){timers.delete(id);t.fn();}}await flush();}};
@@ -70,4 +70,40 @@ test('iPhone synchronous native error resets busy state and includes diagnostics
  const h=await setup({ios:true,nativeError:true});
  await assert.rejects(h.pwa.enablePush(),/PUSH-IOS-1/);await assert.rejects(h.pwa.enablePush(),/PUSH-IOS-1/);
  assert.equal(h.nativeCount,2);assert.equal(h.requests.length,0);
+});
+
+const help=h=>h.elements.find(el=>el.className==='dt-push-permission-help'&&!el.removed);
+const retry=modal=>modal.querySelector('.dt-push-onboarding-enable').click();
+test('Android blocked guide is explicit, singleton and never bypasses denied permission',async()=>{
+ const h=await setup({permission:'denied'});assert.equal(help(h),undefined);
+ await assert.rejects(h.pwa.enablePush());const modal=help(h);assert.equal(modal.open,true);
+ await retry(modal);await assert.rejects(h.pwa.enablePush());
+ assert.equal(h.elements.filter(el=>el.className==='dt-push-permission-help').length,1);
+ assert.equal(h.promptCount,0);assert.equal(h.requests.length,0);assert.equal(h.cfg.pushEnabled,false);
+ assert.match(modal.querySelector('.dt-push-onboarding-status').textContent,/zablokowane/);
+ modal.querySelector('.dt-push-onboarding-later').click();assert.equal(modal.removed,true);
+ await assert.rejects(h.pwa.enablePush());assert.notEqual(help(h),modal);
+});
+test('Android guide retries after settings change and closes only after verified save',async()=>{
+ const h=await setup({permission:'denied'});await assert.rejects(h.pwa.enablePush());const modal=help(h);
+ h.context.window.Notification.permission='granted';await h.change();
+ assert.equal(h.requests.length,0,'returning from settings must not enable account without click');
+ await retry(modal);assert.equal(h.pwa.state.active,true);assert.equal(h.cfg.pushEnabled,true);
+ assert.equal(h.requests[0].body.activate,true);assert.equal(modal.removed,true);
+});
+test('Android reset to default requests permission directly on recovery tap',async()=>{
+ const h=await setup({permission:'denied'});await assert.rejects(h.pwa.enablePush());const modal=help(h);
+ h.context.window.Notification.permission='default';const pending=retry(modal);
+ assert.equal(h.promptCount,1);await pending;assert.equal(modal.removed,true);
+});
+test('Android guide remains open when server cannot save subscription',async()=>{
+ const h=await setup({permission:'denied',failSave:true});await assert.rejects(h.pwa.enablePush());const modal=help(h);
+ h.context.window.Notification.permission='granted';await retry(modal);
+ assert.equal(modal.open,true);assert.equal(h.pwa.state.active,false);assert.equal(h.cfg.pushEnabled,false);
+ assert.match(modal.querySelector('.dt-push-onboarding-status').textContent,/save failed/);
+ assert.equal(modal.querySelector('.dt-push-onboarding-enable').disabled,false);
+});
+test('Android newly denied prompt shows guide; iOS denial does not',async()=>{
+ const android=await setup({grantRequest:false});await assert.rejects(android.pwa.enablePush());assert.equal(help(android).open,true);
+ const ios=await setup({ios:true,grantRequest:false});await assert.rejects(ios.pwa.enablePush());assert.equal(help(ios),undefined);
 });

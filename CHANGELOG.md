@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.16
+- Android: próba aktywacji przy odmowie zgody otwiera instrukcję odblokowania powiadomień w Chrome i ustawieniach telefonu.
+- Przycisk „Sprawdź ponownie i włącz” weryfikuje zgodę, rejestruje subskrypcję i zapisuje urządzenie; zamyka instrukcję dopiero po udanym zapisie.
+- Bez automatycznego zmieniania zgód, niesprawdzonych przekierowań do ustawień ani wysyłania testów. Aktywacja iOS bez zmian.
+
 ## 0.6.15
 - iPhone PWA: natywne Notification.requestPermission() bezpośrednio w obsłudze kliknięcia, przed operacjami OneSignal.
 - Rejestracja OneSignal dopiero po zgodzie systemowej; opóźniony stan zgody SDK nie powoduje fałszywego odrzucenia aktywacji.
