@@ -1,5 +1,6 @@
 <?php
 // Lightweight regression tests; WordPress storage and sanitizers are stubbed.
+if (PHP_SAPI !== 'cli') exit;
 define('ABSPATH', __DIR__);
 $options=[];
 function get_option($key,$fallback=[]) { global $options; return $options[$key]??$fallback; }
@@ -37,3 +38,21 @@ check($date->invoke(null,null)==='termin do ustalenia','Unknown date');
 check($date->invoke(null,'2026-09-27 18:00:00')==='27.09.2026 18:00','Local date unchanged');
 check(strlen(DT_Notifications::notification_title(str_repeat('a',300)))===190,'Database title limit');
 echo "Notification templates: OK\n";
+
+// Existing email preferences must no longer dispatch reminders.
+$meta=['push'=>1,'email'=>1,'standard'=>1];
+function get_user_meta($uid,$key,$single=true) { global $meta; return $key==='dt_notification_preferences'?$meta:[]; }
+function update_user_meta($uid,$key,$value) { global $meta; if ($key==='dt_notification_preferences') $meta=$value; }
+function wp_parse_args($args,$defaults) { return array_merge($defaults,$args); }
+function get_current_user_id() { return 7; }
+class WP_REST_Request { public function __construct(private array $body) {} public function get_json_params() { return $this->body; } }
+class WP_REST_Response { public function __construct(public array $data) {} }
+check(!array_key_exists('email',DT_Notifications::preferences(7)),'Legacy email preference ignored');
+DT_Notifications::disable_push(new WP_REST_Request(['push'=>false]));
+check($meta['push']===0,'Push opt-out persisted');
+DT_Notifications::register_push_subscription(new WP_REST_Request(['subscription_id'=>'new-device-1234','activate'=>false]));
+check($meta['push']===0,'Passive subscription refresh cannot undo opt-out');
+DT_Notifications::register_push_subscription(new WP_REST_Request(['subscription_id'=>'new-device-1234','activate'=>true]));
+check($meta['push']===1,'Explicit activation enables Push');
+check(!array_key_exists('email',$meta),'Email removed on preference update');
+echo "Push preferences: OK\n";

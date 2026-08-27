@@ -82,6 +82,15 @@
   if(matchBox)new MutationObserver(()=>requestAnimationFrame(decorateFavoriteMatches)).observe(matchBox,{childList:true,subtree:true});
   decorateFavoriteMatches();
 
+  const updatePushStatus=()=>{
+    const state=window.DeckaTyperPwa?.state;
+    const toggle=box()?.querySelector('[name="notify_push"]');
+    const status=box()?.querySelector('#dt-push-device-status');
+    if(status)status.textContent=state?.message||'Przygotowywanie powiadomień…';
+    if(toggle){toggle.checked=!!state?.active;toggle.disabled=!state?.ready;}
+  };
+  document.addEventListener('dt:push-state',updatePushStatus);
+
   const render=data=>{
     account=data;
     favoriteTeamId=Number(data.favorite_team_id||0);
@@ -118,16 +127,15 @@
           <div class="dt-notification-help" id="dt-notification-help" hidden>
             <strong>Jak działają powiadomienia?</strong>
             <dl>
-              <div><dt>E-mail</dt><dd>Wysyła przypomnienia o typowaniu i zmianach terminów na adres przypisany do Twojego konta.</dd></div>
-              <div><dt>Web Push / PWA</dt><dd>Pokazuje te same przypomnienia jako powiadomienia systemowe na komputerze lub telefonie.</dd></div>
+              <div><dt>Web Push / PWA</dt><dd>Pokazuje przypomnienia jako powiadomienia systemowe na komputerze lub telefonie.</dd></div>
             </dl>
           </div>
           <div class="dt-notification-options">
-            <label><span>E-mail</span><input type="checkbox" name="notify_email" ${checked('email')}><i aria-hidden="true"></i></label>
             <label><span>Web Push / PWA</span><input type="checkbox" name="notify_push" ${checked('push')} ${data.push_ready?'':'disabled'}><i aria-hidden="true"></i></label>
           </div>
+          <small id="dt-push-device-status" role="status" aria-live="polite"></small>
           <div class="dt-notification-actions">${installButton}</div>
-          <small>${data.push_ready?'Wybierz kanały, którymi chcesz otrzymywać przypomnienia o typowaniu i zmianach terminów.':'Kanał Push oczekuje na konfigurację OneSignal przez administratora. Powiadomienia e-mail działają niezależnie.'}</small>
+          <small>${data.push_ready?'Włącz Web Push na każdym urządzeniu, na którym chcesz otrzymywać przypomnienia. Wyłączenie przełącznika wyłącza przypomnienia dla całego konta.':'Web Push oczekuje na konfigurację OneSignal przez administratora.'}</small>
 
           <div class="dt-account-save-row"><button type="submit">Zapisz ustawienia</button></div>
           <div id="dt-account-message" class="dt-account-message" aria-live="polite"></div>
@@ -154,7 +162,13 @@
       favoriteLeague=String(button.dataset.favoriteLeague||'1lm');
       render(account);
     }));
-    target.querySelector('[name="notify_push"]')?.addEventListener('change',async event=>{const toggle=event.currentTarget;if(!toggle.checked)return;toggle.disabled=true;try{await window.DeckaTyperPwa.enablePush();toggle.checked=true;}catch(error){toggle.checked=false;alert(error.message||'Nie udało się włączyć powiadomień.');}finally{toggle.disabled=false;}});
+    target.querySelector('[name="notify_push"]')?.addEventListener('change',async event=>{
+      const toggle=event.currentTarget;const enabled=toggle.checked;let failure='';toggle.disabled=true;
+      try{if(enabled)await window.DeckaTyperPwa.enablePush();else await window.DeckaTyperPwa.disablePush();}
+      catch(error){failure=error.message;}
+      finally{updatePushStatus();const status=target.querySelector('#dt-push-device-status');if(failure&&status)status.textContent=failure;}
+    });
+    updatePushStatus();
     target.querySelector('.dt-notification-info-button')?.addEventListener('click',event=>{const button=event.currentTarget;const help=target.querySelector('#dt-notification-help');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(open));if(help)help.hidden=!open;});
     target.querySelector('#dt-install-pwa')?.addEventListener('click',async()=>{
       if(isIos()){alert('Na iPhonie dotknij ikony Udostępnij w Safari/Chrome, a następnie wybierz „Do ekranu początkowego” i potwierdź „Dodaj”.');return;}
@@ -187,12 +201,7 @@
     if(name.length<2||name.length>40){message.textContent='Nazwa musi mieć od 2 do 40 znaków.';message.className='dt-account-message is-error';return;}
     button.disabled=true;message.textContent='Zapisywanie…';message.className='dt-account-message';
     try{
-      const notifications={
-        email:form.querySelector('[name="notify_email"]')?.checked?1:0,
-        push:form.querySelector('[name="notify_push"]')?.checked?1:0,
-        standard:1,schedule_changes:1,postponed:1,incomplete:1,reminder_3d:1,reminder_6h:1
-      };
-      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite,notifications})});
+      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite})});
       account=data.account||account;
       favoriteTeamId=Number(account?.favorite_team_id||0);
       accountCfg.favoriteTeamId=favoriteTeamId;

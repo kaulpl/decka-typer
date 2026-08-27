@@ -38,6 +38,9 @@ jobs:
       - name: Notification template regression tests
         run: php tests/notification-templates.php
 
+      - name: Push lifecycle regression tests
+        run: node --test tests/push-lifecycle.cjs
+
       - name: Version consistency
         shell: bash
         run: |

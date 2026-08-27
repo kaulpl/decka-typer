@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.13
+- Usunięto kanał przypomnień e-mail (także dla wcześniej zapisanych preferencji). Moje konto zawiera tylko Web Push.
+- OneSignal inicjalizuje się raz przy otwarciu; zgoda wywoływana jest bezpośrednio po kliknięciu, bez oczekiwania na inicjalizację.
+- Odświeżanie subskrypcji po ponownej instalacji, przy otwarciu i zmianach tokenu. Weryfikacja identyfikatora, tokenu, opt-in i subskrypcji przeglądarki.
+- Status bieżącego urządzenia i wskazówki po odmowie; odzyskiwanie nie zależy wyłącznie od zapisanej zgody.
+- Wyłączenie Push zapisuje się od razu i nie jest nadpisywane przez synchronizację w tle.
+- Test administratora wysyła wyłącznie Push z opóźnieniem 15 sekund.
+
 ## 0.6.12
 - Polskie, edytowalne powitanie OneSignal i wspólny prefiks tytułów „TypujKosza.pl - ”.
 - Usunięto automatyczny losowy test po aktywacji. Ręczne testy są jednoznacznie oznaczone jako test.
