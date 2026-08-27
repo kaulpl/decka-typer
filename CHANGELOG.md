@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.14
+- Przywrócono aktywację iPhone PWA z okna startowego: zgoda OneSignal → przypisanie konta → opt-in → zapis urządzenia.
+- Usunięto dodaną w 0.6.13 lokalną blokadę wywołania zgody na iPhonie na podstawie samego Notification.permission. O wyniku decyduje system i SDK.
+- Okno iPhone PWA nie jest ukrywane na podstawie samego stanu zgody; zachowano odłożenie na później oraz kontrolę faktycznej subskrypcji.
+- Usunięto mylące stwierdzenie o blokadzie w ustawieniach iPhone’a. Rzeczywista odmowa nie powoduje aktywacji ani wysyłki.
+- Bez zmian w aktywacji Androida, wyłączeniu e-maili i braku losowych testów.
+
 ## 0.6.13
 - Usunięto kanał przypomnień e-mail (także dla wcześniej zapisanych preferencji). Moje konto zawiera tylko Web Push.
 - OneSignal inicjalizuje się raz przy otwarciu; zgoda wywoływana jest bezpośrednio po kliknięciu, bez oczekiwania na inicjalizację.
