@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.19
+- Ranking: nowy filtr „KLUBY” obok filtrów ligowych, z rozwijaną listą klubów wybranych przez użytkowników jako ulubione.
+- Ranking klubowy ogranicza klasyfikację do kibiców wybranego klubu, zachowując zakres Wszechczasów / Sezon / Miesiąc / Kolejka i licząc wyniki ze wszystkich lig.
+- Lista pokazuje wyłącznie rzeczywiście wybrane kluby oraz liczbę przypisanych kibiców; nieznany identyfikator klubu jest bezpiecznie zastępowany pierwszą dostępną pozycją.
+- Dodano testy regresyjne odpowiedzi API oraz filtrowania wszystkich zapytań składających się na ranking.
+
 ## 0.6.18
 - Okno przypominające o włączeniu Web Push wraca przy wejściu do Typera po 7 dniach, jeśli urządzenie nie ma aktywnych przypomnień.
 - Termin zapisywany przy koncie i lokalnie od wyświetlenia okna; przycisk „Przypomnij za 7 dni”.

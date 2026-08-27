@@ -31,13 +31,18 @@ class DT_Ranking_View {
         if ($season === '' || !in_array($season, $seasons, true)) $season = $seasons[0] ?? (string)($settings['season'] ?? '');
 
         $league = sanitize_key((string)$request->get_param('league'));
-        if (!in_array($league,['all','plk','1lm','2lm'],true)) $league = 'all';
+        if (!in_array($league,['all','plk','1lm','2lm','clubs'],true)) $league = 'all';
+        $favoriteTeams = self::favorite_teams();
+        $favoriteTeamId = $league === 'clubs' ? max(0, (int)$request->get_param('favorite_team_id')) : 0;
+        $favoriteTeamIds = array_map(static fn(array $team): int=>(int)$team['id'], $favoriteTeams);
+        if ($league === 'clubs' && !in_array($favoriteTeamId, $favoriteTeamIds, true)) $favoriteTeamId = $favoriteTeamIds[0] ?? 0;
+        $rankingLeague = $league === 'clubs' ? 'all' : $league;
         $availableGroups = $league === '2lm' ? self::groups($season) : [];
         $group = $league === '2lm' ? strtoupper(sanitize_text_field((string)$request->get_param('group'))) : '';
         if ($league === '2lm' && ($group === '' || !in_array($group,$availableGroups,true))) $group=$availableGroups[0]??'';
 
-        $rounds = self::rounds($season, $league, $group);
-        $months = self::months($season, $league, $group);
+        $rounds = self::rounds($season, $rankingLeague, $group);
+        $months = self::months($season, $rankingLeague, $group);
         $month = sanitize_text_field((string)$request->get_param('month'));
         if ($scope === 'month' && !in_array($month, $months, true)) $month = $months[0] ?? '';
         if ($scope !== 'month') $month = '';
@@ -57,14 +62,37 @@ class DT_Ranking_View {
             'league'=>$league,
             'group'=>$group,
             'groups'=>$availableGroups,
-            'leagues'=>[['key'=>'all','name'=>'Wszystkie'],['key'=>'1lm','name'=>'1LM'],['key'=>'plk','name'=>'PLK'],['key'=>'2lm','name'=>'2LM']],
+            'leagues'=>[['key'=>'all','name'=>'Wszystkie'],['key'=>'1lm','name'=>'1LM'],['key'=>'plk','name'=>'PLK'],['key'=>'2lm','name'=>'2LM'],['key'=>'clubs','name'=>'KLUBY']],
+            'favorite_teams'=>$favoriteTeams,
+            'favorite_team_id'=>$favoriteTeamId,
             'round_id'=>$roundId,
             'month'=>$month,
             'seasons'=>$seasons,
             'rounds'=>$rounds,
             'months'=>$months,
-            'ranking'=>self::rows($scope, $season, $roundId, $league, $group, $month),
+            'ranking'=>self::rows($scope, $season, $roundId, $rankingLeague, $group, $month, $league === 'clubs' ? ($favoriteTeamId ?: -1) : 0),
         ]);
+    }
+
+    private static function favorite_teams(): array {
+        global $wpdb;
+        $teams = DT_DB::table('teams');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT t.id,t.name,t.short_name,COUNT(DISTINCT um.user_id) supporters
+             FROM {$wpdb->usermeta} um
+             JOIN $teams t ON t.id=CAST(um.meta_value AS UNSIGNED)
+             WHERE um.meta_key=%s AND CAST(um.meta_value AS UNSIGNED)>0
+             GROUP BY t.id,t.name,t.short_name
+             ORDER BY t.name ASC",
+            'dt_favorite_team_id'
+        ), ARRAY_A);
+        if (!is_array($rows)) return [];
+        return array_map(static fn(array $row): array=>[
+            'id'=>(int)$row['id'],
+            'name'=>(string)$row['name'],
+            'short_name'=>(string)($row['short_name'] ?? ''),
+            'supporters'=>(int)$row['supporters'],
+        ], $rows);
     }
 
     private static function seasons(string $current): array {
@@ -127,7 +155,7 @@ class DT_Ranking_View {
         return array_values(array_filter(array_map('strval', (array)$rows), static fn(string $value): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $value)));
     }
 
-    private static function rows(string $scope, string $season, int $roundId, string $league = 'all', string $group = '', string $month = ''): array {
+    private static function rows(string $scope, string $season, int $roundId, string $league = 'all', string $group = '', string $month = '', int $favoriteTeamId = 0): array {
         global $wpdb;
         $pred = DT_DB::table('predictions');
         $mat = DT_DB::table('matches');
@@ -145,6 +173,11 @@ class DT_Ranking_View {
         }
         if ($league !== 'all') $filter .= $wpdb->prepare(' AND r.league_key=%s ', $league);
         if ($group !== '') $filter .= $wpdb->prepare(" AND REPLACE(UPPER(TRIM(r.group_key)),'GRUPA ','')=%s ", $group);
+        if ($favoriteTeamId > 0) {
+            $filter .= $wpdb->prepare(" AND EXISTS (SELECT 1 FROM {$wpdb->usermeta} fum WHERE fum.user_id=p.user_id AND fum.meta_key=%s AND CAST(fum.meta_value AS UNSIGNED)=%d) ", 'dt_favorite_team_id', $favoriteTeamId);
+        } elseif ($favoriteTeamId === -1) {
+            $filter .= ' AND 1=0 ';
+        }
 
         $sql = "SELECT u.ID user_id,u.display_name,
                        COUNT(p.id) predictions,

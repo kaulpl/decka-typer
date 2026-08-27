@@ -13,7 +13,7 @@
   let seasons=[];
   let rounds=[];
   let months=[];
-  let league='1lm',leagues=[],group='',groups=[];
+  let league='1lm',leagues=[],group='',groups=[],favoriteTeams=[],favoriteTeamId=0;
   let loadingSeq=0;
 
   const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
@@ -39,6 +39,7 @@
     if(scope!=='all'&&season)qs.set('season',season);
     if(league)qs.set('league',league);
     if(group)qs.set('group',group);
+    if(league==='clubs'&&favoriteTeamId)qs.set('favorite_team_id',String(favoriteTeamId));
     if(scope==='month'&&month)qs.set('month',month);
     if(scope==='round'&&roundId)qs.set('round_id',String(roundId));
     const headers={Accept:'application/json'};
@@ -56,6 +57,15 @@
     leagueBar.innerHTML=leagues.map(l=>`<button type="button" data-filter-league="${esc(l.key)}" class="${l.key===league?'is-active':''}">${esc(l.name)}</button>`).join('');
     filters.appendChild(leagueBar);
     if(league==='2lm'&&groups.length){const groupBar=document.createElement('div');groupBar.className='dt-filter-segmented dt-filter-groups';groupBar.innerHTML=groups.map(g=>`<button type="button" data-filter-group="${esc(normalizeGroup(g))}" class="${normalizeGroup(g)===normalizeGroup(group)?'is-active':''}">GRUPA ${esc(normalizeGroup(g))}</button>`).join('');filters.appendChild(groupBar);}
+    if(league==='clubs'){
+      const clubSelect=document.createElement('select');
+      clubSelect.className='dt-ranking-select dt-ranking-club-select';
+      clubSelect.setAttribute('aria-label','Wybierz ulubiony klub kibiców');
+      clubSelect.innerHTML=favoriteTeams.length?favoriteTeams.map(team=>`<option value="${Number(team.id)}" ${Number(team.id)===favoriteTeamId?'selected':''}>${esc(team.name)} (${Number(team.supporters||0)})</option>`).join(''):'<option value="">Brak klubów wybranych przez użytkowników</option>';
+      clubSelect.disabled=!favoriteTeams.length;
+      clubSelect.addEventListener('change',()=>{favoriteTeamId=Number(clubSelect.value||0);roundId=0;month='';load();});
+      filters.appendChild(clubSelect);
+    }
     if(scope==='all')return;
 
     const seasonBar=document.createElement('div');seasonBar.className='dt-filter-segmented dt-filter-seasons';seasonBar.innerHTML=seasons.map(s=>`<button type="button" data-filter-season="${esc(s)}" class="${s===season?'is-active':''}">${esc(s)}</button>`).join('');filters.appendChild(seasonBar);
@@ -117,6 +127,8 @@
       months=Array.isArray(data.months)?data.months:[];
       leagues=Array.isArray(data.leagues)?data.leagues:[];
       groups=Array.isArray(data.groups)?data.groups.map(normalizeGroup).filter(Boolean):[];
+      favoriteTeams=Array.isArray(data.favorite_teams)?data.favorite_teams:[];
+      favoriteTeamId=Number(data.favorite_team_id||0);
       league=String(data.league||league||'all');
       group=normalizeGroup(data.group||group||groups[0]||'');
       roundId=Number(data.round_id||roundId||0);
@@ -139,7 +151,7 @@
 
   root.addEventListener('click',e=>{
     if(e.target.closest('[data-tab="ranking"]'))setTimeout(load,0);
-    const leagueButton=e.target.closest('[data-filter-league]');if(leagueButton){league=leagueButton.dataset.filterLeague||'all';group='';roundId=0;month='';load();return;}
+    const leagueButton=e.target.closest('[data-filter-league]');if(leagueButton){league=leagueButton.dataset.filterLeague||'all';group='';favoriteTeamId=0;roundId=0;month='';load();return;}
     const groupButton=e.target.closest('[data-filter-group]');if(groupButton){group=normalizeGroup(groupButton.dataset.filterGroup);roundId=0;month='';load();return;}
     const seasonButton=e.target.closest('[data-filter-season]');if(seasonButton){season=seasonButton.dataset.filterSeason||season;roundId=0;month='';load();}
   });
