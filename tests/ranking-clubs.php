@@ -53,7 +53,7 @@ check($response->data['favorite_team_id']===15,'Selected favorite club preserved
 check(count($response->data['favorite_teams'])===2,'Only clubs selected by users returned');
 check($response->data['favorite_teams'][0]['supporters']===4,'Supporter count normalized');
 check(in_array(['key'=>'clubs','name'=>'KLUBY'],$response->data['leagues'],true),'KLUBY option returned');
-$rankingQueries=array_values(array_filter($wpdb->queries,static fn($sql)=>str_contains($sql,'FROM wp_users u')||str_contains($sql,'FROM dt_predictions p')));
+$rankingQueries=array_values(array_filter($wpdb->queries,static fn($sql)=>str_contains($sql,'FROM wp_users u')||str_contains($sql,'SELECT x.user_id,COUNT(*) perfect_rounds')));
 check(count($rankingQueries)>=2,'Ranking and perfect-round queries executed');
 foreach ($rankingQueries as $sql) {
     check(str_contains($sql,"fum.meta_key='dt_favorite_team_id'"),'Favorite club meta filter applied');
