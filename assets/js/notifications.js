@@ -20,7 +20,7 @@
     }catch(error){if(error.name==='AbortError')throw new Error('Serwer nie odpowiedział na zapis urządzenia. Sprawdź połączenie i spróbuj ponownie.');throw error;}
     finally{clearTimeout(timer);}
   };
-  const activeSubscription=()=>sdk?.Notifications.permission===true&&sdk.User.PushSubscription.optedIn===true&&!!sdk.User.PushSubscription.id&&!!sdk.User.PushSubscription.token;
+  const activeSubscription=()=>((isIos()&&permissionState()==='granted')||sdk?.Notifications.permission===true)&&sdk.User.PushSubscription.optedIn===true&&!!sdk.User.PushSubscription.id&&!!sdk.User.PushSubscription.token;
   const browserSubscription=async()=>{
     const registration=await navigator.serviceWorker.getRegistration(cfg.workerScope||'/');
     return !!(registration?.active&&await registration.pushManager.getSubscription());
@@ -72,24 +72,38 @@
     if(isIos()&&!isStandalone())return Promise.reject(new Error('Na iPhonie otwórz aplikację z ikony na ekranie głównym.'));
     if(!sdk)return Promise.reject(new Error(pwa.state.message||'Poczekaj na przygotowanie powiadomień.'));
     if(activating)return Promise.reject(new Error('Aktywacja już trwa.'));
-    // On iPhone let the SDK/browser handle the explicit request, as before 0.6.13.
-    // Never reset browser permissions or claim that a system settings entry exists.
     if(!isIos()&&permissionState()==='denied')return Promise.reject(new Error(blockedMessage()));
-    // Call the permission API directly in the click handler, before any await.
+    const nativeIos=isIos();
+    const attempt={stage:'permission',before:permissionState(),result:'pending',pwa:isStandalone(),secure:window.isSecureContext===true,gesture:navigator.userActivation?.isActive??'unknown',top:window.top===window.self};
+    const diagnostic=()=>`[PUSH-IOS-1: etap=${attempt.stage}; przed=${attempt.before}; wynik=${attempt.result}; teraz=${permissionState()}; PWA=${attempt.pwa}; HTTPS=${attempt.secure}; gest=${attempt.gesture}; top=${attempt.top}; SDK=${!!sdk.Notifications.permission}]`;
+    // Native iOS permission request must execute synchronously in this tap,
+    // before SDK promises, network access or subscription registration.
     activating=true;
     let permission;
-    try{permission=sdk.Notifications.requestPermission();}catch(error){activating=false;return Promise.reject(error);}
+    try{permission=nativeIos?window.Notification.requestPermission():sdk.Notifications.requestPermission();}
+    catch(error){activating=false;const failure=new Error(nativeIos?'Nie udało się wywołać systemowego pytania. '+diagnostic():error.message);publish(failure.message);return Promise.reject(failure);}
     return (async()=>{
       try{
-        await permission;
-        if(!sdk.Notifications.permission)throw new Error(permissionState()==='denied'?blockedMessage():'Nie udzielono zgody. Kliknij przełącznik ponownie i wybierz „Zezwól”.');
-        if(isIos())await sdk.login(String(cfg.userId));
+        const result=await permission;
+        attempt.result=nativeIos?String(result):String(sdk.Notifications.permission);
+        if(nativeIos){
+          if(result!=='granted')throw new Error('System iOS nie udzielił zgody. Jeśli nie było okna, prześlij poniższy kod diagnostyczny.');
+          attempt.stage='onesignal';
+          // With native permission granted, let the public SDK register Push.
+          // Do not reject just because its cached permission getter is stale.
+          await sdk.Notifications.requestPermission();
+          await sdk.login(String(cfg.userId));
+        }else if(!sdk.Notifications.permission){
+          throw new Error(permissionState()==='denied'?blockedMessage():'Nie udzielono zgody. Kliknij przełącznik ponownie i wybierz „Zezwól”.');
+        }
+        attempt.stage='subscription';
         await sdk.User.PushSubscription.optIn();
         const id=await waitForSubscription();
+        attempt.stage='save';
         await saveSubscription(id,true);cfg.pushEnabled=true;
         publish('To urządzenie ma aktywną subskrypcję Web Push.',true);
         return {ok:true,subscriptionId:id};
-      }catch(error){publish(error.message);throw error;}
+      }catch(error){const failure=new Error(nativeIos?error.message+' '+diagnostic():error.message);publish(failure.message);throw failure;}
       finally{activating=false;}
     })();
   };

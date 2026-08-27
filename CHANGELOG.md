@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.15
+- iPhone PWA: natywne Notification.requestPermission() bezpośrednio w obsłudze kliknięcia, przed operacjami OneSignal.
+- Rejestracja OneSignal dopiero po zgodzie systemowej; opóźniony stan zgody SDK nie powoduje fałszywego odrzucenia aktywacji.
+- Kod diagnostyczny PUSH-IOS-1 pokazuje etap, wynik systemowy, PWA, HTTPS i stan gestu kliknięcia. Bez identyfikatorów kont, tokenów i automatycznego przesyłania diagnostyki.
+- Odmowa systemowa nie uruchamia rejestracji ani wysyłki; Android i ustawienia kanałów bez zmian.
+
 ## 0.6.14
 - Przywrócono aktywację iPhone PWA z okna startowego: zgoda OneSignal → przypisanie konta → opt-in → zapis urządzenia.
 - Usunięto dodaną w 0.6.13 lokalną blokadę wywołania zgody na iPhonie na podstawie samego Notification.permission. O wyniku decyduje system i SDK.
