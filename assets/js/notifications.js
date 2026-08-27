@@ -140,20 +140,23 @@
   const onboardingKey='dt-push-onboarding-'+cfg.userId;
   const closeOnboarding=modal=>{modal.classList.remove('is-visible');setTimeout(()=>modal.remove(),220);};
   const showPushOnboarding=()=>{
-    const eligibleDevice=(isIos()&&isStandalone())||isAndroid();
-    if(!cfg.pushReady||!eligibleDevice||!sdk||pwa.state.active||document.querySelector('.dt-push-onboarding'))return;
-    if(!isIos()&&permissionState()!=='default'&&!cfg.pushEnabled)return;
-    const postponed=Number(storage.get(onboardingKey+'-later')||0);
-    if(!cfg.pushEnabled&&postponed&&Date.now()-postponed<86400000)return;
+    const installIos=isIos()&&!isStandalone();
+    if(!cfg.pushReady||(!installIos&&!sdk)||pwa.state.active||(installIos&&cfg.pushEnabled)||document.querySelector('.dt-push-onboarding'))return;
+    const lastSeen=Math.max(Number(cfg.onboardingSeen)||0,Number(storage.get(onboardingKey+'-seen'))||0,Number(storage.get(onboardingKey+'-later'))||0);
+    if(lastSeen&&Date.now()-lastSeen<7*86400000)return;
     const modal=document.createElement('div');
     modal.className='dt-push-onboarding';
     modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-labelledby','dt-push-onboarding-title');
-    modal.innerHTML='<div class="dt-push-onboarding-card"><img src="'+String(cfg.iconUrl||'')+'" alt="" class="dt-push-onboarding-icon"><span class="dt-push-onboarding-kicker">TYPOWANIE ZAWSZE NA CZAS</span><h2 id="dt-push-onboarding-title">Włącz powiadomienia TypujKosza.pl</h2><p>Otrzymuj przypomnienia o typowaniu, zmianach terminów i ważnych wydarzeniach. Wymagane jest tylko jedno kliknięcie.</p><ul><li>Przypomnienia przed zamknięciem typowania</li><li>Informacje o zmianach terminów meczów</li><li>Powiadomienia bezpośrednio na telefon</li></ul><div class="dt-push-onboarding-actions"><button type="button" class="dt-push-onboarding-enable">Włącz powiadomienia</button><button type="button" class="dt-push-onboarding-later">Może później</button></div><small class="dt-push-onboarding-status" aria-live="polite"></small></div>';
+    modal.innerHTML='<div class="dt-push-onboarding-card"><img src="'+String(cfg.iconUrl||'')+'" alt="" class="dt-push-onboarding-icon"><span class="dt-push-onboarding-kicker">TYPOWANIE ZAWSZE NA CZAS</span><h2 id="dt-push-onboarding-title">Włącz powiadomienia TypujKosza.pl</h2><p>Otrzymuj przypomnienia o typowaniu, zmianach terminów i ważnych wydarzeniach. Włącz je teraz lub wróć do tego za 7 dni.</p><ul><li>Przypomnienia przed zamknięciem typowania</li><li>Informacje o zmianach terminów meczów</li><li>Powiadomienia bezpośrednio na telefon</li></ul><div class="dt-push-onboarding-actions"><button type="button" class="dt-push-onboarding-enable">Włącz powiadomienia</button><button type="button" class="dt-push-onboarding-later">Przypomnij za 7 dni</button></div><small class="dt-push-onboarding-status" aria-live="polite"></small></div>';
+    cfg.onboardingSeen=Date.now();storage.set(onboardingKey+'-seen',String(cfg.onboardingSeen));
+    if(cfg.onboardingSeenUrl)post(cfg.onboardingSeenUrl,{}).then(data=>{if(data.seen)cfg.onboardingSeen=data.seen;}).catch(()=>{});
     document.body.appendChild(modal);requestAnimationFrame(()=>modal.classList.add('is-visible'));
     const enable=modal.querySelector('.dt-push-onboarding-enable'),later=modal.querySelector('.dt-push-onboarding-later'),status=modal.querySelector('.dt-push-onboarding-status');
     later.addEventListener('click',()=>{storage.set(onboardingKey+'-later',String(Date.now()));closeOnboarding(modal);});
+    if(installIos)enable.textContent='Jak włączyć na iPhonie?';
     if(!isIos()&&permissionState()==='denied')status.textContent=blockedMessage();
     enable.addEventListener('click',async()=>{
+      if(installIos){status.textContent='Safari/Chrome: otwórz menu Udostępnij → Do ekranu początkowego. Następnie otwórz TypujKosza.pl z ikony i w „Moje konto” włącz Web Push / PWA.';return;}
       enable.disabled=true;later.disabled=true;enable.textContent='Włączanie…';status.textContent='Poczekaj na systemowe pytanie i wybierz „Zezwól”.';
       try{
         await window.DeckaTyperPwa.enablePush();
@@ -168,7 +171,7 @@
   };
   const start=async()=>{
     if(!cfg.pushReady){publish('Web Push nie jest skonfigurowany.');return;}
-    if(isIos()&&!isStandalone()){publish('iPhone: dodaj aplikację przez Safari/Chrome i otwórz ją z ikony na ekranie głównym.');return;}
+    if(isIos()&&!isStandalone()){publish('iPhone: dodaj aplikację przez Safari/Chrome i otwórz ją z ikony na ekranie głównym.');showPushOnboarding();return;}
     if(!window.Notification||!navigator.serviceWorker||!window.PushManager){publish('Ta przeglądarka nie obsługuje Web Push. Otwórz stronę w aktualnym Chrome lub jako PWA na iPhonie.');return;}
     try{await initialize();await reconcile();showPushOnboarding();}
     catch(error){publish(error.message);}

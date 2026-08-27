@@ -115,12 +115,19 @@ class DT_Notifications {
             'callback'=>[__CLASS__, 'register_push_subscription'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
+        register_rest_route('decka-typer/v1', '/push-onboarding-seen', ['methods'=>'POST','callback'=>[__CLASS__, 'mark_onboarding_seen'],'permission_callback'=>static fn()=>is_user_logged_in()]);
         register_rest_route('decka-typer/v1', '/push-preference', ['methods'=>'POST','callback'=>[__CLASS__, 'disable_push'],'permission_callback'=>static fn()=>is_user_logged_in()]);
         register_rest_route('decka-typer/v1', '/push-test', [
             'methods'=>'POST',
             'callback'=>[__CLASS__, 'test_push_subscription'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
+    }
+
+    public static function mark_onboarding_seen(): WP_REST_Response {
+        $seen=time()*1000;
+        update_user_meta(get_current_user_id(),'dt_push_onboarding_seen',$seen);
+        return new WP_REST_Response(['ok'=>true,'seen'=>$seen]);
     }
 
     public static function disable_push(WP_REST_Request $request): WP_REST_Response|WP_Error {
@@ -256,6 +263,8 @@ class DT_Notifications {
         wp_localize_script('dt-notifications','DeckaTyperNotifications',[
             'userId'=>get_current_user_id(),'pushReady'=>self::push_ready(),
             'pushEnabled'=>!empty(self::preferences(get_current_user_id())['push']),
+            'onboardingSeen'=>(int)get_user_meta(get_current_user_id(),'dt_push_onboarding_seen',true),
+            'onboardingSeenUrl'=>rest_url('decka-typer/v1/push-onboarding-seen'),
             'preferenceUrl'=>rest_url('decka-typer/v1/push-preference'),
             'appId'=>self::push_ready()?(string)DT_ONESIGNAL_APP_ID:'',
             'workerPath'=>wp_make_link_relative(add_query_arg('dt_onesignal_worker','1',home_url('/'))),

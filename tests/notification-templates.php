@@ -41,8 +41,8 @@ echo "Notification templates: OK\n";
 
 // Existing email preferences must no longer dispatch reminders.
 $meta=['push'=>1,'email'=>1,'standard'=>1];
-function get_user_meta($uid,$key,$single=true) { global $meta,$broadcastMeta; return $key==='dt_notification_preferences'?($broadcastMeta[$uid]??$meta):[]; }
-function update_user_meta($uid,$key,$value) { global $meta; if ($key==='dt_notification_preferences') $meta=$value; }
+function get_user_meta($uid,$key,$single=true) { global $meta,$broadcastMeta,$onboardingSeenMeta; if($key==='dt_push_onboarding_seen')return $onboardingSeenMeta[$uid]??0; return $key==='dt_notification_preferences'?($broadcastMeta[$uid]??$meta):[]; }
+function update_user_meta($uid,$key,$value) { global $meta,$onboardingSeenMeta; if($key==='dt_push_onboarding_seen')$onboardingSeenMeta[$uid]=$value; if ($key==='dt_notification_preferences') $meta=$value; }
 function wp_parse_args($args,$defaults) { return array_merge($defaults,$args); }
 function get_current_user_id() { return 7; }
 class WP_REST_Request { public function __construct(private array $body) {} public function get_json_params() { return $this->body; } }
@@ -95,3 +95,10 @@ check($result===['queued'=>0,'failed'=>10],'Cron failures are not reported as qu
 foreach(range(1,12) as $uid)$broadcastMeta[$uid]=['push'=>0];
 check(DT_Notifications::queue_admin_test()===['queued'=>0,'failed'=>0],'Empty audience does not enqueue');
 echo "Broadcast Push: OK\n";
+
+$beforePreferences=DT_Notifications::preferences(7);
+$seenResponse=DT_Notifications::mark_onboarding_seen();
+check($seenResponse->data['ok']===true && abs($seenResponse->data['seen']-time()*1000)<2000,'Onboarding timestamp uses server time');
+check(get_user_meta(7,'dt_push_onboarding_seen',true)===$seenResponse->data['seen'],'Timestamp stored on current account');
+check(DT_Notifications::preferences(7)===$beforePreferences,'Showing onboarding never changes consent');
+echo "Weekly onboarding: OK\n";

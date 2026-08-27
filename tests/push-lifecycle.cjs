@@ -3,12 +3,12 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../assets/js/notifications.js'),'utf8');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-async function setup({permission='default',enabled=false,active=false,ios=false,storageThrows=false,failSave=false,grantRequest=true,staleSdk=false,nativeError=false}={}){
+async function setup({permission='default',enabled=false,active=false,ios=false,storageThrows=false,failSave=false,grantRequest=true,staleSdk=false,nativeError=false,seen=0,seenUrl=false,localSeen=0,desktop=false,standalone=ios}={}){
   const requests=[],timers=new Map(),listeners={},elements=[];let seq=0,initCount=0,promptCount=0,nativeCount=0,initOptions;const calls=[];
   const subscription={id:active?'existing-id':null,token:active?'existing-token':null,optedIn:active,addEventListener:(name,fn)=>listeners.subscription=fn,optIn:async()=>{subscription.id='fresh-id';subscription.token='fresh-token';subscription.optedIn=true;},optOut:async()=>{subscription.optedIn=false;}};
   const sdk={init:async options=>{initCount++;initOptions=options;},login:async()=>{calls.push('login');},User:{PushSubscription:subscription},Notifications:{permission:permission==='granted',addEventListener:(name,fn)=>listeners.permission=fn,requestPermission:()=>{promptCount++;calls.push('permission');sdk.Notifications.permission=grantRequest&&!staleSdk;context.window.Notification.permission=grantRequest?'granted':'denied';return Promise.resolve();}}};
-  const cfg={userId:2,pushReady:true,pushEnabled:enabled,appId:'app',workerScope:'/',workerPath:'/?dt_onesignal_worker=1',welcome:{title:'Powitanie',message:'Dziękujemy'},subscriptionUrl:'/subscription',preferenceUrl:'/preference'};
-  const context={window:{DeckaTyperNotifications:cfg,Notification:{permission,requestPermission:()=>{nativeCount++;calls.push('native');if(nativeError)throw Error('native failed');context.window.Notification.permission=grantRequest?'granted':'denied';return Promise.resolve(grantRequest?'granted':'denied');}},isSecureContext:true,PushManager:class{},matchMedia:()=>({matches:ios}),addEventListener:(name,fn)=>listeners[name]=fn,OneSignalDeferred:{push:fn=>fn(sdk)}},navigator:{userAgent:ios?'iPhone':'Android',userActivation:{isActive:true},serviceWorker:{getRegistration:async()=>({active:{},pushManager:{getSubscription:async()=>subscription.token?{}:null}})}},document:{readyState:'complete',visibilityState:'visible',addEventListener:(name,fn)=>listeners[name]=fn,dispatchEvent(){},querySelector:()=>null,createElement:()=>{const children={},events={};const el={classList:{add(){},remove(){}},setAttribute(){},addEventListener:(name,fn)=>events[name]=fn,showModal(){this.open=true;},close(){this.open=false;events.close?.();},querySelector:selector=>children[selector]??=({addEventListener(name,fn){this[name]=fn;}}),remove(){this.removed=true;}};elements.push(el);return el;},body:{appendChild(){}}},localStorage:{getItem:()=>{if(storageThrows)throw Error('blocked');return null;},setItem(){if(storageThrows)throw Error('blocked');},removeItem(){}},requestAnimationFrame:fn=>fn(),setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),CustomEvent:class{},AbortController,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:!(failSave&&url==='/subscription'),json:async()=>({ok:!(failSave&&url==='/subscription'),message:'save failed'})};}};
+  const cfg={userId:2,pushReady:true,pushEnabled:enabled,onboardingSeen:seen,onboardingSeenUrl:seenUrl?'/seen':null,appId:'app',workerScope:'/',workerPath:'/?dt_onesignal_worker=1',welcome:{title:'Powitanie',message:'Dziękujemy'},subscriptionUrl:'/subscription',preferenceUrl:'/preference'};
+  const context={window:{DeckaTyperNotifications:cfg,Notification:{permission,requestPermission:()=>{nativeCount++;calls.push('native');if(nativeError)throw Error('native failed');context.window.Notification.permission=grantRequest?'granted':'denied';return Promise.resolve(grantRequest?'granted':'denied');}},isSecureContext:true,PushManager:class{},matchMedia:()=>({matches:standalone}),addEventListener:(name,fn)=>listeners[name]=fn,OneSignalDeferred:{push:fn=>fn(sdk)}},navigator:{userAgent:ios?'iPhone':desktop?'Chrome desktop':'Android',userActivation:{isActive:true},serviceWorker:{getRegistration:async()=>({active:{},pushManager:{getSubscription:async()=>subscription.token?{}:null}})}},document:{readyState:'complete',visibilityState:'visible',addEventListener:(name,fn)=>listeners[name]=fn,dispatchEvent(){},querySelector:()=>null,createElement:()=>{const children={},events={};const el={classList:{add(){},remove(){}},setAttribute(){},addEventListener:(name,fn)=>events[name]=fn,showModal(){this.open=true;},close(){this.open=false;events.close?.();},querySelector:selector=>children[selector]??=({addEventListener(name,fn){this[name]=fn;}}),remove(){this.removed=true;}};elements.push(el);return el;},body:{appendChild(){}}},localStorage:{getItem:key=>{if(storageThrows)throw Error('blocked');return key.endsWith('-seen')?String(localSeen):null;},setItem(){if(storageThrows)throw Error('blocked');},removeItem(){}},requestAnimationFrame:fn=>fn(),setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),CustomEvent:class{},AbortController,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:!(failSave&&url==='/subscription'),json:async()=>({ok:!(failSave&&url==='/subscription'),message:'save failed'})};}};
   context.window.top=context.window;context.window.self=context.window;
   vm.runInNewContext(source,context);await flush();
   return {pwa:context.window.DeckaTyperPwa,calls,cfg,sdk,context,subscription,requests,elements,get initCount(){return initCount;},get promptCount(){return promptCount;},get nativeCount(){return nativeCount;},get initOptions(){return initOptions;},async change(){listeners.subscription();for(const [id,t] of timers){if(t.ms===200){timers.delete(id);t.fn();}}await flush();}};
@@ -106,4 +106,31 @@ test('Android guide remains open when server cannot save subscription',async()=>
 test('Android newly denied prompt shows guide; iOS denial does not',async()=>{
  const android=await setup({grantRequest:false});await assert.rejects(android.pwa.enablePush());assert.equal(help(android).open,true);
  const ios=await setup({ios:true,grantRequest:false});await assert.rejects(ios.pwa.enablePush());assert.equal(help(ios),undefined);
+});
+
+const onboarding=h=>h.elements.find(el=>el.className==='dt-push-onboarding');
+test('weekly reminder: no repeat before seven days, show on first visit after deadline',async()=>{
+ const recent=await setup({seen:Date.now()-6*86400000});assert.equal(onboarding(recent),undefined);
+ const due=await setup({seen:Date.now()-7*86400000,seenUrl:true});assert.ok(onboarding(due));
+ assert.equal(due.requests.filter(r=>r.url==='/seen').length,1);assert.equal(due.promptCount,0);
+ const reload=await setup({seen:due.cfg.onboardingSeen});assert.equal(onboarding(reload),undefined);
+});
+test('weekly reminder respects account timestamp when local storage is blocked',async()=>{
+ const h=await setup({seen:Date.now(),storageThrows:true});assert.equal(onboarding(h),undefined);
+ const local=await setup({localSeen:Date.now()});assert.equal(onboarding(local),undefined);
+});
+test('weekly reminder covers desktop and previously denied or granted-but-disabled accounts',async()=>{
+ for(const permission of ['default','denied','granted']){
+  const h=await setup({desktop:true,permission});assert.ok(onboarding(h));assert.equal(h.promptCount,0);assert.equal(h.cfg.pushEnabled,false);
+ }
+});
+test('active Push never shows reminder; broken device respects seven day interval',async()=>{
+ const active=await setup({enabled:true,permission:'granted',active:true});assert.equal(onboarding(active),undefined);
+ const recent=await setup({enabled:true,seen:Date.now()});assert.equal(onboarding(recent),undefined);
+});
+test('iPhone outside PWA shows installation help without prompting or initializing SDK',async()=>{
+ const h=await setup({ios:true,standalone:false});const modal=onboarding(h);assert.ok(modal);
+ await modal.querySelector('.dt-push-onboarding-enable').click();
+ assert.match(modal.querySelector('.dt-push-onboarding-status').textContent,/Safari\/Chrome/);
+ assert.equal(h.initCount,0);assert.equal(h.nativeCount,0);assert.equal(h.promptCount,0);
 });
