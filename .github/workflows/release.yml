@@ -112,6 +112,7 @@ jobs:
             --exclude='.github' \
             --exclude='.gitignore' \
             --exclude='build' \
+            --exclude='tests' \
             --exclude='*.zip' \
             ./ build/decka-typer/
           (cd build && zip -qr "../decka-typer-${VERSION}.zip" decka-typer)

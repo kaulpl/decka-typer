@@ -20,7 +20,7 @@ class DT_Notifications {
     }
 
     public static function defaults(): array {
-        return ['push'=>0,'email'=>0,'standard'=>1,'schedule_changes'=>1,'postponed'=>1,'incomplete'=>1,'reminder_6h'=>1,'reminder_3d'=>1];
+        return ['push'=>0,'standard'=>1,'schedule_changes'=>1,'postponed'=>1,'incomplete'=>1,'reminder_6h'=>1,'reminder_3d'=>1];
     }
 
     public static function template_defaults(): array {
@@ -91,7 +91,9 @@ class DT_Notifications {
     }
 
     public static function preferences(int $uid): array {
-        return wp_parse_args((array)get_user_meta($uid,self::META,true),self::defaults());
+        $preferences=wp_parse_args((array)get_user_meta($uid,self::META,true),self::defaults());
+        unset($preferences['email']);
+        return $preferences;
     }
 
     public static function save_preferences(int $uid, array $input): array {
@@ -112,11 +114,19 @@ class DT_Notifications {
             'callback'=>[__CLASS__, 'register_push_subscription'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
+        register_rest_route('decka-typer/v1', '/push-preference', ['methods'=>'POST','callback'=>[__CLASS__, 'disable_push'],'permission_callback'=>static fn()=>is_user_logged_in()]);
         register_rest_route('decka-typer/v1', '/push-test', [
             'methods'=>'POST',
             'callback'=>[__CLASS__, 'test_push_subscription'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
         ]);
+    }
+
+    public static function disable_push(WP_REST_Request $request): WP_REST_Response|WP_Error {
+        if (($request->get_json_params()['push']??null)!==false) return new WP_Error('invalid_preference','Ten endpoint służy do wyłączenia Push.',['status'=>422]);
+        $uid=get_current_user_id();$preferences=self::preferences($uid);$preferences['push']=0;
+        update_user_meta($uid,self::META,$preferences);
+        return new WP_REST_Response(['ok'=>true,'push_enabled'=>false]);
     }
 
     public static function register_push_subscription(WP_REST_Request $request): WP_REST_Response|WP_Error {
@@ -131,9 +141,12 @@ class DT_Notifications {
         $stored=array_slice($stored,0,10);
         update_user_meta($uid,self::SUBSCRIPTIONS_META,$stored);
         $preferences=self::preferences($uid);
-        $preferences['push']=1;
-        update_user_meta($uid,self::META,$preferences);
-        return new WP_REST_Response(['ok'=>true,'registered_devices'=>count($stored),'push_enabled'=>true]);
+        // Passive refresh must never undo an explicit account opt-out.
+        if (($body['activate']??false)===true) {
+            $preferences['push']=1;
+            update_user_meta($uid,self::META,$preferences);
+        }
+        return new WP_REST_Response(['ok'=>true,'registered_devices'=>count($stored),'push_enabled'=>!empty($preferences['push'])]);
     }
 
     public static function test_push_subscription(WP_REST_Request $request): WP_REST_Response|WP_Error {
@@ -147,7 +160,7 @@ class DT_Notifications {
         $result=self::send_channel($uid,'push','device_test','device-test-'.$uid.'-'.wp_generate_uuid4(),$copy['title'],$copy['message'],(int)$copy['round_id'],0,[$subscriptionId],$delaySeconds);
 
         $result['deliver_in_seconds']=$delaySeconds;
-        $result['message']=$result['ok']?'Test zaplanowany. Zamknij aplikację lub przejdź do ekranu głównego iPhone’a.':'OneSignal nie przyjął testu.';
+        $result['message']=$result['ok']?'Test zaplanowany. Zamknij aplikację lub przejdź do ekranu głównego telefonu.':'OneSignal nie przyjął testu.';
         return new WP_REST_Response($result,$result['ok']?200:502);
     }
 
@@ -241,6 +254,8 @@ class DT_Notifications {
         wp_enqueue_script('dt-notifications',DT_URL.'assets/js/notifications.js',[],DT_VERSION,true);
         wp_localize_script('dt-notifications','DeckaTyperNotifications',[
             'userId'=>get_current_user_id(),'pushReady'=>self::push_ready(),
+            'pushEnabled'=>!empty(self::preferences(get_current_user_id())['push']),
+            'preferenceUrl'=>rest_url('decka-typer/v1/push-preference'),
             'appId'=>self::push_ready()?(string)DT_ONESIGNAL_APP_ID:'',
             'workerPath'=>wp_make_link_relative(add_query_arg('dt_onesignal_worker','1',home_url('/'))),
             'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
@@ -265,7 +280,6 @@ class DT_Notifications {
             $eventKey='schedule-'.$matchId.'-'.md5((string)$new);
             self::send_channel($uid,'inapp','schedule_change',$eventKey,$title,$message,$roundId,$matchId);
             if (!empty($prefs['schedule_changes']) || !empty($prefs['postponed'])) {
-                if (!empty($prefs['email'])) self::send_channel($uid,'email','schedule_change',$eventKey,$title,$message,$roundId,$matchId);
                 if (!empty($prefs['push'])) self::send_channel($uid,'push','schedule_change',$eventKey,$title,$message,$roundId,$matchId);
             }
         }
@@ -304,7 +318,6 @@ class DT_Notifications {
     public static function deliver(int $uid,string $type,string $eventKey,string $title,string $message,int $roundId=0,int $matchId=0): void {
         $prefs=self::preferences($uid);
         self::send_channel($uid,'inapp',$type,$eventKey,$title,$message,$roundId,$matchId);
-        if (!empty($prefs['email'])) self::send_channel($uid,'email',$type,$eventKey,$title,$message,$roundId,$matchId);
         if (!empty($prefs['push'])) self::send_channel($uid,'push',$type,$eventKey,$title,$message,$roundId,$matchId);
     }
 
@@ -314,9 +327,8 @@ class DT_Notifications {
         $copy=self::render_template('test');
         $title=$copy['title'];
         $message=$copy['message'];
-        $channels=['inapp','email'];
-        if (self::push_ready()) $channels[]='push';
-        foreach ($channels as $channel) self::send_channel($uid,$channel,'admin_test',$eventKey,$title,$message,0,0);
+        $channels=['push'];
+        foreach ($channels as $channel) self::send_channel($uid,$channel,'admin_test',$eventKey,$title,$message,0,0,[],15);
 
         $rows=$wpdb->get_results($wpdb->prepare(
             'SELECT channel,status FROM '.DT_DB::table('notifications').' WHERE user_id=%d AND event_key=%s ORDER BY id ASC',
@@ -335,10 +347,7 @@ class DT_Notifications {
         $id=(int)$wpdb->insert_id;$ok=false;$response='';
         if ($channel==='inapp') {
             $ok=true;$response='Wiadomość zapisana w aplikacji';
-        } elseif ($channel==='email') {
-            $user=get_userdata($uid);$ok=$user?(bool)wp_mail((string)$user->user_email,$title,$message."\n\n".home_url('/')):false;
-            $response=$ok?'wp_mail accepted':'wp_mail failed';
-        } elseif (self::push_ready()) {
+        } elseif ($channel==='push' && self::push_ready()) {
             $subscriptionIds=$forcedSubscriptions?:self::subscription_ids($uid);
             $payload=['app_id'=>(string)DT_ONESIGNAL_APP_ID,'target_channel'=>'push','headings'=>['pl'=>$title,'en'=>$title],'contents'=>['pl'=>$message,'en'=>$message],'url'=>home_url('/')];
             if ($delaySeconds>0) $payload['send_after']=gmdate('c',time()+$delaySeconds);
