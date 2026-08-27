@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.18
+- Okno przypominające o włączeniu Web Push wraca przy wejściu do Typera po 7 dniach, jeśli urządzenie nie ma aktywnych przypomnień.
+- Termin zapisywany przy koncie i lokalnie od wyświetlenia okna; przycisk „Przypomnij za 7 dni”.
+- Obsługa komputerów i użytkowników z odmową zgody; na iPhonie poza PWA instrukcja Safari/Chrome. Bez automatycznego wywoływania zgody i bez wysyłki powiadomień.
+
 ## 0.6.17
 - Administracyjny test Push do wszystkich kont z włączonym Web Push, po obowiązkowym potwierdzeniu.
 - Wysyłka w partiach przez WP-Cron; ponowna kontrola zgody przed wysłaniem, oznaczenie TEST i edytowalny szablon.
