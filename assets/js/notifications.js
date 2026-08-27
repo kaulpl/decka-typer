@@ -39,6 +39,7 @@
             serviceWorkerPath:cfg.workerPath,
             serviceWorkerParam:{scope:cfg.workerScope||'/'},
             notifyButton:{enable:false},
+            welcomeNotification:{title:cfg.welcome.title,message:cfg.welcome.message,url:cfg.homeUrl},
             allowLocalhostAsSecureOrigin:false
           });
         }
@@ -82,10 +83,10 @@
     enable.addEventListener('click',async()=>{
       enable.disabled=true;later.disabled=true;enable.textContent='Włączanie…';status.textContent='Poczekaj na systemowe pytanie i wybierz „Zezwól”.';
       try{
-        await window.DeckaTyperPwa.testPush();
+        await window.DeckaTyperPwa.enablePush();
         localStorage.setItem(onboardingKey,'enabled');localStorage.removeItem(onboardingKey+'-later');
         const toggle=document.querySelector('[name="notify_push"]');if(toggle)toggle.checked=true;
-        modal.classList.add('is-success');enable.textContent='Powiadomienia są włączone';status.textContent='Gotowe! Okno zamknie się automatycznie, a test nadejdzie za około 15 sekund.';
+        modal.classList.add('is-success');enable.textContent='Powiadomienia są włączone';status.textContent='Gotowe! Powiadomienia zostały włączone. Okno zamknie się automatycznie.';
         setTimeout(()=>closeOnboarding(modal),1800);
       }catch(error){
         enable.disabled=false;later.disabled=false;enable.textContent='Spróbuj ponownie';status.textContent=error.message||'Nie udało się włączyć powiadomień.';
