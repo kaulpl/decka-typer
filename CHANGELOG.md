@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.12
+- Polskie, edytowalne powitanie OneSignal i wspólny prefiks tytułów „TypujKosza.pl - ”.
+- Usunięto automatyczny losowy test po aktywacji. Ręczne testy są jednoznacznie oznaczone jako test.
+- Dodano szablony powitania, zmiany terminu, przypomnień 3 dni/6 godzin oraz testu, z walidacją zmiennych i opisem danych.
+- Instrukcja instalacji na iPhonie wskazuje Safari/Chrome.
+- Naprawiono obsługę przełącznika Push po asynchronicznym udzieleniu zgody.
+
 ## 0.6.11
 - Uproszczono sekcję przypomnień do dwóch przełączników: E-mail oraz Web Push / PWA.
 - Usunięto z ustawień przełączniki rodzajów zdarzeń i terminów, test Push, kod QR oraz osobny przycisk aktywacji powiadomień.

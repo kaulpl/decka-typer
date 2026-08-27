@@ -154,10 +154,10 @@
       favoriteLeague=String(button.dataset.favoriteLeague||'1lm');
       render(account);
     }));
-    target.querySelector('[name="notify_push"]')?.addEventListener('change',async event=>{if(!event.currentTarget.checked)return;event.currentTarget.disabled=true;try{await window.DeckaTyperPwa?.enablePush();event.currentTarget.checked=true;}catch(error){event.currentTarget.checked=false;alert(error.message||'Nie udało się włączyć powiadomień.');}finally{event.currentTarget.disabled=false;}});
+    target.querySelector('[name="notify_push"]')?.addEventListener('change',async event=>{const toggle=event.currentTarget;if(!toggle.checked)return;toggle.disabled=true;try{await window.DeckaTyperPwa.enablePush();toggle.checked=true;}catch(error){toggle.checked=false;alert(error.message||'Nie udało się włączyć powiadomień.');}finally{toggle.disabled=false;}});
     target.querySelector('.dt-notification-info-button')?.addEventListener('click',event=>{const button=event.currentTarget;const help=target.querySelector('#dt-notification-help');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(open));if(help)help.hidden=!open;});
     target.querySelector('#dt-install-pwa')?.addEventListener('click',async()=>{
-      if(isIos()){alert('Na iPhonie dotknij ikony Udostępnij w Safari, a następnie wybierz „Do ekranu początkowego” i potwierdź „Dodaj”.');return;}
+      if(isIos()){alert('Na iPhonie dotknij ikony Udostępnij w Safari/Chrome, a następnie wybierz „Do ekranu początkowego” i potwierdź „Dodaj”.');return;}
       if(isAndroid()){
         const installed=await window.DeckaTyperPwa?.install();
         if(!installed)alert('Otwórz menu Chrome (trzy kropki) i wybierz „Dodaj do ekranu głównego” albo „Zainstaluj aplikację”.');

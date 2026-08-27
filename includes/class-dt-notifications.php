@@ -23,6 +23,73 @@ class DT_Notifications {
         return ['push'=>0,'email'=>0,'standard'=>1,'schedule_changes'=>1,'postponed'=>1,'incomplete'=>1,'reminder_6h'=>1,'reminder_3d'=>1];
     }
 
+    public static function template_defaults(): array {
+        return [
+            'welcome'=>['label'=>'Powitanie po pierwszej zgodzie Push','title'=>'Powiadomienia włączone','message'=>'Dziękujemy! Będziemy przypominać Ci o typowaniu i zmianach terminów.','variables'=>[]],
+            'schedule_change'=>['label'=>'Zmiana terminu meczu','title'=>'Zmiana terminu · {liga} {grupa}','message'=>'{mecz} — {kolejka}. Poprzedni termin: {stary_termin}. Nowy termin: {nowy_termin}. Twój typ wyzerowano — wybierz zwycięzcę ponownie.','variables'=>['liga','grupa','kolejka','mecz','stary_termin','nowy_termin']],
+            'reminder_3d'=>['label'=>'Przypomnienie 3 dni przed meczem','title'=>'Uzupełnij typy · {liga} {grupa}','message'=>'Zbliża się mecz {mecz} ({termin}) w kolejce „{kolejka}”. Liczba meczów pozostałych do wytypowania: {pozostalo}. Nie przegap typowania!','variables'=>['liga','grupa','kolejka','mecz','termin','pozostalo']],
+            'reminder_6h'=>['label'=>'Przypomnienie 6 godzin przed meczem','title'=>'Ostatnie godziny na typowanie · {liga} {grupa}','message'=>'Mecz {mecz} rozpocznie się {termin}. Kolejka: {kolejka}. Liczba meczów pozostałych do wytypowania: {pozostalo}. Uzupełnij swoje typy!','variables'=>['liga','grupa','kolejka','mecz','termin','pozostalo']],
+            'test'=>['label'=>'Ręczny test powiadomień','title'=>'Test powiadomień','message'=>'To jest test powiadomień. Jeśli widzisz tę wiadomość, ten kanał działa poprawnie.','variables'=>[]],
+        ];
+    }
+
+    public static function templates(): array {
+        $saved=(array)get_option('dt_notification_templates',[]);
+        $templates=self::template_defaults();
+        foreach ($templates as $key=>&$template) {
+            foreach (['title','message'] as $field) {
+                if (isset($saved[$key][$field]) && is_string($saved[$key][$field]) && trim($saved[$key][$field])!=='') $template[$field]=$saved[$key][$field];
+            }
+        }
+        unset($template);
+        return $templates;
+    }
+
+    public static function save_templates(array $input): bool|WP_Error {
+        $out=[];
+        foreach (self::template_defaults() as $key=>$default) {
+            foreach (['title','message'] as $field) {
+                if (!isset($input[$key][$field]) || !is_string($input[$key][$field])) return new WP_Error('invalid_template','Brakuje tytułu lub treści szablonu.');
+                $value=trim($field==='title'?sanitize_text_field($input[$key][$field]):sanitize_textarea_field($input[$key][$field]));
+                if ($value==='') return new WP_Error('empty_template','Tytuł i treść nie mogą być puste.');
+                preg_match_all('/\{([^{}]*)\}/u',$value,$matches);
+                foreach ($matches[1] as $variable) {
+                    if (!in_array($variable,$default['variables'],true)) return new WP_Error('invalid_variable','Nieznana zmienna {'.$variable.'} w szablonie „'.$default['label'].'”.');
+                }
+                if (preg_match('/[{}]/u',preg_replace('/\{[^{}]*\}/u','',$value))) return new WP_Error('invalid_variable','Sprawdź nawiasy zmiennych w szablonie „'.$default['label'].'”.');
+                $out[$key][$field]=$value;
+            }
+        }
+        update_option('dt_notification_templates',$out,false);
+        return true;
+    }
+
+    public static function notification_title(string $title): string {
+        $title=trim((string)preg_replace('/^(?:TypujKosza\.pl\s*[-–—]\s*)+/iu','',trim($title)));
+        preg_match('/^.{0,190}/us','TypujKosza.pl - '.$title,$match);
+        return $match[0];
+    }
+
+    public static function render_template(string $key,array $values=[]): array {
+        $template=self::templates()[$key];
+        $replace=[];
+        foreach ($template['variables'] as $variable) $replace['{'.$variable.'}']=sanitize_text_field((string)($values[$variable]??'—'));
+        return ['title'=>self::notification_title(strtr($template['title'],$replace)), 'message'=>strtr($template['message'],$replace)];
+    }
+
+    private static function template_context(int $roundId,int $matchId): array {
+        global $wpdb;
+        $round=$wpdb->get_row($wpdb->prepare('SELECT title,league_key,group_key FROM '.DT_DB::table('rounds').' WHERE id=%d',$roundId));
+        $match=$wpdb->get_row($wpdb->prepare('SELECT m.starts_at,h.name home_name,a.name away_name FROM '.DT_DB::table('matches').' m LEFT JOIN '.DT_DB::table('teams').' h ON h.id=m.home_team_id LEFT JOIN '.DT_DB::table('teams').' a ON a.id=m.away_team_id WHERE m.id=%d',$matchId));
+        return ['kolejka'=>$round->title??'najbliższa kolejka','liga'=>strtoupper((string)($round->league_key??'')), 'grupa'=>empty($round->group_key)?'':'grupa '.strtoupper((string)$round->group_key), 'mecz'=>$match?($match->home_name.' – '.$match->away_name):'mecz', 'termin'=>self::template_date($match->starts_at??null)];
+    }
+
+    private static function template_date(?string $date): string {
+        if (!$date || $date==='0000-00-00 00:00:00') return 'termin do ustalenia';
+        try { return (new DateTimeImmutable($date,wp_timezone()))->format('d.m.Y H:i'); }
+        catch (Exception $e) { return 'termin do ustalenia'; }
+    }
+
     public static function preferences(int $uid): array {
         return wp_parse_args((array)get_user_meta($uid,self::META,true),self::defaults());
     }
@@ -78,35 +145,14 @@ class DT_Notifications {
         $delaySeconds=15;
         $copy=self::device_test_copy();
         $result=self::send_channel($uid,'push','device_test','device-test-'.$uid.'-'.wp_generate_uuid4(),$copy['title'],$copy['message'],(int)$copy['round_id'],0,[$subscriptionId],$delaySeconds);
-        $result['test_variant']=$copy['variant'];
+
         $result['deliver_in_seconds']=$delaySeconds;
         $result['message']=$result['ok']?'Test zaplanowany. Zamknij aplikację lub przejdź do ekranu głównego iPhone’a.':'OneSignal nie przyjął testu.';
         return new WP_REST_Response($result,$result['ok']?200:502);
     }
 
     private static function device_test_copy(): array {
-        global $wpdb;
-        $round=$wpdb->get_row(
-            "SELECT id,title,league_key,group_key FROM ".DT_DB::table('rounds')."
-             WHERE status IN ('open','published') OR (closes_at IS NOT NULL AND closes_at>NOW())
-             ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END,closes_at ASC,id DESC LIMIT 1"
-        );
-        $roundTitle=$round&&trim((string)$round->title)!==''?(string)$round->title:'najbliższa kolejka';
-        $leagueKey=$round?strtolower((string)$round->league_key):'1lm';
-        $league=$leagueKey==='plk'?'PLK':($leagueKey==='2lm'?'2LM':'1LM');
-        if ($leagueKey==='2lm' && $round && trim((string)$round->group_key)!=='') $league.=' · grupa '.strtoupper((string)$round->group_key);
-        if (random_int(0,1)===0) {
-            return [
-                'variant'=>'schedule_change','round_id'=>$round?(int)$round->id:0,
-                'title'=>'Zmiana terminu meczu · '.$league,
-                'message'=>'Termin meczu w kolejce „'.$roundTitle.'” został zmieniony. Sprawdź swoje typowanie.',
-            ];
-        }
-        return [
-            'variant'=>'closing_reminder','round_id'=>$round?(int)$round->id:0,
-            'title'=>'2 dni do zamknięcia · '.$roundTitle.' · '.$league,
-            'message'=>'Nie przegap typowania! Uzupełnij swoje typy przed zamknięciem kolejki.',
-        ];
+        return array_merge(self::render_template('test'),['round_id'=>0]);
     }
 
     private static function subscription_ids(int $uid): array {
@@ -200,6 +246,7 @@ class DT_Notifications {
             'workerScope'=>trailingslashit(wp_make_link_relative(home_url('/'))),'homeUrl'=>home_url('/'),
             'subscriptionUrl'=>rest_url('decka-typer/v1/push-subscription'),
             'testUrl'=>rest_url('decka-typer/v1/push-test'),
+            'welcome'=>self::render_template('welcome'),
             'iconUrl'=>DT_URL.'assets/img/app-icon-192.png',
             'nonce'=>wp_create_nonce('wp_rest'),
         ]);
@@ -208,11 +255,13 @@ class DT_Notifications {
     public static function schedule_changed(int $matchId, int $roundId, ?string $old, ?string $new, array $userIds): void {
         global $wpdb;
         $wpdb->insert(DT_DB::table('schedule_changes'),['match_id'=>$matchId,'round_id'=>$roundId,'old_starts_at'=>$old,'new_starts_at'=>$new,'reset_count'=>count($userIds),'detected_at'=>current_time('mysql')]);
+        $context=self::template_context($roundId,$matchId);
+        $copy=self::render_template('schedule_change',array_merge($context,['stary_termin'=>self::template_date($old),'nowy_termin'=>self::template_date($new)]));
         foreach (array_unique(array_map('intval',$userIds)) as $uid) {
             if (!$uid) continue;
             $prefs=self::preferences($uid);
-            $title='Zmiana terminu meczu';
-            $message='Termin wytypowanego meczu został zmieniony. Twój typ wyzerowano — wybierz zwycięzcę ponownie.';
+            $title=$copy['title'];
+            $message=$copy['message'];
             $eventKey='schedule-'.$matchId.'-'.md5((string)$new);
             self::send_channel($uid,'inapp','schedule_change',$eventKey,$title,$message,$roundId,$matchId);
             if (!empty($prefs['schedule_changes']) || !empty($prefs['postponed'])) {
@@ -239,6 +288,7 @@ class DT_Notifications {
     private static function remind_match(object $match,string $window): void {
         global $wpdb;
         $users=$wpdb->get_col($wpdb->prepare("SELECT DISTINCT u.ID FROM {$wpdb->users} u WHERE EXISTS(SELECT 1 FROM ".DT_DB::table('predictions')." p WHERE p.user_id=u.ID) OR EXISTS(SELECT 1 FROM ".DT_DB::table('round_submissions')." s WHERE s.user_id=u.ID) OR EXISTS(SELECT 1 FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key=%s)",self::META));
+        $context=self::template_context((int)$match->round_id,(int)$match->id);
         foreach ((array)$users as $uid) {
             $uid=(int)$uid;$prefs=self::preferences($uid);
             if (empty($prefs['standard']) || empty($prefs['incomplete']) || empty($prefs['reminder_'.$window])) continue;
@@ -246,8 +296,8 @@ class DT_Notifications {
             if ($has) continue;
             $remaining=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM ".DT_DB::table('matches')." m LEFT JOIN ".DT_DB::table('predictions')." p ON p.match_id=m.id AND p.user_id=%d WHERE m.round_id=%d AND m.starts_at>%s AND p.id IS NULL",$uid,(int)$match->round_id,current_time('mysql')));
             if (!$remaining) continue;
-            $league=strtoupper((string)$match->league_key).((string)$match->group_key!==''?' grupa '.strtoupper((string)$match->group_key):'');
-            self::deliver($uid,'incomplete','reminder-'.$window.'-'.(int)$match->id.'-'.md5((string)$match->starts_at),'Uzupełnij typy · '.$league,'Pozostało '.number_format_i18n($remaining).' meczów do wytypowania w kolejce „'.(string)$match->title.'”.',(int)$match->round_id,(int)$match->id);
+            $copy=self::render_template('reminder_'.$window,array_merge($context,['pozostalo'=>number_format_i18n($remaining)]));
+            self::deliver($uid,'incomplete','reminder-'.$window.'-'.(int)$match->id.'-'.md5((string)$match->starts_at),$copy['title'],$copy['message'],(int)$match->round_id,(int)$match->id);
         }
     }
 
@@ -261,8 +311,9 @@ class DT_Notifications {
     public static function send_admin_test(int $uid): array {
         global $wpdb;
         $eventKey='admin-test-'.$uid.'-'.wp_generate_uuid4();
-        $title='Test powiadomień TypujKosza.pl';
-        $message='Jeśli widzisz tę wiadomość, kanał powiadomień działa poprawnie. Artur melduje gotowość!';
+        $copy=self::render_template('test');
+        $title=$copy['title'];
+        $message=$copy['message'];
         $channels=['inapp','email'];
         if (self::push_ready()) $channels[]='push';
         foreach ($channels as $channel) self::send_channel($uid,$channel,'admin_test',$eventKey,$title,$message,0,0);
@@ -277,6 +328,7 @@ class DT_Notifications {
 
     private static function send_channel(int $uid,string $channel,string $type,string $eventKey,string $title,string $message,int $roundId,int $matchId,array $forcedSubscriptions=[],int $delaySeconds=0): array {
         global $wpdb;
+        $title=self::notification_title($title);
         $table=DT_DB::table('notifications');$now=current_time('mysql');
         $inserted=$wpdb->insert($table,['user_id'=>$uid,'channel'=>$channel,'event_key'=>$eventKey,'event_type'=>$type,'title'=>$title,'message'=>$message,'round_id'=>$roundId?:null,'match_id'=>$matchId?:null,'status'=>'queued','created_at'=>$now]);
         if (!$inserted) return ['ok'=>false,'status'=>'failed','response'=>'Nie udało się zapisać testu w historii powiadomień.'];

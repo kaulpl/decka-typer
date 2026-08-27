@@ -35,6 +35,9 @@ jobs:
         shell: bash
         run: find . -type f -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
 
+      - name: Notification template regression tests
+        run: php tests/notification-templates.php
+
       - name: Version consistency
         shell: bash
         run: |
