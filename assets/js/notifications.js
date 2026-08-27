@@ -9,7 +9,7 @@
   const permissionState=()=>window.Notification?.permission||'default';
   const storage={get:key=>{try{return localStorage.getItem(key);}catch(_){return null;}},set:(key,value)=>{try{localStorage.setItem(key,value);}catch(_){}},remove:key=>{try{localStorage.removeItem(key);}catch(_){}}};
   const publish=(message,active=false)=>{pwa.state={ready:!!sdk,active,message};document.dispatchEvent(new CustomEvent('dt:push-state',{detail:pwa.state}));};
-  const blockedMessage=()=>isIos()?'iPhone blokuje powiadomienia. Sprawdź Ustawienia → Powiadomienia → TypujKosza. Strona nie może ponownie wyświetlić zgody po odmowie.':'Powiadomienia są zablokowane. W ustawieniach tej witryny w przeglądarce zezwól na powiadomienia. Sprawdź też uprawnienia przeglądarki w ustawieniach Androida.';
+  const blockedMessage=()=>isIos()?'Nie uzyskano zgody na powiadomienia w tej instalacji PWA. Otwórz TypujKosza z ikony na ekranie głównym. Jeśli po kliknięciu nie pojawia się pytanie i nie ma wpisu w ustawieniach iPhone’a, zgłoś ten komunikat — nie potwierdza on istnienia blokady w ustawieniach.':'Powiadomienia są zablokowane. W ustawieniach tej witryny w przeglądarce zezwól na powiadomienia. Sprawdź też uprawnienia przeglądarki w ustawieniach Androida.';
   const post=async(url,body)=>{
     const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);
     try{
@@ -39,7 +39,7 @@
   const reconcile=async()=>{
     if(!sdk||activating)return;
     if(!cfg.pushEnabled){publish('Przypomnienia Web Push są wyłączone dla konta.');return;}
-    if(permissionState()==='denied'){publish(blockedMessage());return;}
+    if(!isIos()&&permissionState()==='denied'){publish(blockedMessage());return;}
     if(activeSubscription()&&await browserSubscription()){
       await saveSubscription(String(sdk.User.PushSubscription.id));
       publish('To urządzenie ma aktywną subskrypcję Web Push. Dostarczenie zależy także od ustawień systemu.',true);
@@ -54,7 +54,8 @@
       window.OneSignalDeferred.push(async OneSignal=>{
         try{
           await OneSignal.init({appId:cfg.appId,serviceWorkerPath:cfg.workerPath,serviceWorkerParam:{scope:cfg.workerScope||'/'},notifyButton:{enable:false},promptOptions:{slidedown:{prompts:[{type:'push',autoPrompt:false}]}},autoResubscribe:!!cfg.pushEnabled,welcomeNotification:{title:cfg.welcome.title,message:cfg.welcome.message,url:cfg.homeUrl},allowLocalhostAsSecureOrigin:false});
-          await OneSignal.login(String(cfg.userId));
+          // iPhone: restore permission -> login -> opt-in for a new installation.
+          if(!isIos()||OneSignal.Notifications.permission)await OneSignal.login(String(cfg.userId));
           sdk=OneSignal;
           sdk.User.PushSubscription.addEventListener('change',scheduleSync);
           sdk.Notifications.addEventListener('permissionChange',scheduleSync);
@@ -71,7 +72,9 @@
     if(isIos()&&!isStandalone())return Promise.reject(new Error('Na iPhonie otwórz aplikację z ikony na ekranie głównym.'));
     if(!sdk)return Promise.reject(new Error(pwa.state.message||'Poczekaj na przygotowanie powiadomień.'));
     if(activating)return Promise.reject(new Error('Aktywacja już trwa.'));
-    if(permissionState()==='denied')return Promise.reject(new Error(blockedMessage()));
+    // On iPhone let the SDK/browser handle the explicit request, as before 0.6.13.
+    // Never reset browser permissions or claim that a system settings entry exists.
+    if(!isIos()&&permissionState()==='denied')return Promise.reject(new Error(blockedMessage()));
     // Call the permission API directly in the click handler, before any await.
     activating=true;
     let permission;
@@ -80,6 +83,7 @@
       try{
         await permission;
         if(!sdk.Notifications.permission)throw new Error(permissionState()==='denied'?blockedMessage():'Nie udzielono zgody. Kliknij przełącznik ponownie i wybierz „Zezwól”.');
+        if(isIos())await sdk.login(String(cfg.userId));
         await sdk.User.PushSubscription.optIn();
         const id=await waitForSubscription();
         await saveSubscription(id,true);cfg.pushEnabled=true;
@@ -100,7 +104,7 @@
   const showPushOnboarding=()=>{
     const eligibleDevice=(isIos()&&isStandalone())||isAndroid();
     if(!cfg.pushReady||!eligibleDevice||!sdk||pwa.state.active||document.querySelector('.dt-push-onboarding'))return;
-    if(permissionState()!=='default'&&!cfg.pushEnabled)return;
+    if(!isIos()&&permissionState()!=='default'&&!cfg.pushEnabled)return;
     const postponed=Number(storage.get(onboardingKey+'-later')||0);
     if(!cfg.pushEnabled&&postponed&&Date.now()-postponed<86400000)return;
     const modal=document.createElement('div');
@@ -110,7 +114,7 @@
     document.body.appendChild(modal);requestAnimationFrame(()=>modal.classList.add('is-visible'));
     const enable=modal.querySelector('.dt-push-onboarding-enable'),later=modal.querySelector('.dt-push-onboarding-later'),status=modal.querySelector('.dt-push-onboarding-status');
     later.addEventListener('click',()=>{storage.set(onboardingKey+'-later',String(Date.now()));closeOnboarding(modal);});
-    if(permissionState()==='denied')status.textContent=blockedMessage();
+    if(!isIos()&&permissionState()==='denied')status.textContent=blockedMessage();
     enable.addEventListener('click',async()=>{
       enable.disabled=true;later.disabled=true;enable.textContent='Włączanie…';status.textContent='Poczekaj na systemowe pytanie i wybierz „Zezwól”.';
       try{
