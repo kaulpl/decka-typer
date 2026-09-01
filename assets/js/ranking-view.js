@@ -53,10 +53,10 @@
   const renderFilters=()=>{
     filters.innerHTML='';
     filters.classList.add('is-visible');
-    const leagueBar=document.createElement('div');leagueBar.className='dt-filter-segmented dt-filter-leagues';
+    const leagueBar=document.createElement('div');leagueBar.className='dt-filter-segmented dt-filter-leagues';leagueBar.dataset.label='Liga lub klub';leagueBar.setAttribute('aria-label','Wybierz ligę lub ranking klubowy');
     leagueBar.innerHTML=leagues.map(l=>`<button type="button" data-filter-league="${esc(l.key)}" class="${l.key===league?'is-active':''}">${esc(l.name)}</button>`).join('');
     filters.appendChild(leagueBar);
-    if(league==='2lm'&&groups.length){const groupBar=document.createElement('div');groupBar.className='dt-filter-segmented dt-filter-groups';groupBar.innerHTML=groups.map(g=>`<button type="button" data-filter-group="${esc(normalizeGroup(g))}" class="${normalizeGroup(g)===normalizeGroup(group)?'is-active':''}">GRUPA ${esc(normalizeGroup(g))}</button>`).join('');filters.appendChild(groupBar);}
+    if(league==='2lm'&&groups.length){const groupBar=document.createElement('div');groupBar.className='dt-filter-segmented dt-filter-groups';groupBar.dataset.label='Grupa 2LM';groupBar.setAttribute('aria-label','Wybierz grupę 2LM');groupBar.innerHTML=groups.map(g=>`<button type="button" data-filter-group="${esc(normalizeGroup(g))}" class="${normalizeGroup(g)===normalizeGroup(group)?'is-active':''}">GRUPA ${esc(normalizeGroup(g))}</button>`).join('');filters.appendChild(groupBar);}
     if(league==='clubs'){
       const clubSelect=document.createElement('select');
       clubSelect.className='dt-ranking-select dt-ranking-club-select';
@@ -68,7 +68,7 @@
     }
     if(scope==='all')return;
 
-    const seasonBar=document.createElement('div');seasonBar.className='dt-filter-segmented dt-filter-seasons';seasonBar.innerHTML=seasons.map(s=>`<button type="button" data-filter-season="${esc(s)}" class="${s===season?'is-active':''}">${esc(s)}</button>`).join('');filters.appendChild(seasonBar);
+    const seasonBar=document.createElement('div');seasonBar.className='dt-filter-segmented dt-filter-seasons';seasonBar.dataset.label='Sezon';seasonBar.setAttribute('aria-label','Wybierz sezon');seasonBar.innerHTML=seasons.map(s=>`<button type="button" data-filter-season="${esc(s)}" class="${s===season?'is-active':''}">${esc(s)}</button>`).join('');filters.appendChild(seasonBar);
 
     if(scope==='month'){
       const monthSelect=document.createElement('select');

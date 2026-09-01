@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.20
+- Przebudowano mobilny Ranking jako czytelne karty bez poziomego przewijania: miejsce, użytkownik i punkty w nagłówku oraz statystyki w układzie 2×2.
+- Filtry zakresu ułożono w siatce 2×2, a ligi, kluby, grupy i sezony w osobnych, opisanych sekcjach dopasowanych do szerokości telefonu.
+- Powiększono typografię i pola dotykowe, poprawiono kontrast punktów, etykiet statystyk, podium i oznaczenia Ekspert.
+- Widok desktopowy oraz obliczanie rankingu pozostają bez zmian.
+
 ## 0.6.19
 - Ranking: nowy filtr „KLUBY” obok filtrów ligowych, z rozwijaną listą klubów wybranych przez użytkowników jako ulubione.
 - Ranking klubowy ogranicza klasyfikację do kibiców wybranego klubu, zachowując zakres Wszechczasów / Sezon / Miesiąc / Kolejka i licząc wyniki ze wszystkich lig.
