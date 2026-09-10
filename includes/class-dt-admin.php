@@ -145,8 +145,9 @@ class DT_Admin {
         $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
         $total=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM ".DT_DB::table('rounds')." r WHERE r.season=%s $leagueSql $groupSql",$s['season']));
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT r.*,COUNT(m.id) matches,MIN(m.starts_at) first_match,MAX(m.starts_at) last_match,
+            "SELECT r.*,COUNT(m.id) matches,
              MIN(CASE WHEN m.start_time_known=1 THEN m.starts_at END) first_known_match,
+             MAX(CASE WHEN m.start_time_known=1 THEN m.starts_at END) last_known_match,
              (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss WHERE ss.round_id=r.id) submissions
              FROM " . DT_DB::table('rounds') . " r LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
              WHERE r.season=%s $leagueSql $groupSql GROUP BY r.id ORDER BY r.league_key,r.group_key,r.round_no LIMIT %d OFFSET %d", $s['season'],$perPage,($dtPage-1)*$perPage
@@ -158,12 +159,12 @@ class DT_Admin {
         if($league==='2lm') self::group_tabs('decka-typer-rounds',$group);
         echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Kolejka</th><th>Termin meczów</th><th>Mecze</th><th>Kupony</th><th>Status</th><th>Zamknięcie typowania</th><th>Źródło</th><th>Akcje</th></tr></thead><tbody>';
         foreach ($rows as $r) {
-            $range = $r->first_match ? substr(self::date_pl($r->first_match),0,10) . ' – ' . substr(self::date_pl($r->last_match),0,10) : '—';
+            $range = $r->first_known_match ? substr(self::date_pl($r->first_known_match),0,10) . ' – ' . substr(self::date_pl($r->last_known_match),0,10) : '—';
             $openData = [
                 'id'=>(int)$r->id,
                 'title'=>$r->title,
-                'default_close'=>self::html_datetime($r->closes_at ?: $r->first_known_match),
-                'first_match'=>self::date_pl($r->first_known_match ?: $r->first_match),
+                'default_close'=>self::html_datetime($r->first_known_match),
+                'first_match'=>self::date_pl($r->first_known_match),
             ];
             $leagueLabel = strtoupper((string)$r->league_key) . ($r->group_key ? ' · grupa '.(string)$r->group_key : '');
             echo '<tr><td><small class="dt-muted">'.esc_html($leagueLabel).'</small><br><strong>' . esc_html($r->title) . '</strong></td><td>' . esc_html($range) . '</td><td>' . (int)$r->matches . '</td><td>' . (int)$r->submissions . '</td><td>' . self::round_badge((string)$r->status) . '</td><td><strong>' . esc_html(self::date_pl($r->closes_at)) . '</strong></td><td>' . self::badge($r->source === 'manual' ? 'Ręcznie' : 'Auto PZKosz', $r->source === 'manual' ? 'orange' : 'blue') . '</td><td>';

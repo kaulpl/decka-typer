@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.21
+- Kolejki automatyczne otwierają się dokładnie 7 dni przed pierwszym meczem ze znaną godziną i zamykają z chwilą jego rozpoczęcia.
+- Daty otwarcia i zamknięcia są ponownie wyliczane z aktualnego terminarza po każdej synchronizacji oraz przy wejściu na stronę.
+- Panel kolejek pokazuje zakres wyłącznie na podstawie meczów ze znanym terminem, dzięki czemu daty zastępcze nie są prezentowane jako rzeczywiste.
+- Okno „Otwórz typowanie” zawsze wstawia aktualną datę i godzinę pierwszego meczu danej kolejki zamiast wcześniej zapisanego terminu.
+
 ## 0.6.20
 - Przebudowano mobilny Ranking jako czytelne karty bez poziomego przewijania: miejsce, użytkownik i punkty w nagłówku oraz statystyki w układzie 2×2.
 - Filtry zakresu ułożono w siatce 2×2, a ligi, kluby, grupy i sezony w osobnych, opisanych sekcjach dopasowanych do szerokości telefonu.
