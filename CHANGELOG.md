@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.22
+- Dodano do pulpitu administratora kompaktowy dashboard rejestracji użytkowników.
+- Dashboard pokazuje łączną liczbę kont oraz nowych użytkowników: dzisiaj, w ostatnich 7 dniach i w bieżącym miesiącu.
+- Trzy wykresy pierścieniowe prezentują procentowy udział nowych kont w całej bazie, z dokładną wartością liczbową i opisem.
+- Zakresy czasu są obliczane zgodnie ze strefą czasową serwisu, a zapytanie do bazy wykonuje wszystkie podsumowania jednocześnie.
+
 ## 0.6.21
 - Kolejki automatyczne otwierają się dokładnie 7 dni przed pierwszym meczem ze znaną godziną i zamykają z chwilą jego rozpoczęcia.
 - Daty otwarcia i zamknięcia są ponownie wyliczane z aktualnego terminarza po każdej synchronizacji oraz przy wejściu na stronę.

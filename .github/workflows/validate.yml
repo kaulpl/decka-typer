@@ -41,6 +41,12 @@ jobs:
       - name: Club ranking regression tests
         run: php tests/ranking-clubs.php
 
+      - name: Round availability regression tests
+        run: php tests/round-availability.php
+
+      - name: Admin user dashboard regression tests
+        run: php tests/admin-user-dashboard.php
+
       - name: Push lifecycle regression tests
         run: node --test tests/push-lifecycle.cjs
 
