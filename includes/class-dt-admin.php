@@ -101,6 +101,39 @@ class DT_Admin {
         return $d ? $d->format('Y-m-d\TH:i') : '';
     }
 
+    private static function user_registration_stats(): array {
+        global $wpdb;
+        $localNow = new DateTimeImmutable('now', wp_timezone());
+        $utc = new DateTimeZone('UTC');
+        $now = $localNow->setTimezone($utc)->format('Y-m-d H:i:s');
+        $today = $localNow->setTime(0,0)->setTimezone($utc)->format('Y-m-d H:i:s');
+        $week = $localNow->modify('-7 days')->setTimezone($utc)->format('Y-m-d H:i:s');
+        $month = $localNow->modify('first day of this month')->setTime(0,0)->setTimezone($utc)->format('Y-m-d H:i:s');
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT COUNT(*) total,
+             SUM(CASE WHEN user_registered BETWEEN %s AND %s THEN 1 ELSE 0 END) today,
+             SUM(CASE WHEN user_registered BETWEEN %s AND %s THEN 1 ELSE 0 END) week,
+             SUM(CASE WHEN user_registered BETWEEN %s AND %s THEN 1 ELSE 0 END) month
+             FROM {$wpdb->users}
+             WHERE user_registered<>'0000-00-00 00:00:00' AND user_registered<=%s",
+            $today,$now,$week,$now,$month,$now,$now
+        ));
+        return [
+            'total'=>(int)($row->total ?? 0),
+            'today'=>(int)($row->today ?? 0),
+            'week'=>(int)($row->week ?? 0),
+            'month'=>(int)($row->month ?? 0),
+        ];
+    }
+
+    private static function user_growth_item(string $label, int $value, int $total, string $tone): void {
+        $share = $total > 0 ? min(100, round(($value / $total) * 100, 2)) : 0;
+        $shareLabel = number_format_i18n($share, $share < 1 && $share > 0 ? 2 : 1) . '%';
+        echo '<div class="dt-user-growth-item dt-user-growth-' . esc_attr($tone) . '">';
+        echo '<div class="dt-user-ring" style="--dt-user-share:' . esc_attr((string)$share) . '%" role="img" aria-label="' . esc_attr($label . ': ' . $shareLabel . ' wszystkich użytkowników') . '"><strong>' . esc_html($shareLabel) . '</strong></div>';
+        echo '<div><span>' . esc_html($label) . '</span><strong>' . esc_html((string)$value) . '</strong><small>nowych kont</small></div></div>';
+    }
+
     public static function dashboard(): void {
         global $wpdb;
         $s = DT_DB::settings();
@@ -109,6 +142,7 @@ class DT_Admin {
         $matches = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . DT_DB::table('matches') . ' m JOIN ' . DT_DB::table('rounds') . ' r ON r.id=m.round_id WHERE r.season=%s', $season));
         $submissions = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s', $season));
         $players = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(DISTINCT s.user_id) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s', $season));
+        $users = self::user_registration_stats();
         $open = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . DT_DB::table('rounds') . " WHERE season=%s AND status='open' ORDER BY round_no LIMIT 1", $season));
         $last = get_option('dt_last_sync');
 
@@ -119,6 +153,13 @@ class DT_Admin {
         self::metric('Kupony',$submissions,'forms','violet');
         self::metric('Gracze',$players,'groups','green');
         echo '</div>';
+
+        echo '<section class="dt-card dt-section dt-user-dashboard"><div class="dt-card-head"><div><span class="dt-eyebrow">UŻYTKOWNICY</span><h2>Rejestracje w serwisie</h2><p class="dt-muted">Bieżący udział nowych kont w całej bazie użytkowników.</p></div><span class="dashicons dashicons-chart-area" aria-hidden="true"></span></div>';
+        echo '<div class="dt-user-dashboard-grid"><div class="dt-user-total"><div class="dt-user-total-icon"><span class="dashicons dashicons-groups"></span></div><div><span>Wszyscy zarejestrowani</span><strong>' . esc_html((string)$users['total']) . '</strong><small>kont użytkowników</small></div></div><div class="dt-user-growth-grid">';
+        self::user_growth_item('Dzisiaj',$users['today'],$users['total'],'orange');
+        self::user_growth_item('Ostatnie 7 dni',$users['week'],$users['total'],'blue');
+        self::user_growth_item('Ten miesiąc',$users['month'],$users['total'],'green');
+        echo '</div></div></section>';
 
         echo '<div class="dt-grid dt-grid-2 dt-section"><section class="dt-card"><span class="dt-eyebrow">AKTYWNE TYPOWANIE</span><h2>' . esc_html($open ? $open->title : 'Brak otwartej kolejki') . '</h2>';
         if ($open) {
