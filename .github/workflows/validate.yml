@@ -47,6 +47,9 @@ jobs:
       - name: Admin user dashboard regression tests
         run: php tests/admin-user-dashboard.php
 
+      - name: Complete admin user list regression tests
+        run: php tests/admin-users.php
+
       - name: Push lifecycle regression tests
         run: node --test tests/push-lifecycle.cjs
 

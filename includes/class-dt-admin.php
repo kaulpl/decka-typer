@@ -560,7 +560,7 @@ class DT_Admin {
         $s = DT_DB::settings();
         $seasonSql = $wpdb->prepare('%s', $s['season']);
         $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
-        $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users} u WHERE EXISTS(SELECT 1 FROM ".DT_DB::table('predictions')." p WHERE p.user_id=u.ID) OR EXISTS(SELECT 1 FROM ".DT_DB::table('round_submissions')." s WHERE s.user_id=u.ID)");
+        $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}");
         $users = $wpdb->get_results(
             "SELECT u.ID,u.display_name,u.user_email,
                 (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss JOIN " . DT_DB::table('rounds') . " rr ON rr.id=ss.round_id WHERE ss.user_id=u.ID AND rr.season=$seasonSql) submissions,
@@ -568,17 +568,15 @@ class DT_Admin {
                 (SELECT COALESCE(SUM(pp.points),0) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.selected_team_id IS NOT NULL) points,
                 (SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.scoring_code='winner') winner_hits
              FROM {$wpdb->users} u
-             WHERE EXISTS(SELECT 1 FROM " . DT_DB::table('predictions') . " ppp WHERE ppp.user_id=u.ID)
-                OR EXISTS(SELECT 1 FROM " . DT_DB::table('round_submissions') . " sss WHERE sss.user_id=u.ID)
              ORDER BY points DESC,u.display_name LIMIT ".(int)$perPage." OFFSET ".(int)(($dtPage-1)*$perPage)
         );
-        self::shell('Użytkownicy','Uczestnicy Typera i ręczne korekty punktów');
+        self::shell('Użytkownicy','Wszystkie zarejestrowane konta i ręczne korekty punktów');
         echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Użytkownik</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Ekspert</th><th>Korekta</th></tr></thead><tbody>';
         foreach ($users as $u) {
             $expert = DT_User_Settings::is_expert((int)$u->ID);
             echo '<tr class="'.($expert?'dt-expert-row':'').'"><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($u->display_name) . ($expert?' <span class="dt-expert-badge">EKSPERT!</span>':'') . '</strong><small class="dt-muted">' . esc_html($u->user_email) . '</small></span></div></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_toggle_expert"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_toggle_expert'); echo '<button class="button '.($expert?'dt-unmark-expert':'dt-mark-expert').'">'.($expert?'Odznacz jako ekspert':'Oznacz jako ekspert').'</button></form></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="± pkt" required><input name="reason" placeholder="Powód" required><button class="button">Dodaj</button></form></td></tr>';
         }
-        if (!$users) echo '<tr><td colspan="7" class="dt-empty">Brak uczestników.</td></tr>';
+        if (!$users) echo '<tr><td colspan="7" class="dt-empty">Brak zarejestrowanych użytkowników.</td></tr>';
         echo '</tbody></table></section>';
         self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-users']);
         self::end_shell();
