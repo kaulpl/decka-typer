@@ -13,6 +13,6 @@ check(!str_contains($usersSource, 'WHERE EXISTS(SELECT 1 FROM '), 'Main user lis
 check(!str_contains($usersSource, 'sss WHERE sss.user_id=u.ID'), 'Main user list has no submission activity filter');
 check(str_contains($usersSource, 'ORDER BY points DESC,u.display_name LIMIT ".(int)$perPage." OFFSET ".(int)(($dtPage-1)*$perPage)'), 'User query remains paginated in SQL');
 check(str_contains($usersSource, '$perPage=25'), 'Page size remains bounded');
-check(str_contains($usersSource, "self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-users'])"), 'Pagination controls use complete total');
+check(str_contains($usersSource, "self::pagination(" . '$total,$perPage,$dtPage' . ",['page'=>'decka-typer-users'])"), 'Pagination controls use complete total');
 
 echo "Complete admin user list: OK\n";
