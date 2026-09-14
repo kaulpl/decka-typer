@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.23
+- Zakładka „Użytkownicy” w panelu administratora pokazuje wszystkie konta WordPress, także osoby bez oddanego typu i bez zapisanego kuponu.
+- Nieaktywni użytkownicy mają zerowe wartości kuponów, typów, trafień i punktów, ale zachowują dostępne akcje administracyjne.
+- Lista jest pobierana z bazy partiami po 25 rekordów i korzysta z istniejącej paginacji także przy dużej liczbie kont.
+
 ## 0.6.22
 - Dodano do pulpitu administratora kompaktowy dashboard rejestracji użytkowników.
 - Dashboard pokazuje łączną liczbę kont oraz nowych użytkowników: dzisiaj, w ostatnich 7 dniach i w bieżącym miesiącu.
