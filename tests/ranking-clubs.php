@@ -21,6 +21,7 @@ $wpdb = new class {
     public string $users='wp_users';
     public string $usermeta='wp_usermeta';
     public array $queries=[];
+    public bool $returnRankingRows=false;
     public function prepare($query, ...$args) {
         foreach ($args as $arg) {
             $replacement=is_int($arg)?(string)$arg:"'".addslashes((string)$arg)."'";
@@ -35,6 +36,17 @@ $wpdb = new class {
     }
     public function get_results($query, $format=null): array {
         $this->queries[]=$query;
+        if ($this->returnRankingRows && str_contains($query,'SELECT u.ID user_id')) {
+            $rows=[];
+            for ($id=1;$id<=31;$id++) $rows[]=[
+                'user_id'=>(string)$id,
+                'display_name'=>'Kibic '.$id,
+                'predictions'=>'10',
+                'points'=>(string)(32-$id),
+                'winner_hits'=>(string)(32-$id),
+            ];
+            return $rows;
+        }
         if (str_contains($query,'COUNT(DISTINCT um.user_id) supporters')) return [
             ['id'=>'8','name'=>'Decka Pelplin','short_name'=>'Decka','supporters'=>'4'],
             ['id'=>'15','name'=>'Spójnia Stargard','short_name'=>'Spójnia','supporters'=>'2'],
@@ -53,6 +65,7 @@ check($response->data['favorite_team_id']===15,'Selected favorite club preserved
 check(count($response->data['favorite_teams'])===2,'Only clubs selected by users returned');
 check($response->data['favorite_teams'][0]['supporters']===4,'Supporter count normalized');
 check(in_array(['key'=>'clubs','name'=>'KLUBY'],$response->data['leagues'],true),'KLUBY option returned');
+check($response->data['pagination']===['page'=>1,'per_page'=>25,'total'=>0,'pages'=>1],'Empty ranking pagination returned');
 $rankingQueries=array_values(array_filter($wpdb->queries,static fn($sql)=>str_contains($sql,'FROM wp_users u')||str_contains($sql,'SELECT x.user_id,COUNT(*) perfect_rounds')));
 check(count($rankingQueries)>=2,'Ranking and perfect-round queries executed');
 foreach ($rankingQueries as $sql) {
@@ -64,4 +77,17 @@ $fallback=DT_Ranking_View::ranking(new WP_REST_Request([
     'scope'=>'season','season'=>'2026/27','league'=>'clubs','favorite_team_id'=>999,
 ]));
 check($fallback->data['favorite_team_id']===8,'Unknown club replaced with first available club');
+
+$wpdb->returnRankingRows=true;
+$secondPage=DT_Ranking_View::ranking(new WP_REST_Request([
+    'scope'=>'season','season'=>'2026/27','league'=>'1lm','page'=>2,
+]));
+check($secondPage->data['pagination']===['page'=>2,'per_page'=>25,'total'=>31,'pages'=>2],'Second page metadata returned');
+check(count($secondPage->data['ranking'])===6,'Second page contains remaining rows');
+check($secondPage->data['ranking'][0]['rank']===26,'Global rank preserved on second page');
+
+$pastLastPage=DT_Ranking_View::ranking(new WP_REST_Request([
+    'scope'=>'season','season'=>'2026/27','league'=>'1lm','page'=>99,
+]));
+check($pastLastPage->data['pagination']['page']===2,'Page beyond range clamped to last page');
 echo "Club ranking: OK\n";
