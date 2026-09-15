@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.25
+- Ranking wyświetla po 15 użytkowników na stronę zamiast 25.
+- Zaktualizowano metadane paginacji i testy zachowania globalnych miejsc na kolejnych stronach.
+
 ## 0.6.24
 - Dodano paginację publicznego Rankingu po 25 użytkowników na stronę.
 - Nawigacja pokazuje zakres pozycji, łączną liczbę uczestników, numery stron oraz przyciski poprzedniej i następnej strony.

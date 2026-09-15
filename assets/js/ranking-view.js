@@ -98,7 +98,7 @@
     const current=Math.max(1,Number(meta?.page||1));
     const pages=Math.max(1,Number(meta?.pages||1));
     const total=Math.max(0,Number(meta?.total||0));
-    const perPage=Math.max(1,Number(meta?.per_page||25));
+    const perPage=Math.max(1,Number(meta?.per_page||15));
     if(pages<=1)return '';
     const candidates=[1,current-2,current-1,current,current+1,current+2,pages].filter(value=>value>=1&&value<=pages);
     const numbers=[...new Set(candidates)].sort((a,b)=>a-b);
