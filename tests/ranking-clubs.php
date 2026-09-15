@@ -65,7 +65,7 @@ check($response->data['favorite_team_id']===15,'Selected favorite club preserved
 check(count($response->data['favorite_teams'])===2,'Only clubs selected by users returned');
 check($response->data['favorite_teams'][0]['supporters']===4,'Supporter count normalized');
 check(in_array(['key'=>'clubs','name'=>'KLUBY'],$response->data['leagues'],true),'KLUBY option returned');
-check($response->data['pagination']===['page'=>1,'per_page'=>25,'total'=>0,'pages'=>1],'Empty ranking pagination returned');
+check($response->data['pagination']===['page'=>1,'per_page'=>15,'total'=>0,'pages'=>1],'Empty ranking pagination returned');
 $rankingQueries=array_values(array_filter($wpdb->queries,static fn($sql)=>str_contains($sql,'FROM wp_users u')||str_contains($sql,'SELECT x.user_id,COUNT(*) perfect_rounds')));
 check(count($rankingQueries)>=2,'Ranking and perfect-round queries executed');
 foreach ($rankingQueries as $sql) {
@@ -82,12 +82,12 @@ $wpdb->returnRankingRows=true;
 $secondPage=DT_Ranking_View::ranking(new WP_REST_Request([
     'scope'=>'season','season'=>'2026/27','league'=>'1lm','page'=>2,
 ]));
-check($secondPage->data['pagination']===['page'=>2,'per_page'=>25,'total'=>31,'pages'=>2],'Second page metadata returned');
-check(count($secondPage->data['ranking'])===6,'Second page contains remaining rows');
-check($secondPage->data['ranking'][0]['rank']===26,'Global rank preserved on second page');
+check($secondPage->data['pagination']===['page'=>2,'per_page'=>15,'total'=>31,'pages'=>3],'Second page metadata returned');
+check(count($secondPage->data['ranking'])===15,'Second page contains 15 rows');
+check($secondPage->data['ranking'][0]['rank']===16,'Global rank preserved on second page');
 
 $pastLastPage=DT_Ranking_View::ranking(new WP_REST_Request([
     'scope'=>'season','season'=>'2026/27','league'=>'1lm','page'=>99,
 ]));
-check($pastLastPage->data['pagination']['page']===2,'Page beyond range clamped to last page');
+check($pastLastPage->data['pagination']['page']===3,'Page beyond range clamped to last page');
 echo "Club ranking: OK\n";

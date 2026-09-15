@@ -56,7 +56,7 @@ class DT_Ranking_View {
             $roundId = 0;
         }
 
-        $perPage = 25;
+        $perPage = 15;
         $page = max(1, (int)$request->get_param('page'));
         $ranking = self::rows($scope, $season, $roundId, $rankingLeague, $group, $month, $league === 'clubs' ? ($favoriteTeamId ?: -1) : 0);
         $total = count($ranking);
