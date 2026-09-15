@@ -56,6 +56,13 @@ class DT_Ranking_View {
             $roundId = 0;
         }
 
+        $perPage = 25;
+        $page = max(1, (int)$request->get_param('page'));
+        $ranking = self::rows($scope, $season, $roundId, $rankingLeague, $group, $month, $league === 'clubs' ? ($favoriteTeamId ?: -1) : 0);
+        $total = count($ranking);
+        $pages = max(1, (int)ceil($total / $perPage));
+        $page = min($page, $pages);
+
         return new WP_REST_Response([
             'scope'=>$scope,
             'season'=>$season,
@@ -70,7 +77,13 @@ class DT_Ranking_View {
             'seasons'=>$seasons,
             'rounds'=>$rounds,
             'months'=>$months,
-            'ranking'=>self::rows($scope, $season, $roundId, $rankingLeague, $group, $month, $league === 'clubs' ? ($favoriteTeamId ?: -1) : 0),
+            'ranking'=>array_slice($ranking, ($page - 1) * $perPage, $perPage),
+            'pagination'=>[
+                'page'=>$page,
+                'per_page'=>$perPage,
+                'total'=>$total,
+                'pages'=>$pages,
+            ],
         ]);
     }
 
@@ -270,6 +283,6 @@ class DT_Ranking_View {
             $last=$key;
         }
         unset($row);
-        return array_slice($rows, 0, 500);
+        return $rows;
     }
 }

@@ -14,6 +14,7 @@
   let rounds=[];
   let months=[];
   let league='1lm',leagues=[],group='',groups=[],favoriteTeams=[],favoriteTeamId=0;
+  let page=1;
   let loadingSeq=0;
 
   const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
@@ -42,6 +43,7 @@
     if(league==='clubs'&&favoriteTeamId)qs.set('favorite_team_id',String(favoriteTeamId));
     if(scope==='month'&&month)qs.set('month',month);
     if(scope==='round'&&roundId)qs.set('round_id',String(roundId));
+    qs.set('page',String(page));
     const headers={Accept:'application/json'};
     if(cfg.nonce)headers['X-WP-Nonce']=cfg.nonce;
     const response=await fetch(cfg.root+'ranking-view?'+qs.toString(),{credentials:'same-origin',headers});
@@ -63,7 +65,7 @@
       clubSelect.setAttribute('aria-label','Wybierz ulubiony klub kibiców');
       clubSelect.innerHTML=favoriteTeams.length?favoriteTeams.map(team=>`<option value="${Number(team.id)}" ${Number(team.id)===favoriteTeamId?'selected':''}>${esc(team.name)} (${Number(team.supporters||0)})</option>`).join(''):'<option value="">Brak klubów wybranych przez użytkowników</option>';
       clubSelect.disabled=!favoriteTeams.length;
-      clubSelect.addEventListener('change',()=>{favoriteTeamId=Number(clubSelect.value||0);roundId=0;month='';load();});
+      clubSelect.addEventListener('change',()=>{favoriteTeamId=Number(clubSelect.value||0);roundId=0;month='';page=1;load();});
       filters.appendChild(clubSelect);
     }
     if(scope==='all')return;
@@ -76,7 +78,7 @@
       monthSelect.setAttribute('aria-label','Wybierz miesiąc');
       monthSelect.innerHTML=months.length?months.map(item=>`<option value="${esc(item)}" ${item===month?'selected':''}>${esc(monthLabel(item))}</option>`).join(''):'<option value="">Brak miesięcy z zapisanymi typami</option>';
       monthSelect.disabled=!months.length;
-      monthSelect.addEventListener('change',()=>{month=monthSelect.value||'';load();});
+      monthSelect.addEventListener('change',()=>{month=monthSelect.value||'';page=1;load();});
       filters.appendChild(monthSelect);
     }else if(scope==='round'){
       const roundSelect=document.createElement('select');
@@ -85,13 +87,33 @@
       roundSelect.innerHTML=rounds.map(r=>`<option value="${r.id}" ${Number(r.id)===Number(roundId)?'selected':''}>${esc(r.title||`${r.round_no}. kolejka`)}</option>`).join('');
       roundSelect.addEventListener('change',()=>{
         roundId=Number(roundSelect.value||0);
+        page=1;
         load();
       });
       filters.appendChild(roundSelect);
     }
   };
 
-  const renderRows=rows=>{
+  const renderPagination=meta=>{
+    const current=Math.max(1,Number(meta?.page||1));
+    const pages=Math.max(1,Number(meta?.pages||1));
+    const total=Math.max(0,Number(meta?.total||0));
+    const perPage=Math.max(1,Number(meta?.per_page||25));
+    if(pages<=1)return '';
+    const candidates=[1,current-2,current-1,current,current+1,current+2,pages].filter(value=>value>=1&&value<=pages);
+    const numbers=[...new Set(candidates)].sort((a,b)=>a-b);
+    let last=0;
+    const buttons=numbers.map(value=>{
+      const gap=last&&value-last>1?'<span class="dt-pagination-gap" aria-hidden="true">…</span>':'';
+      last=value;
+      return `${gap}<button type="button" data-rank-page="${value}" class="${value===current?'is-active':''}" ${value===current?'aria-current="page"':''} aria-label="Strona ${value}">${value}</button>`;
+    }).join('');
+    const first=(current-1)*perPage+1;
+    const lastItem=Math.min(total,current*perPage);
+    return `<nav class="dt-ranking-pagination" aria-label="Strony rankingu"><span class="dt-pagination-summary">Pozycje ${first}–${lastItem} z ${total}</span><div class="dt-pagination-buttons"><button type="button" data-rank-page="${current-1}" ${current<=1?'disabled':''} aria-label="Poprzednia strona">‹</button>${buttons}<button type="button" data-rank-page="${current+1}" ${current>=pages?'disabled':''} aria-label="Następna strona">›</button></div></nav>`;
+  };
+
+  const renderRows=(rows,pagination)=>{
     if(!Array.isArray(rows)||!rows.length){
       box.innerHTML='<div class="dt-empty-front">Brak danych dla wybranego rankingu.</div>';
       return;
@@ -112,7 +134,8 @@
           <div class="dt-rank-perfect" data-label="Perfekcyjne kolejki"><strong>${Number(r.perfect_eight_rounds||0)}</strong><small>perfekcyjne 8/8</small></div>
           <div class="dt-rank-bonus" data-label="Bonus"><strong>${n(r.bonus_points)>0?`+${fmtPoints(r.bonus_points)} pkt`:'0'}</strong><small>${Number(r.bonus_hits||0)} trafień BONUS</small></div>
         </div>`;
-      }).join('')}`;
+      }).join('')}
+      ${renderPagination(pagination)}`;
   };
 
   const load=async()=>{
@@ -133,9 +156,10 @@
       group=normalizeGroup(data.group||group||groups[0]||'');
       roundId=Number(data.round_id||roundId||0);
       month=String(data.month||month||months[0]||'');
+      page=Math.max(1,Number(data.pagination?.page||page));
       if(scope==='round'&&!roundId&&rounds.length)roundId=Number(rounds[rounds.length-1].id);
       renderFilters();
-      renderRows(data.ranking||[]);
+      renderRows(data.ranking||[],data.pagination||{});
     }catch(e){
       box.innerHTML=`<div class="dt-empty-front">${esc(e.message||'Nie udało się pobrać rankingu.')}</div>`;
     }
@@ -146,14 +170,16 @@
     legacyToggle.querySelectorAll('[data-rank-scope]').forEach(x=>x.classList.toggle('is-active',x===btn));
     if(scope==='round')roundId=0;
     if(scope==='month')month='';
+    page=1;
     load();
   }));
 
   root.addEventListener('click',e=>{
     if(e.target.closest('[data-tab="ranking"]'))setTimeout(load,0);
-    const leagueButton=e.target.closest('[data-filter-league]');if(leagueButton){league=leagueButton.dataset.filterLeague||'all';group='';favoriteTeamId=0;roundId=0;month='';load();return;}
-    const groupButton=e.target.closest('[data-filter-group]');if(groupButton){group=normalizeGroup(groupButton.dataset.filterGroup);roundId=0;month='';load();return;}
-    const seasonButton=e.target.closest('[data-filter-season]');if(seasonButton){season=seasonButton.dataset.filterSeason||season;roundId=0;month='';load();}
+    const pageButton=e.target.closest('[data-rank-page]');if(pageButton&&!pageButton.disabled){page=Math.max(1,Number(pageButton.dataset.rankPage||1));load();panel.scrollIntoView({behavior:'smooth',block:'start'});return;}
+    const leagueButton=e.target.closest('[data-filter-league]');if(leagueButton){league=leagueButton.dataset.filterLeague||'all';group='';favoriteTeamId=0;roundId=0;month='';page=1;load();return;}
+    const groupButton=e.target.closest('[data-filter-group]');if(groupButton){group=normalizeGroup(groupButton.dataset.filterGroup);roundId=0;month='';page=1;load();return;}
+    const seasonButton=e.target.closest('[data-filter-season]');if(seasonButton){season=seasonButton.dataset.filterSeason||season;roundId=0;month='';page=1;load();}
   });
 
   load();

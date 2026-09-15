@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.24
+- Dodano paginację publicznego Rankingu po 25 użytkowników na stronę.
+- Nawigacja pokazuje zakres pozycji, łączną liczbę uczestników, numery stron oraz przyciski poprzedniej i następnej strony.
+- Zmiana zakresu, ligi, klubu, grupy, sezonu, miesiąca lub kolejki automatycznie wraca na pierwszą stronę.
+- Miejsca i remisy są nadal obliczane globalnie dla całego wybranego rankingu, a nie osobno dla każdej strony.
+
 ## 0.6.23
 - Zakładka „Użytkownicy” w panelu administratora pokazuje wszystkie konta WordPress, także osoby bez oddanego typu i bez zapisanego kuponu.
 - Nieaktywni użytkownicy mają zerowe wartości kuponów, typów, trafień i punktów, ale zachowują dostępne akcje administracyjne.
