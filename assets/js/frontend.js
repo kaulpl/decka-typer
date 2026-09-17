@@ -159,7 +159,8 @@
     else meta.push(`<span class="dt-meta-pill">${icon('lock')}Typowanie zamknięte</span>`);
     const serverProgress=round.prediction_progress||{selected:0,total:matches.length,remaining:matches.length};
     const progress={total:Number(serverProgress.total||matches.length),selected:Math.min(Number(serverProgress.total||matches.length),Number(serverProgress.selected||0)+state.picks.size)};progress.remaining=Math.max(0,progress.total-progress.selected);
-    meta.push(`<span class="dt-meta-pill is-success dt-pick-progress">${icon('check')}Wytypowano ${progress.selected}/${progress.total}</span>`);
+    const progressComplete=progress.total>0&&progress.remaining===0;
+    meta.push(`<span class="dt-meta-pill ${progressComplete?'is-success':'is-danger'} dt-pick-progress">${icon(progressComplete?'check':'alert')}Wytypowano ${progress.selected}/${progress.total}</span>`);
     if(progress.remaining>0)meta.push(`<span class="dt-meta-pill is-warning">${icon('alert')}Pozostały ${progress.remaining} mecze</span>`);
     meta.push(`<span class="dt-meta-pill">${icon('target')}${matches.length} meczów</span>`);
     $('#dt-round-meta').innerHTML=meta.join('');

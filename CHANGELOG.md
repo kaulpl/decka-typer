@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.26
+- Niepełne typowanie kolejki jest wyróżnione mocnym czerwonym przyciskiem z białym tekstem i ikoną ostrzeżenia.
+- Komplet typów jest wyróżniony mocnym zielonym przyciskiem z białym tekstem i ikoną potwierdzenia.
+- Status jest liczony względem rzeczywistej liczby meczów w kolejce, także dla kolejek innych niż 8-meczowe, i odświeża się podczas wybierania typów.
+
 ## 0.6.25
 - Ranking wyświetla po 15 użytkowników na stronę zamiast 25.
 - Zaktualizowano metadane paginacji i testy zachowania globalnych miejsc na kolejnych stronach.
