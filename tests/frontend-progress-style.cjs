@@ -9,6 +9,7 @@ const css = fs.readFileSync(path.join(root, 'assets/css/frontend.css'), 'utf8');
 assert.match(js, /progressComplete=progress\.total>0&&progress\.remaining===0/);
 assert.match(js, /progressComplete\?'is-success':'is-danger'/);
 assert.match(js, /progressComplete\?'check':'alert'/);
+assert.doesNotMatch(js, /icon\('target'\).*matches\.length.*meczów/);
 assert.match(css, /\.dt-pick-progress\.is-danger\{background:#c91f36!important\}/);
 assert.match(css, /\.dt-pick-progress\.is-success\{background:#138a55!important\}/);
 assert.match(css, /\.dt-pick-progress\{[^}]*color:#fff!important/);

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.27
+- Usunięto z paska informacji kolejki osobną etykietę pokazującą łączną liczbę meczów.
+- Liczba spotkań pozostaje widoczna w statusie „Wytypowano x/y”, bez powielania tej samej informacji.
+
 ## 0.6.26
 - Niepełne typowanie kolejki jest wyróżnione mocnym czerwonym przyciskiem z białym tekstem i ikoną ostrzeżenia.
 - Komplet typów jest wyróżniony mocnym zielonym przyciskiem z białym tekstem i ikoną potwierdzenia.
