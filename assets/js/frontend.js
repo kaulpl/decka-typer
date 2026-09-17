@@ -162,7 +162,6 @@
     const progressComplete=progress.total>0&&progress.remaining===0;
     meta.push(`<span class="dt-meta-pill ${progressComplete?'is-success':'is-danger'} dt-pick-progress">${icon(progressComplete?'check':'alert')}Wytypowano ${progress.selected}/${progress.total}</span>`);
     if(progress.remaining>0)meta.push(`<span class="dt-meta-pill is-warning">${icon('alert')}Pozostały ${progress.remaining} mecze</span>`);
-    meta.push(`<span class="dt-meta-pill">${icon('target')}${matches.length} meczów</span>`);
     $('#dt-round-meta').innerHTML=meta.join('');
     $('#dt-matches').innerHTML=matches.length?matches.map(matchCard).join(''):'<div class="dt-empty-front">Brak meczów w tej kolejce.</div>';
     const resolved=matches.filter(m=>m.score_home!==null&&m.score_home!==undefined&&m.score_away!==null&&m.score_away!==undefined&&m.prediction);
