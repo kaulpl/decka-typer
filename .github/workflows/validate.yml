@@ -53,6 +53,9 @@ jobs:
       - name: Push lifecycle regression tests
         run: node --test tests/push-lifecycle.cjs
 
+      - name: Frontend prediction progress regression tests
+        run: node tests/frontend-progress-style.cjs
+
       - name: Version consistency
         shell: bash
         run: |
