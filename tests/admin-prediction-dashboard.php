@@ -1,6 +1,7 @@
 <?php
 if (PHP_SAPI !== 'cli') exit;
 define('ABSPATH', __DIR__);
+define('ARRAY_A', 'ARRAY_A');
 function check($value, $message) { if (!$value) throw new RuntimeException($message); }
 function wp_timezone() { return new DateTimeZone('Europe/Warsaw'); }
 class DT_DB { public static function table(string $name): string { return 'dt_' . $name; } }
