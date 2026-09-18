@@ -111,8 +111,8 @@
     state.picks.clear();
   };
   const preferredLeague=rounds=>{
-    const open1lm=rounds.find(r=>r.is_open&&String(r.league_key)==='1lm');
-    const open=open1lm||rounds.find(r=>r.is_open);
+    const first1lm=rounds.find(r=>String(r.league_key)==='1lm');
+    const open=first1lm||rounds.find(r=>r.is_open);
     return String(open?.league_key||rounds[0]?.league_key||'1lm');
   };
   const normalizeGroup=value=>String(value||'').trim().toUpperCase();

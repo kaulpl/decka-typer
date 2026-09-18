@@ -540,10 +540,13 @@ class DT_REST {
 
     private static function pick_current_round(array $rounds): ?array {
         if (!$rounds) return null;
-        // 1LM is the leading competition. Prefer its open round on the first
-        // application load, then fall back to any other open competition.
+        // Always start in 1LM when it has a visible round, even if that round
+        // is closed and another league is open. Among closed rounds show the latest.
         foreach ($rounds as $round) {
             if (!empty($round['is_open']) && (string)($round['league_key'] ?? '') === '1lm') return $round;
+        }
+        for ($i = count($rounds) - 1; $i >= 0; $i--) {
+            if ((string)($rounds[$i]['league_key'] ?? '') === '1lm') return $rounds[$i];
         }
         foreach ($rounds as $round) if (!empty($round['is_open'])) return $round;
         return end($rounds) ?: null;

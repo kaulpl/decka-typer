@@ -44,6 +44,9 @@ jobs:
       - name: Round availability regression tests
         run: php tests/round-availability.php
 
+      - name: Default 1LM round regression tests
+        run: php tests/default-league.php
+
       - name: Live score separation regression tests
         run: php tests/live-scores.php
 
