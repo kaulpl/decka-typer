@@ -36,7 +36,7 @@ $wpdb = new class($closed1Utc,$closedPlkUtc,$date($closed1),$date($closedPlk),$d
             $row(3,'plk','',1,null,$closedPlk,8,20,10,5),
             $row(4,'2lm','A',1,null,$closed1,7,9,4,1),
             $row(5,'2lm','B',1,$closed1,$future,8,11,0,0),
-            $row(6,'2lm','C',1,$futureOpen,$future,8,0,0),
+            $row(6,'2lm','C',1,$futureOpen,$future,8,0,0,0),
         ];
     }
     public function prepare($query,...$args) { $this->queries[]=['sql'=>$query,'args'=>$args]; $this->arguments=$args; return $query; }
