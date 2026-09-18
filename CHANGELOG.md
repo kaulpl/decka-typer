@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.30
+- Po wejściu na stronę domyślnie wybierana jest kolejka 1LM także wtedy, gdy jest zamknięta, a kolejki innych lig są otwarte.
+- Wśród zamkniętych kolejek 1LM pokazywana jest najnowsza widoczna kolejka; po otwarciu kolejnej 1LM pierwszeństwo ma kolejka otwarta.
+
 ## 0.6.29
 - Dodano informacyjny wynik LIVE, kwartę i zegar w trwających meczach 1LM i 2LM na podstawie oficjalnej tablicy PZKosz „teraz gramy”.
 - Wynik LIVE znika po zakończeniu spotkania; wyniki rozliczające typy nadal pochodzą ze zwykłej synchronizacji terminarza.
