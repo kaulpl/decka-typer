@@ -136,15 +136,14 @@
 
     const labels=qa('.dt-meta-pill',meta).map(node=>String(node.textContent||'').trim());
     const closed=labels.some(text=>text.includes('Typowanie zamknięte'));
-    const submitted=labels.some(text=>text.includes('Kupon zapisany'));
     let note=q('#dt-missed-round-note');
 
-    if(closed&&!submitted&&currentRoundId()>0){
+    if(closed&&currentRoundId()>0){
       if(!note){
         note=document.createElement('div');
         note.id='dt-missed-round-note';
         note.className='dt-missed-round-note';
-        note.innerHTML='<strong>Kolejka została zamknięta</strong><span>Nie oddałeś tutaj swojego typu. Możesz przejrzeć mecze i wyniki, ale kuponu nie można już zapisać.</span>';
+        note.innerHTML='<strong>Kolejka została zamknięta</strong><span>Nie można już oddawać typów w tej kolejce.</span>';
         matches.insertAdjacentElement('beforebegin',note);
       }
     }else if(note){

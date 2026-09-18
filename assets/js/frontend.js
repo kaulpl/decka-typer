@@ -18,6 +18,32 @@
   }
   const $=(s,c=root)=>c.querySelector(s), $$=(s,c=root)=>[...c.querySelectorAll(s)];
   const state={boot:null,round:null,picks:new Map(),tab:'picks',rankMode:'season',saving:false,league:'',group:''};
+  let liveRequest=0;
+  const refreshLive=async()=>{
+    const round=state.round;
+    if(!round||!['1lm','2lm'].includes(round.league_key)||document.hidden)return;
+    const now=Date.now();
+    if(!(round.matches||[]).some(m=>m.starts_at_iso&&new Date(m.starts_at_iso).getTime()<now+3600000&&new Date(m.starts_at_iso).getTime()>now-18*3600000))return;
+    const request=++liveRequest;
+    try{
+      const data=await api(`live-scores?round_id=${Number(round.id)}`);
+      if(request!==liveRequest||Number(state.round?.id)!==Number(round.id))return;
+      $$('[data-match-card]').forEach(card=>{
+        const live=data.matches?.[card.dataset.match];
+        let row=card.querySelector('.dt-live-score');
+        card.classList.toggle('has-live-score',!!live);
+        if(!live){row?.remove();return;}
+        if(!row){row=document.createElement('div');row.className='dt-live-score';card.querySelector('.dt-winner-grid')?.insertAdjacentElement('afterend',row);}
+        const clock=/^\d{1,2}:\d{2}$/.test(live.clock||'')?` · ${esc(live.clock)}`:'';
+        row.innerHTML=`<strong class="dt-live-badge">LIVE</strong><span>${esc(live.home)} : ${esc(live.away)}</span><small>${esc(Number(live.quarter)>4?'Dogrywka':`K${Number(live.quarter)}`)}${clock} · wynik informacyjny</small>`;
+      });
+    }catch(_){
+      // Expired information must never look live after the source becomes unavailable.
+      if(request===liveRequest)$$('.dt-match.has-live-score').forEach(card=>{card.classList.remove('has-live-score');card.querySelector('.dt-live-score')?.remove();});
+    }
+  };
+  setInterval(refreshLive,20000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshLive();});
 
   const icon=n=>{
     const p={calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',alert:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.6 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.6a2 2 0 0 0-3.4 0z"/>',chevDownDouble:'<path d="m7 7 5 5 5-5"/><path d="m7 12 5 5 5-5"/>'};
@@ -164,6 +190,7 @@
     if(progress.remaining>0)meta.push(`<span class="dt-meta-pill is-warning">${icon('alert')}Pozostały ${progress.remaining} mecze</span>`);
     $('#dt-round-meta').innerHTML=meta.join('');
     $('#dt-matches').innerHTML=matches.length?matches.map(matchCard).join(''):'<div class="dt-empty-front">Brak meczów w tej kolejce.</div>';
+    refreshLive();
     const resolved=matches.filter(m=>m.score_home!==null&&m.score_home!==undefined&&m.score_away!==null&&m.score_away!==undefined&&m.prediction);
     if(!open&&!submitted)avatar('closed');
     else if(submitted&&resolved.length===matches.length&&matches.length){const hits=resolved.filter(m=>Number(m.prediction?.points||0)>0).length;avatar(hits===matches.length?'perfect':(hits===0?'missed':'thinking'));}

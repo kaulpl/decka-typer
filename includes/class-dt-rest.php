@@ -13,6 +13,10 @@ class DT_REST {
         register_rest_route('decka-typer/v1', '/round/(?P<id>\\d+)', [
             'methods'=>'GET', 'callback'=>[__CLASS__,'round'], 'permission_callback'=>'__return_true',
         ]);
+        register_rest_route('decka-typer/v1', '/live-scores', [
+            'methods'=>'GET', 'callback'=>['DT_Live_Scores','route'], 'permission_callback'=>'__return_true',
+            'args'=>['round_id'=>['required'=>true, 'sanitize_callback'=>'absint']],
+        ]);
         register_rest_route('decka-typer/v1', '/submission', [
             'methods'=>'POST', 'callback'=>[__CLASS__,'save_submission'],
             'permission_callback'=>static fn()=>is_user_logged_in(),
