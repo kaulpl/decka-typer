@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.28
+- Dodano do pulpitu administratora dashboard aktywności typowania dla bieżącego sezonu.
+- Wskaźnik wykorzystania pokazuje oddane typy względem wszystkich miejsc dostępnych w kolejkach otwartych i zamkniętych.
+- Skuteczność pokazuje liczbę i procent trafnych typów wyłącznie wśród rozstrzygniętych meczów.
+- Osobna karta pokazuje liczbę i procent trafionych typów w rozstrzygniętych meczach BONUS.
+- Każda karta zawiera wykres pierścieniowy, wartości liczbowe oraz opis mianownika; układ jest responsywny.
+
 ## 0.6.27
 - Usunięto z paska informacji kolejki osobną etykietę pokazującą łączną liczbę meczów.
 - Liczba spotkań pozostaje widoczna w statusie „Wytypowano x/y”, bez powielania tej samej informacji.
