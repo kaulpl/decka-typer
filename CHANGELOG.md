@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.31
+- Aktywność typowania na pulpicie administratora jest liczona oddzielnie dla 1LM, PLK i 2LM, wraz z grupami 2LM w rozbiciu kolejek.
+- Możliwe typy są sumą iloczynów liczby meczów z ustaloną godziną i liczby kont istniejących przed zamknięciem danej kolejki; w kolejce otwartej liczone są konta na bieżąco.
+- Pod kartami każdej ligi można sprawdzić liczby meczów, uprawnionych użytkowników, typów możliwych i oddanych dla poszczególnych kolejek.
+- Skuteczność i trafienia BONUS są także podzielone według ligi.
+
 ## 0.6.30
 - Po wejściu na stronę domyślnie wybierana jest kolejka 1LM także wtedy, gdy jest zamknięta, a kolejki innych lig są otwarte.
 - Wśród zamkniętych kolejek 1LM pokazywana jest najnowsza widoczna kolejka; po otwarciu kolejnej 1LM pierwszeństwo ma kolejka otwarta.

@@ -134,58 +134,86 @@ class DT_Admin {
         echo '<div><span>' . esc_html($label) . '</span><strong>' . esc_html((string)$value) . '</strong><small>nowych kont</small></div></div>';
     }
 
-    private static function prediction_dashboard_stats(string $season, int $registeredUsers): array {
+    private static function prediction_dashboard_stats(string $season): array {
         global $wpdb;
         $predictions = DT_DB::table('predictions');
         $matches = DT_DB::table('matches');
         $rounds = DT_DB::table('rounds');
-        $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT COUNT(DISTINCT m.id) eligible_matches,
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT r.id round_id,r.league_key,r.group_key,r.round_no,r.opens_at,r.closes_at,
+             MIN(CASE WHEN m.start_time_known=1 THEN m.starts_at END) first_match,
+             COUNT(DISTINCT m.id) eligible_matches,
              COUNT(CASE WHEN p.selected_team_id IS NOT NULL THEN 1 END) submitted,
              SUM(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL THEN 1 ELSE 0 END) resolved,
              SUM(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND p.scoring_code='winner' THEN 1 ELSE 0 END) hits
-             FROM $matches m
-             JOIN $rounds r ON r.id=m.round_id
+             FROM $rounds r
+             JOIN $matches m ON m.round_id=r.id AND m.start_time_known=1 AND m.starts_at IS NOT NULL
              LEFT JOIN $predictions p ON p.match_id=m.id
              WHERE r.season=%s AND r.status IN ('open','closed')",
             $season
-        ));
-        $eligibleMatches = (int)($row->eligible_matches ?? 0);
-        $submitted = (int)($row->submitted ?? 0);
-        $resolved = (int)($row->resolved ?? 0);
-        $hits = (int)($row->hits ?? 0);
-        $possible = $eligibleMatches * max(0, $registeredUsers);
+        ) . ' GROUP BY r.id,r.league_key,r.group_key,r.round_no,r.opens_at,r.closes_at ORDER BY r.league_key,r.group_key,r.round_no', ARRAY_A);
+        $now = new DateTimeImmutable('now', wp_timezone());
+        $utc = new DateTimeZone('UTC');
+        $result = [];
+        foreach (['1lm', 'plk', '2lm'] as $key) {
+            $result[$key] = ['eligible_matches'=>0,'possible'=>0,'submitted'=>0,'resolved'=>0,'hits'=>0,
+                'bonus_resolved'=>0,'bonus_hits'=>0,'rounds'=>[]];
+        }
+        foreach ((array)$rows as $row) {
+            $league = (string)($row['league_key'] ?? '');
+            if (!isset($result[$league])) continue;
+            $close = self::local_dt((string)($row['closes_at'] ?: $row['first_match']));
+            $open = self::local_dt((string)($row['opens_at'] ?? ''));
+            if (!$close || ($open && $open > $now)) continue;
+            $cutoff = $close < $now ? $close : $now;
+            if ($open && $open > $cutoff) continue;
+            $registered = (int)$wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->users} WHERE user_registered<>'0000-00-00 00:00:00' AND user_registered<=%s",
+                $cutoff->setTimezone($utc)->format('Y-m-d H:i:s')
+            ));
+            $matchesCount = (int)$row['eligible_matches'];
+            $round = [
+                'id'=>(int)$row['round_id'], 'group'=>(string)$row['group_key'], 'number'=>(int)$row['round_no'],
+                'matches'=>$matchesCount,'users'=>$registered,'possible'=>$matchesCount*$registered,
+                'submitted'=>(int)$row['submitted'], 'resolved'=>(int)$row['resolved'], 'hits'=>(int)$row['hits'],
+            ];
+            $result[$league]['rounds'][] = $round;
+            foreach (['eligible_matches'=>'matches','possible'=>'possible','submitted'=>'submitted','resolved'=>'resolved','hits'=>'hits'] as $total=>$field) {
+                $result[$league][$total] += $round[$field];
+            }
+        }
 
-        $bonusResolved = 0;
-        $bonusHits = 0;
         $bonusIds = class_exists('DT_Bonus') ? array_values(array_filter(array_map('intval', DT_Bonus::match_ids()))) : [];
         if ($bonusIds) {
             $placeholders = implode(',', array_fill(0, count($bonusIds), '%d'));
-            $bonus = $wpdb->get_row($wpdb->prepare(
-                "SELECT COUNT(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL THEN 1 END) bonus_resolved,
+            $bonuses = $wpdb->get_results($wpdb->prepare(
+                "SELECT r.league_key,r.id round_id,
+                 COUNT(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL THEN 1 END) bonus_resolved,
                  SUM(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND p.scoring_code='winner' THEN 1 ELSE 0 END) bonus_hits
                  FROM $predictions p
                  JOIN $matches m ON m.id=p.match_id
                  JOIN $rounds r ON r.id=m.round_id
-                 WHERE m.id IN ($placeholders) AND r.season=%s AND r.status IN ('open','closed')",
+                 WHERE m.id IN ($placeholders) AND r.season=%s AND r.status IN ('open','closed')
+                   AND m.start_time_known=1 AND m.starts_at IS NOT NULL
+                 GROUP BY r.league_key,r.id",
                 ...array_merge($bonusIds, [$season])
-            ));
-            $bonusResolved = (int)($bonus->bonus_resolved ?? 0);
-            $bonusHits = (int)($bonus->bonus_hits ?? 0);
+            ), ARRAY_A);
+            foreach ((array)$bonuses as $bonus) {
+                $key = (string)$bonus['league_key'];
+                if (!isset($result[$key])) continue;
+                // Follow the same eligible rounds used for the possible-type denominator.
+                if (!in_array((int)$bonus['round_id'], array_column($result[$key]['rounds'], 'id'), true)) continue;
+                $result[$key]['bonus_resolved'] += (int)$bonus['bonus_resolved'];
+                $result[$key]['bonus_hits'] += (int)$bonus['bonus_hits'];
+            }
         }
-
-        return [
-            'eligible_matches'=>$eligibleMatches,
-            'possible'=>$possible,
-            'submitted'=>$submitted,
-            'utilization'=>$possible > 0 ? min(100, round(($submitted / $possible) * 100, 1)) : 0.0,
-            'resolved'=>$resolved,
-            'hits'=>$hits,
-            'accuracy'=>$resolved > 0 ? round(($hits / $resolved) * 100, 1) : 0.0,
-            'bonus_resolved'=>$bonusResolved,
-            'bonus_hits'=>$bonusHits,
-            'bonus_accuracy'=>$bonusResolved > 0 ? round(($bonusHits / $bonusResolved) * 100, 1) : 0.0,
-        ];
+        foreach ($result as &$league) {
+            $league['utilization'] = $league['possible'] > 0 ? min(100, round(100*$league['submitted']/$league['possible'], 1)) : 0.0;
+            $league['accuracy'] = $league['resolved'] > 0 ? round(100*$league['hits']/$league['resolved'], 1) : 0.0;
+            $league['bonus_accuracy'] = $league['bonus_resolved'] > 0 ? round(100*$league['bonus_hits']/$league['bonus_resolved'], 1) : 0.0;
+        }
+        unset($league);
+        return $result;
     }
 
     private static function prediction_dashboard_item(string $label, float $percent, int $value, int $total, string $description, string $tone): void {
@@ -193,6 +221,24 @@ class DT_Admin {
         echo '<article class="dt-prediction-stat dt-prediction-stat-' . esc_attr($tone) . '">';
         echo '<div class="dt-prediction-ring" style="--dt-prediction-share:' . esc_attr((string)$percent) . '%" role="img" aria-label="' . esc_attr($label . ': ' . $percentLabel) . '"><strong>' . esc_html($percentLabel) . '</strong></div>';
         echo '<div><span>' . esc_html($label) . '</span><strong>' . esc_html(number_format_i18n($value)) . ' <small>/ ' . esc_html(number_format_i18n($total)) . '</small></strong><p>' . esc_html($description) . '</p></div></article>';
+    }
+
+    private static function prediction_league_dashboard(string $label, array $stats): void {
+        echo '<section class="dt-prediction-league"><div class="dt-prediction-league-heading"><h3>' . esc_html($label) . '</h3><span>' . esc_html(number_format_i18n(count($stats['rounds']))) . ' kolejek · ' . esc_html(number_format_i18n($stats['eligible_matches'])) . ' meczów dostępnych do typowania</span></div>';
+        echo '<div class="dt-prediction-dashboard-grid">';
+        self::prediction_dashboard_item('Wykorzystanie typów',$stats['utilization'],$stats['submitted'],$stats['possible'],'oddane / możliwe w tej lidze','blue');
+        self::prediction_dashboard_item('Skuteczność',$stats['accuracy'],$stats['hits'],$stats['resolved'],'trafne / rozstrzygnięte','green');
+        self::prediction_dashboard_item('Mecze BONUS',$stats['bonus_accuracy'],$stats['bonus_hits'],$stats['bonus_resolved'],'trafione / rozstrzygnięte BONUS-y','orange');
+        echo '</div>';
+        if ($stats['rounds']) {
+            echo '<details class="dt-prediction-rounds"><summary>Jak policzono możliwe typy</summary><div class="dt-prediction-rounds-scroll"><table class="widefat striped"><thead><tr><th>Kolejka</th><th>Mecze</th><th>Użytkownicy</th><th>Możliwe typy</th><th>Oddane typy</th></tr></thead><tbody>';
+            foreach ($stats['rounds'] as $round) {
+                $name = $round['number'] . '. kolejka' . ($round['group'] !== '' ? ' · grupa ' . $round['group'] : '');
+                echo '<tr><th scope="row">' . esc_html($name) . '</th><td>' . esc_html(number_format_i18n($round['matches'])) . '</td><td>' . esc_html(number_format_i18n($round['users'])) . '</td><td>' . esc_html(number_format_i18n($round['possible'])) . '</td><td>' . esc_html(number_format_i18n($round['submitted'])) . '</td></tr>';
+            }
+            echo '</tbody></table></div></details>';
+        }
+        echo '</section>';
     }
 
     public static function dashboard(): void {
@@ -204,7 +250,7 @@ class DT_Admin {
         $submissions = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s', $season));
         $players = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(DISTINCT s.user_id) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s', $season));
         $users = self::user_registration_stats();
-        $predictionStats = self::prediction_dashboard_stats($season, $users['total']);
+        $predictionStats = self::prediction_dashboard_stats($season);
         $open = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . DT_DB::table('rounds') . " WHERE season=%s AND status='open' ORDER BY round_no LIMIT 1", $season));
         $last = get_option('dt_last_sync');
 
@@ -224,11 +270,8 @@ class DT_Admin {
         echo '</div></div></section>';
 
         echo '<section class="dt-card dt-section dt-prediction-dashboard"><div class="dt-card-head"><div><span class="dt-eyebrow">AKTYWNOŚĆ TYPOWANIA</span><h2>Wykorzystanie i skuteczność typów</h2><p class="dt-muted">Bieżący sezon · kolejki otwarte i zamknięte. Trafność obejmuje wyłącznie rozstrzygnięte mecze.</p></div><span class="dashicons dashicons-chart-pie" aria-hidden="true"></span></div>';
-        echo '<div class="dt-prediction-dashboard-grid">';
-        self::prediction_dashboard_item('Wykorzystanie typów',$predictionStats['utilization'],$predictionStats['submitted'],$predictionStats['possible'],'oddane / wszystkie możliwe','blue');
-        self::prediction_dashboard_item('Skuteczność',$predictionStats['accuracy'],$predictionStats['hits'],$predictionStats['resolved'],'trafne / rozstrzygnięte','green');
-        self::prediction_dashboard_item('Mecze BONUS',$predictionStats['bonus_accuracy'],$predictionStats['bonus_hits'],$predictionStats['bonus_resolved'],'trafione / rozstrzygnięte BONUS-y','orange');
-        echo '</div><p class="dt-prediction-footnote">Możliwe typy: ' . esc_html(number_format_i18n($predictionStats['eligible_matches'])) . ' dostępnych meczów × ' . esc_html(number_format_i18n($users['total'])) . ' zarejestrowanych kont.</p></section>';
+        foreach (['1lm'=>'1LM','plk'=>'PLK','2lm'=>'2LM'] as $leagueKey=>$leagueLabel) self::prediction_league_dashboard($leagueLabel, $predictionStats[$leagueKey]);
+        echo '<p class="dt-prediction-footnote">Możliwe typy są sumą z kolejek: mecze ze znaną godziną × liczba kont zarejestrowanych przed zamknięciem typowania danej kolejki. Dla kolejek nadal otwartych liczba kont jest liczona na teraz.</p></section>';
 
         echo '<div class="dt-grid dt-grid-2 dt-section"><section class="dt-card"><span class="dt-eyebrow">AKTYWNE TYPOWANIE</span><h2>' . esc_html($open ? $open->title : 'Brak otwartej kolejki') . '</h2>';
         if ($open) {
