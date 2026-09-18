@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.29
+- Dodano informacyjny wynik LIVE, kwartę i zegar w trwających meczach 1LM i 2LM na podstawie oficjalnej tablicy PZKosz „teraz gramy”.
+- Wynik LIVE znika po zakończeniu spotkania; wyniki rozliczające typy nadal pochodzą ze zwykłej synchronizacji terminarza.
+- Komunikat zamkniętej kolejki nie sugeruje już, że użytkownik nie oddał typu.
+
 ## 0.6.28
 - Dodano do pulpitu administratora dashboard aktywności typowania dla bieżącego sezonu.
 - Wskaźnik wykorzystania pokazuje oddane typy względem wszystkich miejsc dostępnych w kolejkach otwartych i zamkniętych.
