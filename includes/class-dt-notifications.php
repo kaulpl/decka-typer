@@ -21,7 +21,7 @@ class DT_Notifications {
     }
 
     public static function defaults(): array {
-        return ['push'=>0,'standard'=>1,'schedule_changes'=>1,'postponed'=>1,'incomplete'=>1,'reminder_6h'=>1,'reminder_3d'=>1];
+        return ['push'=>0,'league_1lm'=>1,'league_plk'=>0,'league_2lm'=>0,'standard'=>1,'schedule_changes'=>1,'postponed'=>1,'incomplete'=>1,'reminder_6h'=>1,'reminder_3d'=>1];
     }
 
     public static function template_defaults(): array {
@@ -102,6 +102,12 @@ class DT_Notifications {
         foreach (array_keys(self::defaults()) as $key) $out[$key]=empty($input[$key])?0:1;
         update_user_meta($uid,self::META,$out);
         return $out;
+    }
+
+    private static function league_enabled(array $preferences, string $league): bool {
+        $league=sanitize_key(strtolower($league));
+        if (!in_array($league,['1lm','plk','2lm'],true)) return false;
+        return !empty($preferences['league_'.$league]);
     }
 
     public static function push_ready(): bool {
@@ -290,7 +296,7 @@ class DT_Notifications {
             $eventKey='schedule-'.$matchId.'-'.md5((string)$new);
             self::send_channel($uid,'inapp','schedule_change',$eventKey,$title,$message,$roundId,$matchId);
             if (!empty($prefs['schedule_changes']) || !empty($prefs['postponed'])) {
-                if (!empty($prefs['push'])) self::send_channel($uid,'push','schedule_change',$eventKey,$title,$message,$roundId,$matchId);
+                if (!empty($prefs['push']) && self::league_enabled($prefs,(string)($context['liga']??''))) self::send_channel($uid,'push','schedule_change',$eventKey,$title,$message,$roundId,$matchId);
             }
         }
     }
@@ -321,14 +327,14 @@ class DT_Notifications {
             $remaining=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM ".DT_DB::table('matches')." m LEFT JOIN ".DT_DB::table('predictions')." p ON p.match_id=m.id AND p.user_id=%d WHERE m.round_id=%d AND m.starts_at>%s AND p.id IS NULL",$uid,(int)$match->round_id,current_time('mysql')));
             if (!$remaining) continue;
             $copy=self::render_template('reminder_'.$window,array_merge($context,['pozostalo'=>number_format_i18n($remaining)]));
-            self::deliver($uid,'incomplete','reminder-'.$window.'-'.(int)$match->id.'-'.md5((string)$match->starts_at),$copy['title'],$copy['message'],(int)$match->round_id,(int)$match->id);
+            self::deliver($uid,'incomplete','reminder-'.$window.'-'.(int)$match->id.'-'.md5((string)$match->starts_at),$copy['title'],$copy['message'],(int)$match->round_id,(int)$match->id,(string)$match->league_key);
         }
     }
 
-    public static function deliver(int $uid,string $type,string $eventKey,string $title,string $message,int $roundId=0,int $matchId=0): void {
+    public static function deliver(int $uid,string $type,string $eventKey,string $title,string $message,int $roundId=0,int $matchId=0,string $league=''): void {
         $prefs=self::preferences($uid);
         self::send_channel($uid,'inapp',$type,$eventKey,$title,$message,$roundId,$matchId);
-        if (!empty($prefs['push'])) self::send_channel($uid,'push',$type,$eventKey,$title,$message,$roundId,$matchId);
+        if (!empty($prefs['push']) && self::league_enabled($prefs,$league)) self::send_channel($uid,'push',$type,$eventKey,$title,$message,$roundId,$matchId);
     }
 
     public static function queue_admin_test(): array {

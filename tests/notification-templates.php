@@ -7,6 +7,7 @@ function get_option($key,$fallback=[]) { global $options; return $options[$key]?
 function update_option($key,$value,$autoload=false) { global $options; $options[$key]=$value; return true; }
 function sanitize_text_field($value) { return trim(strip_tags(str_replace(["\r","\n"],' ',$value))); }
 function sanitize_textarea_field($value) { return trim(strip_tags($value)); }
+function sanitize_key($value) { return preg_replace('/[^a-z0-9_\-]/','',strtolower((string)$value)); }
 function wp_timezone() { return new DateTimeZone('Europe/Warsaw'); }
 class WP_Error { public function __construct(public string $code,public string $message) {} }
 require dirname(__DIR__).'/includes/class-dt-notifications.php';
@@ -48,6 +49,11 @@ function get_current_user_id() { return 7; }
 class WP_REST_Request { public function __construct(private array $body) {} public function get_json_params() { return $this->body; } }
 class WP_REST_Response { public function __construct(public array $data) {} }
 check(!array_key_exists('email',DT_Notifications::preferences(7)),'Legacy email preference ignored');
+check(DT_Notifications::preferences(7)['league_1lm']===1,'1LM notifications enabled by default');
+check(DT_Notifications::preferences(7)['league_plk']===0 && DT_Notifications::preferences(7)['league_2lm']===0,'PLK and 2LM notifications disabled by default');
+$leagueEnabled=new ReflectionMethod(DT_Notifications::class,'league_enabled');
+check($leagueEnabled->invoke(null,DT_Notifications::preferences(7),'1LM')===true,'1LM passes league filter');
+check($leagueEnabled->invoke(null,DT_Notifications::preferences(7),'plk')===false,'PLK is opt-in');
 DT_Notifications::disable_push(new WP_REST_Request(['push'=>false]));
 check($meta['push']===0,'Push opt-out persisted');
 DT_Notifications::register_push_subscription(new WP_REST_Request(['subscription_id'=>'new-device-1234','activate'=>false]));
@@ -55,6 +61,8 @@ check($meta['push']===0,'Passive subscription refresh cannot undo opt-out');
 DT_Notifications::register_push_subscription(new WP_REST_Request(['subscription_id'=>'new-device-1234','activate'=>true]));
 check($meta['push']===1,'Explicit activation enables Push');
 check(!array_key_exists('email',$meta),'Email removed on preference update');
+$saved=DT_Notifications::save_preferences(7,array_merge($meta,['league_plk'=>1,'league_2lm'=>1]));
+check($saved['league_plk']===1 && $saved['league_2lm']===1,'Optional leagues can be enabled');
 echo "Push preferences: OK\n";
 
 // Broadcast tests use fake cron/database/HTTP only; no real recipients.

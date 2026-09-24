@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.32
+- Automatyczne powiadomienia Web Push dotyczą domyślnie wyłącznie meczów 1LM.
+- W ustawieniach konta dodano osobne przełączniki powiadomień dla 1LM, PLK i 2LM; PLK oraz 2LM wymagają świadomego włączenia przez użytkownika.
+- Wybór ligi filtruje przypomnienia o brakujących typach i powiadomienia o zmianach terminów, bez wpływu na ręczne testy Push administratora.
+
 ## 0.6.31
 - Aktywność typowania na pulpicie administratora jest liczona oddzielnie dla 1LM, PLK i 2LM, wraz z grupami 2LM w rozbiciu kolejek.
 - Możliwe typy są sumą iloczynów liczby meczów z ustaloną godziną i liczby kont istniejących przed zamknięciem danej kolejki; w kolejce otwartej liczone są konta na bieżąco.

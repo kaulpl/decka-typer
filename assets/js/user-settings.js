@@ -132,6 +132,9 @@
           </div>
           <div class="dt-notification-options">
             <label><span>Web Push / PWA</span><input type="checkbox" name="notify_push" ${checked('push')} ${data.push_ready?'':'disabled'}><i aria-hidden="true"></i></label>
+            <label><span>Powiadomienia 1LM</span><input type="checkbox" name="notify_league_1lm" ${checked('league_1lm')}><i aria-hidden="true"></i></label>
+            <label><span>Powiadomienia PLK</span><input type="checkbox" name="notify_league_plk" ${checked('league_plk')}><i aria-hidden="true"></i></label>
+            <label><span>Powiadomienia 2LM</span><input type="checkbox" name="notify_league_2lm" ${checked('league_2lm')}><i aria-hidden="true"></i></label>
           </div>
           <small id="dt-push-device-status" role="status" aria-live="polite"></small>
           <div class="dt-notification-actions">${installButton}</div>
@@ -164,7 +167,7 @@
     }));
     target.querySelector('[name="notify_push"]')?.addEventListener('change',async event=>{
       const toggle=event.currentTarget;const enabled=toggle.checked;let failure='';toggle.disabled=true;
-      try{if(enabled)await window.DeckaTyperPwa.enablePush();else await window.DeckaTyperPwa.disablePush();}
+      try{if(enabled)await window.DeckaTyperPwa.enablePush();else await window.DeckaTyperPwa.disablePush();if(account?.notifications)account.notifications.push=enabled?1:0;}
       catch(error){failure=error.message;}
       finally{updatePushStatus();const status=target.querySelector('#dt-push-device-status');if(failure&&status)status.textContent=failure;}
     });
@@ -201,12 +204,16 @@
     if(name.length<2||name.length>40){message.textContent='Nazwa musi mieć od 2 do 40 znaków.';message.className='dt-account-message is-error';return;}
     button.disabled=true;message.textContent='Zapisywanie…';message.className='dt-account-message';
     try{
-      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite})});
+      const notifications={...(account?.notifications||{}),
+        league_1lm:form.querySelector('[name="notify_league_1lm"]')?.checked?1:0,
+        league_plk:form.querySelector('[name="notify_league_plk"]')?.checked?1:0,
+        league_2lm:form.querySelector('[name="notify_league_2lm"]')?.checked?1:0};
+      const data=await api('account',{method:'POST',body:JSON.stringify({ranking_name:name,favorite_team_id:selectedFavorite,notifications})});
       account=data.account||account;
       favoriteTeamId=Number(account?.favorite_team_id||0);
       accountCfg.favoriteTeamId=favoriteTeamId;
       decorateFavoriteMatches();
-      message.textContent='Zapisano ustawienia profilu.';
+      message.textContent='Zapisano ustawienia profilu i powiadomień.';
       message.className='dt-account-message is-success';
       if(selectedFavorite>0&&selectedFavorite!==previousFavorite)root.dispatchEvent(new CustomEvent('dt:avatar',{detail:{key:'favorite'}}));
     }catch(err){message.textContent=err.message;message.className='dt-account-message is-error';}
