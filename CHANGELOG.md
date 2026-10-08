@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.33
+- Dodano zakładkę administratora „Kolejka z Arturem” z wyborem konta oraz dwóch kolejek 1LM wyświetlanych obok siebie.
+- Każdy mecz pokazuje wynik, typ Artura, oznaczenie BONUS oraz status: trafiony, nietrafiony, oczekuje lub brak typu.
+- Dla obu wybranych kolejek dostępne jest podsumowanie do grafiki: bilans Artura, typerzy z kompletem 8/8 i lista osób, które trafiły mecz BONUS.
+- Konto o nazwie zawierającej „Artur” jest wybierane automatycznie; administrator może wskazać dowolnego użytkownika z zapisanymi typami.
+
 ## 0.6.32
 - Automatyczne powiadomienia Web Push dotyczą domyślnie wyłącznie meczów 1LM.
 - W ustawieniach konta dodano osobne przełączniki powiadomień dla 1LM, PLK i 2LM; PLK oraz 2LM wymagają świadomego włączenia przez użytkownika.

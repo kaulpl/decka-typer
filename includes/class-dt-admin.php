@@ -21,6 +21,7 @@ class DT_Admin {
             ['decka-typer-rounds','Kolejki','rounds'],
             ['decka-typer-matches','Mecze','matches'],
             ['decka-typer-predictions','Typy','predictions'],
+            ['decka-typer-artur','Kolejka z Arturem','artur_dashboard'],
             ['decka-typer-users','Użytkownicy','users'],
             ['decka-typer-feedback','Feedback','feedback'],
             ['decka-typer-notifications','Powiadomienia','notifications'],
@@ -38,6 +39,7 @@ class DT_Admin {
     public static function assets(string $hook): void {
         if (strpos($hook, 'decka-typer') === false) return;
         wp_enqueue_style('dt-admin', DT_URL . 'assets/css/admin.css', [], DT_VERSION);
+        wp_enqueue_style('dt-admin-artur', DT_URL . 'assets/css/admin-artur.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_style('dt-admin-predictions', DT_URL . 'assets/css/admin-predictions.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_script('dt-admin', DT_URL . 'assets/js/admin.js', [], DT_VERSION, true);
     }
@@ -99,6 +101,98 @@ class DT_Admin {
     private static function html_datetime(?string $value): string {
         $d = self::local_dt($value);
         return $d ? $d->format('Y-m-d\TH:i') : '';
+    }
+
+    private static function artur_pick_state(int $selectedTeamId, int $homeTeamId, int $awayTeamId, ?int $scoreHome, ?int $scoreAway): string {
+        if ($selectedTeamId <= 0) return 'missing';
+        if ($scoreHome === null || $scoreAway === null || $scoreHome === $scoreAway) return 'pending';
+        $winnerId = $scoreHome > $scoreAway ? $homeTeamId : $awayTeamId;
+        return $selectedTeamId === $winnerId ? 'hit' : 'miss';
+    }
+
+    private static function artur_round_data(int $roundId, int $userId, array $bonusMap): array {
+        global $wpdb;
+        $matches = (array)$wpdb->get_results($wpdb->prepare(
+            "SELECT m.id,m.home_team_id,m.away_team_id,m.starts_at,m.score_home,m.score_away,
+             h.name home_name,a.name away_name,p.selected_team_id
+             FROM " . DT_DB::table('matches') . " m
+             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
+             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
+             LEFT JOIN " . DT_DB::table('predictions') . " p ON p.match_id=m.id AND p.user_id=%d
+             WHERE m.round_id=%d ORDER BY m.starts_at,m.id",
+            $userId,$roundId
+        ), ARRAY_A);
+        $hits = 0;
+        $typed = 0;
+        $resolved = 0;
+        foreach ($matches as &$match) {
+            $selected = (int)($match['selected_team_id'] ?? 0);
+            $homeScore = $match['score_home'] === null ? null : (int)$match['score_home'];
+            $awayScore = $match['score_away'] === null ? null : (int)$match['score_away'];
+            $state = self::artur_pick_state($selected,(int)$match['home_team_id'],(int)$match['away_team_id'],$homeScore,$awayScore);
+            $match['pick_state'] = $state;
+            $match['pick_name'] = $selected === (int)$match['home_team_id'] ? $match['home_name'] : ($selected === (int)$match['away_team_id'] ? $match['away_name'] : '');
+            $match['is_bonus'] = isset($bonusMap[$roundId]) && (int)$bonusMap[$roundId] === (int)$match['id'];
+            if ($selected > 0) $typed++;
+            if ($homeScore !== null && $awayScore !== null && $homeScore !== $awayScore) $resolved++;
+            if ($state === 'hit') $hits++;
+        }
+        unset($match);
+
+        $perfect = [];
+        $matchCount = count($matches);
+        if ($matchCount === 8) {
+            $perfect = (array)$wpdb->get_results($wpdb->prepare(
+                "SELECT p.user_id,u.display_name,
+                 (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=p.user_id AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name,
+                 COUNT(DISTINCT p.match_id) picks,
+                 SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) hits
+                 FROM " . DT_DB::table('predictions') . " p
+                 JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
+                 JOIN {$wpdb->users} u ON u.ID=p.user_id
+                 WHERE m.round_id=%d
+                 GROUP BY p.user_id,u.display_name
+                 HAVING picks=8 AND hits=8
+                 ORDER BY ranking_name,u.display_name",
+                $roundId
+            ), ARRAY_A);
+        }
+
+        $bonusHits = [];
+        $bonusMatchId = (int)($bonusMap[$roundId] ?? 0);
+        if ($bonusMatchId > 0) {
+            $bonusHits = (array)$wpdb->get_results($wpdb->prepare(
+                "SELECT p.user_id,u.display_name,
+                 (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=p.user_id AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name
+                 FROM " . DT_DB::table('predictions') . " p
+                 JOIN {$wpdb->users} u ON u.ID=p.user_id
+                 WHERE p.match_id=%d AND p.scoring_code='winner'
+                 ORDER BY ranking_name,u.display_name",
+                $bonusMatchId
+            ), ARRAY_A);
+        }
+        return ['matches'=>$matches,'typed'=>$typed,'resolved'=>$resolved,'hits'=>$hits,'perfect'=>$perfect,'bonus_hits'=>$bonusHits];
+    }
+
+    private static function artur_people(array $rows): string {
+        if (!$rows) return '<span class="dt-artur-empty-list">Brak</span>';
+        $names = [];
+        foreach ($rows as $row) $names[] = trim((string)($row['ranking_name'] ?: $row['display_name']));
+        return '<span class="dt-artur-people">' . esc_html(implode(', ',array_filter($names))) . '</span>';
+    }
+
+    private static function artur_round_panel(object $round, int $userId, array $bonusMap): void {
+        $data = self::artur_round_data((int)$round->id,$userId,$bonusMap);
+        echo '<section class="dt-card dt-artur-round-card"><header><div><span class="dt-eyebrow">' . esc_html((int)$round->round_no . '. KOLEJKA 1LM') . '</span><h2>' . esc_html($round->title) . '</h2></div><span class="dt-artur-record">' . esc_html($data['hits'] . '/' . $data['resolved']) . '<small>trafione</small></span></header>';
+        echo '<div class="dt-artur-match-list">';
+        if (!$data['matches']) echo '<p class="dt-empty">Brak meczów w tej kolejce.</p>';
+        foreach ($data['matches'] as $match) {
+            $state = (string)$match['pick_state'];
+            $labels = ['hit'=>'TRAFIONY','miss'=>'NIETRAFIONY','pending'=>'OCZEKUJE','missing'=>'BRAK TYPU'];
+            $score = $match['score_home'] === null || $match['score_away'] === null ? '—' : (int)$match['score_home'] . ':' . (int)$match['score_away'];
+            echo '<article class="dt-artur-match is-' . esc_attr($state) . '"><div class="dt-artur-game"><strong>' . esc_html($match['home_name']) . '</strong><span>' . esc_html($score) . '</span><strong>' . esc_html($match['away_name']) . '</strong></div><div class="dt-artur-pick"><span>Typ Artura</span><strong>' . esc_html($match['pick_name'] ?: '—') . '</strong></div><div class="dt-artur-match-status">' . (!empty($match['is_bonus']) ? '<b>★ BONUS</b>' : '') . '<span>' . esc_html($labels[$state] ?? '—') . '</span></div></article>';
+        }
+        echo '</div><div class="dt-artur-graphic-summary"><span class="dt-eyebrow">PODSUMOWANIE DO GRAFIKI</span><div><article><small>Typy Artura</small><strong>' . esc_html($data['hits'] . '/' . $data['resolved']) . '</strong><p>' . esc_html($data['typed'] . '/' . count($data['matches']) . ' wytypowanych meczów') . '</p></article><article><small>Perfekcyjne 8/8</small><strong>' . esc_html((string)count($data['perfect'])) . '</strong><p>' . self::artur_people($data['perfect']) . '</p></article><article><small>Trafili BONUS</small><strong>' . esc_html((string)count($data['bonus_hits'])) . '</strong><p>' . self::artur_people($data['bonus_hits']) . '</p></article></div></div></section>';
     }
 
     private static function user_registration_stats(): array {
@@ -444,6 +538,69 @@ class DT_Admin {
         self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-matches','league'=>$league,'group'=>$group,'round_id'=>$roundId]);
         self::match_modal('dt-match-modal',false,$roundId);
         self::match_modal('dt-add-match',true,$roundId);
+        self::end_shell();
+    }
+
+    public static function artur_dashboard(): void {
+        global $wpdb;
+        $season = (string)(DT_DB::settings()['season'] ?? '');
+        $rounds = (array)$wpdb->get_results($wpdb->prepare(
+            "SELECT r.*,COUNT(m.id) match_count
+             FROM " . DT_DB::table('rounds') . " r
+             LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
+             WHERE r.season=%s AND r.league_key='1lm'
+             GROUP BY r.id ORDER BY r.round_no DESC",
+            $season
+        ));
+        $users = (array)$wpdb->get_results(
+            "SELECT DISTINCT u.ID,u.user_login,u.display_name,
+             (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name,
+             (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_typer_expert' LIMIT 1) is_expert
+             FROM {$wpdb->users} u
+             JOIN " . DT_DB::table('predictions') . " p ON p.user_id=u.ID
+             ORDER BY u.display_name,u.user_login"
+        );
+        $userIds = array_map('intval',wp_list_pluck($users,'ID'));
+        $userId = max(0,(int)($_GET['artur_user'] ?? 0));
+        if (!in_array($userId,$userIds,true)) {
+            $userId = 0;
+            foreach ($users as $user) {
+                $name = trim((string)($user->ranking_name ?: $user->display_name ?: $user->user_login));
+                if (stripos($name,'artur') !== false) { $userId=(int)$user->ID; break; }
+            }
+            if (!$userId) foreach ($users as $user) if (!empty($user->is_expert)) { $userId=(int)$user->ID; break; }
+            if (!$userId && $users) $userId=(int)$users[0]->ID;
+        }
+        $roundIds = array_map('intval',wp_list_pluck($rounds,'id'));
+        $leftId = max(0,(int)($_GET['left_round'] ?? 0));
+        $rightId = max(0,(int)($_GET['right_round'] ?? 0));
+        if (!in_array($leftId,$roundIds,true)) $leftId=(int)($roundIds[0] ?? 0);
+        if (!in_array($rightId,$roundIds,true)) $rightId=(int)($roundIds[1] ?? $leftId);
+        $roundLookup = [];
+        foreach ($rounds as $round) $roundLookup[(int)$round->id]=$round;
+        $bonusMap = class_exists('DT_Bonus') ? DT_Bonus::map() : [];
+
+        self::shell('Kolejka z Arturem','Panel roboczy do podsumowania i przygotowania kolejnego odcinka.');
+        echo '<section class="dt-card dt-artur-controls"><form method="get" action="' . esc_url(admin_url('admin.php')) . '"><input type="hidden" name="page" value="decka-typer-artur"><div class="dt-artur-controls-grid"><label>Konto Artura<select name="artur_user">';
+        foreach ($users as $user) {
+            $name=trim((string)($user->ranking_name ?: $user->display_name ?: $user->user_login));
+            echo '<option value="' . (int)$user->ID . '" ' . selected($userId,(int)$user->ID,false) . '>' . esc_html($name . (!empty($user->is_expert)?' · Ekspert':'')) . '</option>';
+        }
+        echo '</select></label><label>Lewa kolumna<select name="left_round">';
+        foreach ($rounds as $round) echo '<option value="' . (int)$round->id . '" ' . selected($leftId,(int)$round->id,false) . '>' . esc_html((int)$round->round_no . '. kolejka · ' . (int)$round->match_count . ' meczów') . '</option>';
+        echo '</select></label><label>Prawa kolumna<select name="right_round">';
+        foreach ($rounds as $round) echo '<option value="' . (int)$round->id . '" ' . selected($rightId,(int)$round->id,false) . '>' . esc_html((int)$round->round_no . '. kolejka · ' . (int)$round->match_count . ' meczów') . '</option>';
+        echo '</select></label><button class="button button-primary dt-button"><span class="dashicons dashicons-update"></span>Pokaż zestawienie</button></div></form></section>';
+        if (!$users) {
+            echo '<section class="dt-card dt-section"><p class="dt-empty">Nie ma jeszcze użytkowników z zapisanymi typami. Po oddaniu typów konto będzie można wybrać w tym panelu.</p></section>';
+        } elseif (!$rounds) {
+            echo '<section class="dt-card dt-section"><p class="dt-empty">Brak kolejek 1LM w bieżącym sezonie.</p></section>';
+        } else {
+            echo '<div class="dt-artur-columns dt-section">';
+            if (isset($roundLookup[$leftId])) self::artur_round_panel($roundLookup[$leftId],$userId,$bonusMap);
+            if (isset($roundLookup[$rightId])) self::artur_round_panel($roundLookup[$rightId],$userId,$bonusMap);
+            echo '</div>';
+        }
         self::end_shell();
     }
 
