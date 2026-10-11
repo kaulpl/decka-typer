@@ -25,8 +25,9 @@ class DT_Decka_Stats {
         $html=!is_wp_error($response) && (int)wp_remote_retrieve_response_code($response)===200 ? (string)wp_remote_retrieve_body($response) : '';
         $liveInput=esc_url_raw(wp_unslash((string)($_POST['livestats_url']??'')));
         $saved=(array)get_option('dt_livestats_match_ids',[]);
+        $resolvedId=preg_replace('/\D+/','',(string)($_POST['resolved_livestats_id']??''));
+        if($resolvedId!==''){$saved[$matchId]=$resolvedId;update_option('dt_livestats_match_ids',$saved,false);wp_send_json_success(['saved'=>true,'livestats_id'=>$resolvedId]);}
         $liveId=self::livestats_id($liveInput) ?: self::livestats_id($html) ?: (isset($saved[$matchId]) ? (string)$saved[$matchId] : null);
-        if($liveId && $liveInput!=='' && (!isset($saved[$matchId]) || (string)$saved[$matchId]!==$liveId)){$saved[$matchId]=$liveId;update_option('dt_livestats_match_ids',$saved,false);}
         $stats=null;
         if($liveId){
             $liveUrl='https://fibalivestats.dcd.shared.geniussports.com/data/'.$liveId.'/data.json';
@@ -36,7 +37,7 @@ class DT_Decka_Stats {
                 if(is_array($json))$stats=self::parse_livestats($json);
             }
         }
-        if(!$stats && $html!=='')$stats=self::parse_game_html($html);
+        if(!$stats && !$liveId && $html!=='')$stats=self::parse_game_html($html);
         if(!$stats && !$liveId) wp_send_json_error(['message'=>'Nie znaleziono identyfikatora LiveStats dla tego meczu. Wklej publiczny adres FIBA LiveStats i spróbuj ponownie.'],422);
         if(!$stats)$stats=['team'=>null,'leaders'=>[],'shots'=>[],'source'=>'browser_livestats','browser_fetch'=>true,'livestats_data_url'=>'https://fibalivestats.dcd.shared.geniussports.com/data/'.$liveId.'/data.json'];
         $logo=static function(string $name,string $fallback): string {

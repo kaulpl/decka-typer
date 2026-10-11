@@ -53,6 +53,7 @@ $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js
 check(str_contains($admin,'data-dt-decka-stat-graphic') && str_contains($admin,'data-dt-livestats-url'), 'Expose match and optional LiveStats controls');
 check(str_contains($graphics,'MAPA RZUTÓW DECKI') && str_contains($graphics,'3 NAJLEPSZYCH ZAWODNIKÓW'), 'Render shot map and player leaders');
 check(str_contains($graphics,'liveStatsPayload') && str_contains($graphics,'payload.browser_fetch'), 'Fall back to a browser-side LiveStats request when the host is blocked');
+check(str_contains($graphics,'findLiveStatsGame') && str_contains($graphics,'liveMatchScore'), 'Treat a supplied game as a seed and verify both teams before using it');
 $class=file_get_contents(dirname(__DIR__).'/includes/class-dt-decka-stats.php');
-check(str_contains($class,"get_option('dt_livestats_match_ids'") && str_contains($class,"'browser_fetch'=>true"), 'Remember a supplied LiveStats ID and return browser fallback metadata');
+check(str_contains($class,"get_option('dt_livestats_match_ids'") && str_contains($class,"'browser_fetch'=>true"), 'Remember a verified LiveStats ID and return browser fallback metadata');
 echo "Decka match statistics: OK\n";
