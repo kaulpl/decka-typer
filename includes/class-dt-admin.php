@@ -11,6 +11,7 @@ class DT_Admin {
         ] as $action) {
             add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
         }
+        add_action('wp_ajax_dt_decka_stats',[DT_Decka_Stats::class,'ajax']);
     }
 
     public static function menu(): void {
@@ -44,7 +45,7 @@ class DT_Admin {
         wp_enqueue_style('dt-admin-verification', DT_URL . 'assets/css/admin-verification.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_script('dt-admin', DT_URL . 'assets/js/admin.js', [], DT_VERSION, true);
         wp_enqueue_script('dt-admin-artur-graphics', DT_URL . 'assets/js/admin-artur-graphics.js', ['dt-admin'], DT_VERSION, true);
-        wp_localize_script('dt-admin-artur-graphics','DeckaTyperArturGraphics',['logoUrl'=>DT_URL.'assets/img/typujkosza-logo-horizontal.png']);
+        wp_localize_script('dt-admin-artur-graphics','DeckaTyperArturGraphics',['logoUrl'=>DT_URL.'assets/img/typujkosza-logo-horizontal.png','ajaxUrl'=>admin_url('admin-ajax.php'),'statsNonce'=>wp_create_nonce('dt_decka_stats')]);
     }
 
     private static function guard(string $nonce): void {
@@ -656,6 +657,20 @@ class DT_Admin {
             if (isset($roundLookup[$rightId])) self::artur_round_panel($roundLookup[$rightId],$userId,$bonusMap,'right',$arturName);
             echo '</div>';
         }
+        $deckaMatches=(array)$wpdb->get_results($wpdb->prepare(
+            "SELECT m.id,m.starts_at,m.score_home,m.score_away,m.external_key,h.name home_name,a.name away_name,r.round_no
+             FROM ".DT_DB::table('matches')." m
+             JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id
+             JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id
+             JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id
+             WHERE r.season=%s AND r.league_key='1lm' AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL
+               AND (h.name LIKE '%%Decka Pelplin%%' OR a.name LIKE '%%Decka Pelplin%%')
+             ORDER BY m.starts_at DESC",
+            $season
+        ));
+        echo '<section class="dt-card dt-section dt-artur-decka-stats"><span class="dt-eyebrow">PLANSZA MECZOWA 16:9</span><h2>Podsumowanie meczu Decki</h2><p class="dt-muted">Statystyki i mapa rzutów są pobierane z oficjalnego FIBA LiveStats. Gdy identyfikatora LiveStats nie uda się znaleźć automatycznie, można wkleić publiczny adres meczu; dane PZKosz pozostają źródłem zapasowym.</p><div class="dt-artur-export-actions"><label>Wybierz zakończony mecz<select data-dt-decka-match>';
+        foreach($deckaMatches as $m){$score=(int)$m->score_home.':'.(int)$m->score_away;echo '<option value="'.(int)$m->id.'">'.esc_html((int)$m->round_no.'. kolejka · '.$m->home_name.' '.$score.' '.$m->away_name).'</option>';}
+        echo '</select></label><label>URL FIBA LiveStats <small>(opcjonalnie)</small><input type="url" data-dt-livestats-url placeholder="https://fibalivestats.../u/POL/2902819/sc.html"></label><button type="button" class="button button-primary dt-button" data-dt-decka-stat-graphic '.(!$deckaMatches?'disabled':'').'><span class="dashicons dashicons-chart-area"></span>Pobierz statystyki meczu 16:9</button><span class="dt-decka-stat-status" aria-live="polite"></span></div></section>';
         self::end_shell();
     }
 

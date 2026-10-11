@@ -65,6 +65,9 @@ jobs:
       - name: Artur dashboard regression tests
         run: php tests/admin-artur-dashboard.php
 
+      - name: Decka LiveStats regression tests
+        run: php tests/decka-stats.php
+
       - name: Complete admin user list regression tests
         run: php tests/admin-users.php
 

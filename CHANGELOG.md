@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.40
+- W „Kolejce z Arturem” dodano pobieranie telewizyjnej planszy 16:9 z podsumowaniem wybranego zakończonego meczu Decki Pelplin.
+- Plansza pokazuje wynik, skuteczność za 2, za 3, z gry i za 1, trzech najlepszych zawodników według EVAL oraz najważniejsze statystyki drużynowe.
+- Integracja korzysta z oficjalnych danych FIBA LiveStats i rzeczywistych współrzędnych rzutów; identyfikator może zostać wykryty automatycznie lub podany w publicznym adresie meczu.
+- Gdy pełne dane LiveStats są niedostępne, generator korzysta z box score PZKosz i wyraźnie informuje o braku mapy rzutów.
+
 ## 0.6.39
 - Usunięto napis „Typowanie zapisane” z grafiki zapowiadającej przyszłą kolejkę.
 - Przed nazwami drużyn na grafikach podsumowania i zapowiedzi dodano małe logotypy klubów.
