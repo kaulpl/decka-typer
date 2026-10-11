@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.38
+- Na grafice podsumowującej wynik meczu jest prezentowany w osobnej, wyrównanej kolumnie przy nazwach drużyn.
+- Zwycięska drużyna oraz jej wynik są automatycznie wyróżniane pogrubieniem; remisy i mecze bez wyniku nie wskazują zwycięzcy.
+
 ## 0.6.37
 - Przebudowano układ kart na infografikach „Kolejki z Arturem”: drużyny, termin oraz typ mają teraz osobne, niekolidujące strefy.
 - Logo TypujKosza.pl znajduje się na czytelnej białej plakietce.

@@ -210,6 +210,8 @@ class DT_Admin {
                 return [
                     'home'=>(string)$match['home_name'],'away'=>(string)$match['away_name'],
                     'score'=>$match['score_home'] === null || $match['score_away'] === null ? '' : (int)$match['score_home'].':'.(int)$match['score_away'],
+                    'score_home'=>$match['score_home'] === null ? null : (int)$match['score_home'],
+                    'score_away'=>$match['score_away'] === null ? null : (int)$match['score_away'],
                     'pick'=>(string)($match['pick_name'] ?: 'Brak typu'),'state'=>(string)$match['pick_state'],
                     'bonus'=>!empty($match['is_bonus']),'starts_at'=>self::date_pl($match['starts_at'] ?? null),
                 ];
