@@ -117,7 +117,7 @@ class DT_Admin {
         global $wpdb;
         $matches = (array)$wpdb->get_results($wpdb->prepare(
             "SELECT m.id,m.home_team_id,m.away_team_id,m.starts_at,m.score_home,m.score_away,
-             h.name home_name,a.name away_name,p.selected_team_id
+             h.name home_name,h.logo_url home_logo,a.name away_name,a.logo_url away_logo,p.selected_team_id
              FROM " . DT_DB::table('matches') . " m
              JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
              JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
@@ -209,6 +209,8 @@ class DT_Admin {
             'matches'=>array_map(static function(array $match): array {
                 return [
                     'home'=>(string)$match['home_name'],'away'=>(string)$match['away_name'],
+                    'home_logo'=>class_exists('DT_Team_Logos') ? (DT_Team_Logos::url_for((string)$match['home_name']) ?: (string)($match['home_logo'] ?? '')) : (string)($match['home_logo'] ?? ''),
+                    'away_logo'=>class_exists('DT_Team_Logos') ? (DT_Team_Logos::url_for((string)$match['away_name']) ?: (string)($match['away_logo'] ?? '')) : (string)($match['away_logo'] ?? ''),
                     'score'=>$match['score_home'] === null || $match['score_away'] === null ? '' : (int)$match['score_home'].':'.(int)$match['score_away'],
                     'score_home'=>$match['score_home'] === null ? null : (int)$match['score_home'],
                     'score_away'=>$match['score_away'] === null ? null : (int)$match['score_away'],

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.39
+- Usunięto napis „Typowanie zapisane” z grafiki zapowiadającej przyszłą kolejkę.
+- Przed nazwami drużyn na grafikach podsumowania i zapowiedzi dodano małe logotypy klubów.
+
 ## 0.6.38
 - Na grafice podsumowującej wynik meczu jest prezentowany w osobnej, wyrównanej kolumnie przy nazwach drużyn.
 - Zwycięska drużyna oraz jej wynik są automatycznie wyróżniane pogrubieniem; remisy i mecze bez wyniku nie wskazują zwycięzcy.

@@ -18,4 +18,7 @@ check(str_contains($graphics,"rr(ctx,1360,48,500,118,24,C.white)"), 'TypujKosza 
 check(!str_contains($graphics,'Typuje:') && !str_contains($graphics,'1920 × 1080  •'), 'Generated graphics do not contain the old footer');
 check(str_contains($graphics,"text(ctx,'WYNIK'") && str_contains($graphics,'homeWon?900:650') && str_contains($graphics,'awayWon?900:650'), 'Summary graphic has a score column and emphasizes the winning team');
 check(str_contains($source,"'score_home'=>") && str_contains($source,"'score_away'=>"), 'Graphic payload contains separate numeric scores');
+check(str_contains($source,"'home_logo'=>") && str_contains($source,"'away_logo'=>"), 'Graphic payload contains both club logos');
+check(str_contains($graphics,'preloadMatchLogos') && str_contains($graphics,'teamLogo(ctx'), 'Infographics preload and render club logos');
+check(!str_contains($graphics,'TYPOWANIE ZAPISANE'), 'Upcoming-round graphic does not show the saved-prediction label');
 echo "Admin Artur dashboard: OK\n";
