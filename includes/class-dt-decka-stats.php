@@ -98,7 +98,7 @@ class DT_Decka_Stats {
     }
 
     private static function livestats_id(string $value): ?string {
-        if(preg_match('~(?:/u/POL/|/data/)(\d+)(?:/|$)~i,$value,$m))return $m[1];
+        if(preg_match('~(?:/u/POL/|/data/)(\d+)(?:/|$)~i',$value,$m))return $m[1];
         return null;
     }
 
