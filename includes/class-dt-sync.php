@@ -141,10 +141,10 @@ class DT_Sync {
                 }
                 if($group===''){ $warnings[]='Pominięto mecz 2LM bez rozpoznanej grupy.'; continue; }
             }
-            $gameAnchor=$xp->query('.//a[contains(@href,"/mecz/")]', $row)->item(0); $gameId='';
-            if($gameAnchor instanceof DOMElement && preg_match('~/mecz/(\d+)~',$gameAnchor->getAttribute('href'),$id))$gameId=$id[1];
+            $gameAnchor=$xp->query('.//a[contains(@href,"/mecz/")]', $row)->item(0); $gameId='';$gameUrl=$baseUrl;
+            if($gameAnchor instanceof DOMElement && preg_match('~/mecz/(\d+)~',$gameAnchor->getAttribute('href'),$id)){$gameId=$id[1];$gameUrl=self::absolute_url($gameAnchor->getAttribute('href'),$baseUrl);}
             $key=$gameId ? $leagueKey.'-'.$gameId : sha1($leagueKey.'|'.$group.'|'.$season.'|'.$round.'|'.self::norm($home['name']).'|'.self::norm($away['name']));
-            $matches[]=['season'=>$season,'league_key'=>$leagueKey,'group_key'=>$group,'round_no'=>$round,'home'=>$home,'away'=>$away,'starts_at'=>$date['mysql'],'start_time_known'=>$date['time_known']?1:0,'score_home'=>$score?$score[0]:null,'score_away'=>$score?$score[1]:null,'status'=>$score?'finished':'scheduled','source_url'=>$baseUrl,'external_key'=>$key];
+            $matches[]=['season'=>$season,'league_key'=>$leagueKey,'group_key'=>$group,'round_no'=>$round,'home'=>$home,'away'=>$away,'starts_at'=>$date['mysql'],'start_time_known'=>$date['time_known']?1:0,'score_home'=>$score?$score[0]:null,'score_away'=>$score?$score[1]:null,'status'=>$score?'finished':'scheduled','source_url'=>$gameUrl,'external_key'=>$key];
         }
         if(count($matches)<8)$warnings[]='Parser '.strtoupper($leagueKey).' odczytał tylko '.count($matches).' meczów.';
         return ['matches'=>$matches,'warnings'=>$warnings];
