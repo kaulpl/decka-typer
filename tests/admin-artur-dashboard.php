@@ -9,4 +9,9 @@ check($state->invoke(null, 10, 10, 20, 70, 78) === 'miss', 'Away result misses h
 check($state->invoke(null, 20, 10, 20, 70, 78) === 'hit', 'Away winner hit');
 check($state->invoke(null, 20, 10, 20, null, null) === 'pending', 'Unresolved game waits');
 check($state->invoke(null, 0, 10, 20, 70, 78) === 'missing', 'Missing prediction');
+$source=file_get_contents(dirname(__DIR__).'/includes/class-dt-admin.php');
+$graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js');
+check(str_contains($source,'resolved_count') && str_contains($source,'$nextRounds'), 'Default columns use latest resolved and next round');
+check(str_contains($source,'Pobierz podsumowanie 16:9') && str_contains($source,'Pobierz zapowiedź 16:9') && str_contains($source,'Pobierz trafienia BONUS 16:9'), 'All infographic actions are available');
+check(str_contains($graphics,'1920') && str_contains($graphics,'1080') && str_contains($graphics,'logoUrl'), 'Infographics are 16:9 and include the TypujKosza logo');
 echo "Admin Artur dashboard: OK\n";

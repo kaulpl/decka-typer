@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.36
+- „Kolejka z Arturem” domyślnie pokazuje po lewej najnowszą w pełni rozstrzygniętą kolejkę 1LM, a po prawej następną kolejkę; oba wybory nadal można zmienić ręcznie.
+- Dodano pobieranie grafik PNG 1920 × 1080: podsumowania typów Artura, zapowiedzi następnej kolejki oraz listy osób, które trafiły mecz BONUS.
+- Każda infografika ma telewizyjny format 16:9 i logo TypujKosza.pl.
+
 ## 0.6.35
 - W sekcji „Rozgrywki” ustawień administratora dodano przycisk „Synchronizuj wyniki teraz”.
 - Ręczna synchronizacja zapisuje bieżące ustawienia źródeł, pobiera dane PLK, 1LM i 2LM oraz pokazuje podsumowanie zaktualizowanych meczów i przeliczonych typów.

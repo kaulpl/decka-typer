@@ -43,6 +43,8 @@ class DT_Admin {
         wp_enqueue_style('dt-admin-predictions', DT_URL . 'assets/css/admin-predictions.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_style('dt-admin-verification', DT_URL . 'assets/css/admin-verification.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_script('dt-admin', DT_URL . 'assets/js/admin.js', [], DT_VERSION, true);
+        wp_enqueue_script('dt-admin-artur-graphics', DT_URL . 'assets/js/admin-artur-graphics.js', ['dt-admin'], DT_VERSION, true);
+        wp_localize_script('dt-admin-artur-graphics','DeckaTyperArturGraphics',['logoUrl'=>DT_URL.'assets/img/typujkosza-logo-horizontal.png']);
     }
 
     private static function guard(string $nonce): void {
@@ -182,7 +184,7 @@ class DT_Admin {
         return '<span class="dt-artur-people">' . esc_html(implode(', ',array_filter($names))) . '</span>';
     }
 
-    private static function artur_round_panel(object $round, int $userId, array $bonusMap): void {
+    private static function artur_round_panel(object $round, int $userId, array $bonusMap, string $column, string $arturName): void {
         $data = self::artur_round_data((int)$round->id,$userId,$bonusMap);
         echo '<section class="dt-card dt-artur-round-card"><header><div><span class="dt-eyebrow">' . esc_html((int)$round->round_no . '. KOLEJKA 1LM') . '</span><h2>' . esc_html($round->title) . '</h2></div><span class="dt-artur-record">' . esc_html($data['hits'] . '/' . $data['resolved']) . '<small>trafione</small></span></header>';
         echo '<div class="dt-artur-match-list">';
@@ -193,7 +195,34 @@ class DT_Admin {
             $score = $match['score_home'] === null || $match['score_away'] === null ? '—' : (int)$match['score_home'] . ':' . (int)$match['score_away'];
             echo '<article class="dt-artur-match is-' . esc_attr($state) . '"><div class="dt-artur-game"><strong>' . esc_html($match['home_name']) . '</strong><span>' . esc_html($score) . '</span><strong>' . esc_html($match['away_name']) . '</strong></div><div class="dt-artur-pick"><span>Typ Artura</span><strong>' . esc_html($match['pick_name'] ?: '—') . '</strong></div><div class="dt-artur-match-status">' . (!empty($match['is_bonus']) ? '<b>★ BONUS</b>' : '') . '<span>' . esc_html($labels[$state] ?? '—') . '</span></div></article>';
         }
-        echo '</div><div class="dt-artur-graphic-summary"><span class="dt-eyebrow">PODSUMOWANIE DO GRAFIKI</span><div><article><small>Typy Artura</small><strong>' . esc_html($data['hits'] . '/' . $data['resolved']) . '</strong><p>' . esc_html($data['typed'] . '/' . count($data['matches']) . ' wytypowanych meczów') . '</p></article><article><small>Perfekcyjne 8/8</small><strong>' . esc_html((string)count($data['perfect'])) . '</strong><p>' . self::artur_people($data['perfect']) . '</p></article><article><small>Trafili BONUS</small><strong>' . esc_html((string)count($data['bonus_hits'])) . '</strong><p>' . self::artur_people($data['bonus_hits']) . '</p></article></div></div></section>';
+        echo '</div><div class="dt-artur-graphic-summary"><span class="dt-eyebrow">PODSUMOWANIE DO GRAFIKI</span><div><article><small>Typy Artura</small><strong>' . esc_html($data['hits'] . '/' . $data['resolved']) . '</strong><p>' . esc_html($data['typed'] . '/' . count($data['matches']) . ' wytypowanych meczów') . '</p></article><article><small>Perfekcyjne 8/8</small><strong>' . esc_html((string)count($data['perfect'])) . '</strong><p>' . self::artur_people($data['perfect']) . '</p></article><article><small>Trafili BONUS</small><strong>' . esc_html((string)count($data['bonus_hits'])) . '</strong><p>' . self::artur_people($data['bonus_hits']) . '</p></article></div></div>';
+        $payload = [
+            'round_no'=>(int)$round->round_no,
+            'title'=>(string)$round->title,
+            'artur_name'=>$arturName,
+            'hits'=>(int)$data['hits'],
+            'resolved'=>(int)$data['resolved'],
+            'typed'=>(int)$data['typed'],
+            'match_count'=>count($data['matches']),
+            'perfect_names'=>array_values(array_filter(array_map(static fn(array $row): string=>trim((string)($row['ranking_name'] ?: $row['display_name'])),$data['perfect']))),
+            'bonus_names'=>array_values(array_filter(array_map(static fn(array $row): string=>trim((string)($row['ranking_name'] ?: $row['display_name'])),$data['bonus_hits']))),
+            'matches'=>array_map(static function(array $match): array {
+                return [
+                    'home'=>(string)$match['home_name'],'away'=>(string)$match['away_name'],
+                    'score'=>$match['score_home'] === null || $match['score_away'] === null ? '' : (int)$match['score_home'].':'.(int)$match['score_away'],
+                    'pick'=>(string)($match['pick_name'] ?: 'Brak typu'),'state'=>(string)$match['pick_state'],
+                    'bonus'=>!empty($match['is_bonus']),'starts_at'=>self::date_pl($match['starts_at'] ?? null),
+                ];
+            },$data['matches']),
+        ];
+        echo '<div class="dt-artur-export-actions">';
+        if ($column === 'left') {
+            echo '<button type="button" class="button button-primary dt-button" data-dt-artur-graphic="summary" data-payload="'.esc_attr(wp_json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-format-image"></span>Pobierz podsumowanie 16:9</button>';
+            echo '<button type="button" class="button dt-button" data-dt-artur-graphic="bonus" data-payload="'.esc_attr(wp_json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-star-filled"></span>Pobierz trafienia BONUS 16:9</button>';
+        } else {
+            echo '<button type="button" class="button button-primary dt-button" data-dt-artur-graphic="preview" data-payload="'.esc_attr(wp_json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-format-image"></span>Pobierz zapowiedź 16:9</button>';
+        }
+        echo '<span class="dt-artur-export-status" aria-live="polite"></span></div></section>';
     }
 
     private static function user_registration_stats(): array {
@@ -546,7 +575,9 @@ class DT_Admin {
         global $wpdb;
         $season = (string)(DT_DB::settings()['season'] ?? '');
         $rounds = (array)$wpdb->get_results($wpdb->prepare(
-            "SELECT r.*,COUNT(m.id) match_count
+            "SELECT r.*,COUNT(m.id) match_count,
+                    SUM(CASE WHEN m.score_home IS NOT NULL AND m.score_away IS NOT NULL THEN 1 ELSE 0 END) resolved_count,
+                    MIN(m.starts_at) first_match
              FROM " . DT_DB::table('rounds') . " r
              LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
              WHERE r.season=%s AND r.league_key='1lm'
@@ -575,11 +606,30 @@ class DT_Admin {
         $roundIds = array_map('intval',wp_list_pluck($rounds,'id'));
         $leftId = max(0,(int)($_GET['left_round'] ?? 0));
         $rightId = max(0,(int)($_GET['right_round'] ?? 0));
-        if (!in_array($leftId,$roundIds,true)) $leftId=(int)($roundIds[0] ?? 0);
-        if (!in_array($rightId,$roundIds,true)) $rightId=(int)($roundIds[1] ?? $leftId);
+        if (!in_array($leftId,$roundIds,true)) {
+            $leftId = 0;
+            foreach ($rounds as $round) {
+                if ((int)$round->match_count > 0 && (int)$round->resolved_count >= (int)$round->match_count) { $leftId=(int)$round->id; break; }
+            }
+            if (!$leftId) $leftId=(int)($roundIds[0] ?? 0);
+        }
+        if (!in_array($rightId,$roundIds,true)) {
+            $rightId = 0;
+            $leftNo = 0;
+            foreach ($rounds as $round) if ((int)$round->id === $leftId) { $leftNo=(int)$round->round_no; break; }
+            $nextRounds = array_values(array_filter($rounds,static fn(object $round): bool=>(int)$round->round_no > $leftNo));
+            usort($nextRounds,static fn(object $a,object $b): int=>(int)$a->round_no <=> (int)$b->round_no);
+            if ($nextRounds) $rightId=(int)$nextRounds[0]->id;
+            if (!$rightId) foreach (array_reverse($rounds) as $round) {
+                if ((int)$round->resolved_count < (int)$round->match_count) { $rightId=(int)$round->id; break; }
+            }
+            if (!$rightId) $rightId=$leftId;
+        }
         $roundLookup = [];
         foreach ($rounds as $round) $roundLookup[(int)$round->id]=$round;
         $bonusMap = class_exists('DT_Bonus') ? DT_Bonus::map() : [];
+        $arturName = 'Artur';
+        foreach ($users as $user) if ((int)$user->ID === $userId) { $arturName=trim((string)($user->ranking_name ?: $user->display_name ?: $user->user_login)); break; }
 
         self::shell('Kolejka z Arturem','Panel roboczy do podsumowania i przygotowania kolejnego odcinka.');
         echo '<section class="dt-card dt-artur-controls"><form method="get" action="' . esc_url(admin_url('admin.php')) . '"><input type="hidden" name="page" value="decka-typer-artur"><div class="dt-artur-controls-grid"><label>Konto Artura<select name="artur_user">';
@@ -598,8 +648,8 @@ class DT_Admin {
             echo '<section class="dt-card dt-section"><p class="dt-empty">Brak kolejek 1LM w bieżącym sezonie.</p></section>';
         } else {
             echo '<div class="dt-artur-columns dt-section">';
-            if (isset($roundLookup[$leftId])) self::artur_round_panel($roundLookup[$leftId],$userId,$bonusMap);
-            if (isset($roundLookup[$rightId])) self::artur_round_panel($roundLookup[$rightId],$userId,$bonusMap);
+            if (isset($roundLookup[$leftId])) self::artur_round_panel($roundLookup[$leftId],$userId,$bonusMap,'left',$arturName);
+            if (isset($roundLookup[$rightId])) self::artur_round_panel($roundLookup[$rightId],$userId,$bonusMap,'right',$arturName);
             echo '</div>';
         }
         self::end_shell();
