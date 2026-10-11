@@ -46,7 +46,7 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshLive();});
 
   const icon=n=>{
-    const p={calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',alert:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.6 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.6a2 2 0 0 0-3.4 0z"/>',chevDownDouble:'<path d="m7 7 5 5 5-5"/><path d="m7 12 5 5 5-5"/>'};
+    const p={calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',award:'<circle cx="12" cy="8" r="5"/><path d="m8.5 12-1 9 4.5-2.5 4.5 2.5-1-9"/>',alert:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.6 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.6a2 2 0 0 0-3.4 0z"/>',chevDownDouble:'<path d="m7 7 5 5 5-5"/><path d="m7 12 5 5 5-5"/>'};
     return `<svg class="dt-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${p[n]||p.check}</svg>`;
   };
   const esc=s=>String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[m]));
@@ -187,6 +187,7 @@
     const progress={total:Number(serverProgress.total||matches.length),selected:Math.min(Number(serverProgress.total||matches.length),Number(serverProgress.selected||0)+state.picks.size)};progress.remaining=Math.max(0,progress.total-progress.selected);
     const progressComplete=progress.total>0&&progress.remaining===0;
     meta.push(`<span class="dt-meta-pill ${progressComplete?'is-success':'is-danger'} dt-pick-progress">${icon(progressComplete?'check':'alert')}Wytypowano ${progress.selected}/${progress.total}</span>`);
+    if(!open&&cfg.loggedIn){const points=Number(round.earned_points||0);meta.push(`<span class="dt-meta-pill dt-earned-points">${icon('award')}Zdobyte punkty: ${esc(Number.isInteger(points)?points:points.toFixed(1))} pkt</span>`);}
     if(progress.remaining>0)meta.push(`<span class="dt-meta-pill is-warning">${icon('alert')}Pozostały ${progress.remaining} mecze</span>`);
     $('#dt-round-meta').innerHTML=meta.join('');
     $('#dt-matches').innerHTML=matches.length?matches.map(matchCard).join(''):'<div class="dt-empty-front">Brak meczów w tej kolejce.</div>';

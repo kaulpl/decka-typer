@@ -183,6 +183,13 @@ class DT_Submission {
 
         // Winner-only persistence. No predicted score fields exist in this model.
         foreach ($clean as $matchId => $teamId) {
+            $startsAt = $wpdb->get_var($wpdb->prepare(
+                "SELECT starts_at FROM $matchTable WHERE id=%d AND start_time_known=1",
+                $matchId
+            ));
+            if (!$startsAt || (string)$startsAt <= current_time('mysql')) {
+                return new WP_Error('match_started', 'Jeden z meczów właśnie się rozpoczął. Typ nie został zapisany.', ['status'=>409]);
+            }
             $existing=(int)$wpdb->get_var($wpdb->prepare("SELECT id FROM $predTable WHERE user_id=%d AND match_id=%d",$uid,$matchId));
             if ($existing) continue;
             $sql = $wpdb->prepare(

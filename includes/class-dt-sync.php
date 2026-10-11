@@ -158,7 +158,10 @@ class DT_Sync {
         foreach($rows as $r){
             $date=self::extract_official_date_time($r[6]); if(!$date)continue;
             $block=$r[0]; $score=null;
-            if(preg_match('/"homeTeamScore":(\d+)[\s\S]*?"guestTeamScore":(\d+)/',$block,$sm))$score=[(int)$sm[1],(int)$sm[2]];
+            if(preg_match('/"resultHome":(\d+)[\s\S]*?"resultGuest":(\d+)/',$block,$sm)
+                || preg_match('/"homeTeamScore":(\d+)[\s\S]*?"guestTeamScore":(\d+)/',$block,$sm)) {
+                $score=[(int)$sm[1],(int)$sm[2]];
+            }
             $home=['name'=>$r[3],'external_id'=>'plk-'.$r[7],'source_url'=>$baseUrl,'logo_url'=>$r[8]];
             $away=['name'=>$r[4],'external_id'=>'plk-'.$r[9],'source_url'=>$baseUrl,'logo_url'=>$r[10]];
             $matches['plk-'.$r[1]]=['season'=>$season,'league_key'=>'plk','group_key'=>'','round_no'=>(int)$r[2],'home'=>$home,'away'=>$away,'starts_at'=>$date['mysql'],'start_time_known'=>$date['time_known']?1:0,'score_home'=>$score?$score[0]:null,'score_away'=>$score?$score[1]:null,'status'=>$score?'finished':'scheduled','source_url'=>$baseUrl,'external_key'=>'plk-'.$r[1]];

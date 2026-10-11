@@ -7,7 +7,7 @@ class DT_Admin {
         add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
         foreach ([
             'sync_now','save_settings','save_match','add_match','add_round','adjust_points',
-            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert','update_feedback','test_notifications','save_notification_templates'
+            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert','update_feedback','test_notifications','save_notification_templates','cancel_late_prediction'
         ] as $action) {
             add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
         }
@@ -41,6 +41,7 @@ class DT_Admin {
         wp_enqueue_style('dt-admin', DT_URL . 'assets/css/admin.css', [], DT_VERSION);
         wp_enqueue_style('dt-admin-artur', DT_URL . 'assets/css/admin-artur.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_style('dt-admin-predictions', DT_URL . 'assets/css/admin-predictions.css', ['dt-admin'], DT_VERSION);
+        wp_enqueue_style('dt-admin-verification', DT_URL . 'assets/css/admin-verification.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_script('dt-admin', DT_URL . 'assets/js/admin.js', [], DT_VERSION, true);
     }
 
@@ -922,6 +923,7 @@ class DT_Admin {
         $leagueColors = wp_parse_args((array)($s['league_colors'] ?? []), ['1lm'=>'#055EFB','plk'=>'#FB5D0B','2lm'=>'#4F6F9D']);
         echo '<section class="dt-card"><span class="dt-eyebrow">WYGLĄD</span><h2>Kolory interfejsu</h2><div class="dt-form-3"><label>Niebieski<input type="color" name="brand_primary" value="' . esc_attr($s['brand_primary']) . '"></label><label>Akcent<input type="color" name="brand_accent" value="' . esc_attr($s['brand_accent']) . '"></label><label>Tło<input type="color" name="brand_surface" value="' . esc_attr($s['brand_surface']) . '"></label></div><h3>Kolory lig</h3><p class="dt-muted">Te kolory oznaczają ligi w odliczaniu oraz przy kolejkach w zakładce „Moje typy”.</p><div class="dt-form-3"><label>1LM<input type="color" name="league_colors[1lm]" value="' . esc_attr($leagueColors['1lm']) . '"></label><label>PLK<input type="color" name="league_colors[plk]" value="' . esc_attr($leagueColors['plk']) . '"></label><label>2LM<input type="color" name="league_colors[2lm]" value="' . esc_attr($leagueColors['2lm']) . '"></label></div></section>';
         echo '<div class="dt-savebar"><div><strong>Decka Typer ' . esc_html(DT_VERSION) . '</strong><span>Zmiany ustawień obowiązują od razu.</span></div><button class="button button-primary dt-button">Zapisz ustawienia</button></div></form>';
+        echo '<section class="dt-card dt-verification-card"><span class="dt-eyebrow">BEZPIECZEŃSTWO TYPOWANIA</span><h2>Weryfikuj typowania</h2><p>Sprawdź zapisane typy i wykryj te, które zostały oddane w chwili rozpoczęcia meczu lub później. Samo sprawdzenie niczego nie usuwa ani nie zmienia punktów.</p><p><a class="button button-primary dt-button" href="'.esc_url(add_query_arg(['page'=>'decka-typer-settings','verify_predictions'=>1],admin_url('admin.php'))).'"><span class="dashicons dashicons-search"></span> Weryfikuj typowania</a></p></section>';
         $pushReady=class_exists('DT_Notifications')&&DT_Notifications::push_ready();
         echo '<section class="dt-card"><span class="dt-eyebrow">POWIADOMIENIA</span><h2>Web Push / PWA</h2><div class="dt-sync-state"><span class="dt-dot '.($pushReady?'is-on':'').'"></span><div><strong>'.($pushReady?'OneSignal Web Push jest skonfigurowany':'Web Push oczekuje na konfigurację OneSignal').'</strong><small>Przypomnienia e-mail są wyłączone. Dla Push dodaj w wp-config.php stałe DT_ONESIGNAL_APP_ID i DT_ONESIGNAL_REST_API_KEY.</small></div></div><p class="dt-muted">Web Push każdy użytkownik włącza samodzielnie w „Moim koncie”. Aktualizacja nie nadpisuje tych ustawień.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" class="dt-section"><input type="hidden" name="action" value="dt_test_notifications">';
         wp_nonce_field('dt_test_notifications');
@@ -930,7 +932,74 @@ class DT_Admin {
         echo '<section class="dt-card dt-danger-zone"><span class="dt-eyebrow">NARZĘDZIA TESTOWE</span><h2>Wyczyść dane Typera</h2><p>Usuwa wszystkie typy, punkty, wyniki, mecze, kolejki i drużyny, a następnie ponownie synchronizuje PLK, 1LM oraz 2LM. Konta WordPress, reklamy, Feedback, ustawienia Artura, AI i pozostała konfiguracja pozostają bez zmian.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Usunąć bezpowrotnie dane typerskie i sportowe, a następnie pobrać ligi od nowa?\')"><input type="hidden" name="action" value="dt_reset_typer_data">';
         wp_nonce_field('dt_reset_typer_data');
         echo '<label>Wpisz <strong>WYCZYŚĆ</strong>, aby potwierdzić<input name="confirmation" autocomplete="off" required></label><p><button class="button dt-danger-button"><span class="dashicons dashicons-trash"></span> Wyczyść dane i zsynchronizuj ligi</button></p></form></section>';
+        if (!empty($_GET['verify_predictions'])) self::late_predictions_modal();
         self::end_shell();
+    }
+
+    private static function late_predictions(): array {
+        global $wpdb;
+        return (array)$wpdb->get_results(
+            "SELECT p.id prediction_id,p.user_id,p.match_id,p.selected_team_id,p.points,p.scoring_code,p.submitted_at,
+                    m.starts_at,m.round_id,h.name home_name,a.name away_name,r.title round_title,r.league_key,r.group_key,
+                    u.display_name,
+                    (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=p.user_id AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name
+             FROM " . DT_DB::table('predictions') . " p
+             JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
+             JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
+             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
+             JOIN {$wpdb->users} u ON u.ID=p.user_id
+             WHERE m.start_time_known=1 AND m.starts_at IS NOT NULL AND p.submitted_at>=m.starts_at
+             ORDER BY p.submitted_at DESC,p.id DESC",
+            ARRAY_A
+        );
+    }
+
+    private static function late_predictions_modal(): void {
+        $rows = self::late_predictions();
+        echo '<dialog id="dt-late-predictions-modal" class="dt-modal dt-verification-modal"><div class="dt-modal-card"><div class="dt-modal-head"><div><span class="dt-eyebrow">WYNIK WERYFIKACJI</span><h2>Typy oddane po rozpoczęciu meczu</h2></div><button type="button" class="button" data-dt-close>Zamknij</button></div>';
+        if (!$rows) {
+            echo '<div class="dt-verification-ok"><span class="dashicons dashicons-yes-alt"></span><div><strong>Nie znaleziono naruszeń</strong><p>Wszystkie zapisane typy zostały oddane przed rozpoczęciem odpowiednich meczów.</p></div></div>';
+        } else {
+            echo '<p class="dt-inline-warning">Znaleziono '.esc_html((string)count($rows)).' '.(count($rows)===1?'typ wymagający':'typy wymagające').' sprawdzenia. Anulowanie usuwa typ i jego punkty; tej operacji nie można cofnąć.</p><div class="dt-verification-list">';
+            foreach ($rows as $row) {
+                $name = trim((string)($row['ranking_name'] ?: $row['display_name']));
+                $league = strtoupper((string)$row['league_key']) . ((string)$row['group_key'] !== '' ? ' · grupa '.strtoupper((string)$row['group_key']) : '');
+                echo '<article class="dt-verification-row"><div><strong>'.esc_html($name).'</strong><span>'.esc_html($league.' · '.$row['round_title']).'</span><b>'.esc_html($row['home_name'].' – '.$row['away_name']).'</b></div><dl><div><dt>Start meczu</dt><dd>'.esc_html(self::date_pl($row['starts_at'])).'</dd></div><div><dt>Oddano typ</dt><dd>'.esc_html(self::date_pl($row['submitted_at'])).'</dd></div><div><dt>Przyznane punkty</dt><dd>'.esc_html((string)(float)$row['points']).'</dd></div></dl><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Anulować ten typ i odjąć wszystkie wynikające z niego punkty?\')"><input type="hidden" name="action" value="dt_cancel_late_prediction"><input type="hidden" name="prediction_id" value="'.esc_attr((string)(int)$row['prediction_id']).'">';
+                wp_nonce_field('dt_cancel_late_prediction_'.(int)$row['prediction_id']);
+                echo '<button class="button dt-danger-button">ANULUJ TYPOWANIE</button></form></article>';
+            }
+            echo '</div>';
+        }
+        echo '</div></dialog><script>document.addEventListener("DOMContentLoaded",function(){var d=document.getElementById("dt-late-predictions-modal");if(d&&typeof d.showModal==="function")d.showModal();});</script>';
+    }
+
+    public static function cancel_late_prediction(): void {
+        if (!current_user_can('manage_options')) wp_die('Brak uprawnień.');
+        $predictionId = max(0,(int)($_POST['prediction_id'] ?? 0));
+        check_admin_referer('dt_cancel_late_prediction_'.$predictionId);
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT p.*,m.starts_at,m.start_time_known,m.round_id FROM " . DT_DB::table('predictions') . " p JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id WHERE p.id=%d",
+            $predictionId
+        ), ARRAY_A);
+        if (!$row || !(int)$row['start_time_known'] || empty($row['starts_at']) || (string)$row['submitted_at'] < (string)$row['starts_at']) {
+            self::redirect('decka-typer-settings','Nie znaleziono naruszenia do anulowania.','error',['verify_predictions'=>1]);
+        }
+        $deleted = $wpdb->delete(DT_DB::table('predictions'),['id'=>$predictionId],['%d']);
+        if (!$deleted) self::redirect('decka-typer-settings','Nie udało się anulować typu.','error',['verify_predictions'=>1]);
+        $remaining = (int)$wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " p JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id WHERE p.user_id=%d AND m.round_id=%d",
+            (int)$row['user_id'],(int)$row['round_id']
+        ));
+        if ($remaining > 0) {
+            $wpdb->update(DT_DB::table('round_submissions'),['prediction_count'=>$remaining],['user_id'=>(int)$row['user_id'],'round_id'=>(int)$row['round_id']],['%d'],['%d','%d']);
+        } else {
+            $wpdb->delete(DT_DB::table('round_submissions'),['user_id'=>(int)$row['user_id'],'round_id'=>(int)$row['round_id']],['%d','%d']);
+        }
+        DT_Scoring::recalc_match((int)$row['match_id']);
+        DT_Logger::log('late_prediction_cancelled','Anulowano typ oddany po rozpoczęciu meczu.',['prediction_id'=>$predictionId,'match_id'=>(int)$row['match_id'],'submitted_at'=>$row['submitted_at'],'starts_at'=>$row['starts_at'],'removed_points'=>(float)$row['points']],'notice',(int)$row['user_id']);
+        self::redirect('decka-typer-settings','Typ został anulowany, a wynikające z niego punkty odjęte.','success',['verify_predictions'=>1]);
     }
 
     public static function avatar(): void {

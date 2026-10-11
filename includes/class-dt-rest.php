@@ -86,13 +86,13 @@ class DT_REST {
         }
 
         $matches = $wpdb->get_results($wpdb->prepare(
-            "SELECT id,home_team_id,away_team_id FROM " . DT_DB::table('matches') . " WHERE round_id=%d ORDER BY id",
+            "SELECT id,home_team_id,away_team_id,starts_at,start_time_known FROM " . DT_DB::table('matches') . " WHERE round_id=%d ORDER BY id",
             $roundId
         ), ARRAY_A);
         if (!$matches) return new WP_Error('empty_round', 'Ta kolejka nie ma meczów.', ['status'=>422]);
 
         $matchMap = [];
-        foreach ($matches as $m) $matchMap[(int) $m['id']] = [(int) $m['home_team_id'], (int) $m['away_team_id']];
+        foreach ($matches as $m) $matchMap[(int) $m['id']] = $m;
         $clean = [];
         foreach ($picks as $pick) {
             if (!is_array($pick)) continue;
@@ -101,8 +101,14 @@ class DT_REST {
             if (!$matchId || !$teamId || !isset($matchMap[$matchId])) {
                 return new WP_Error('invalid_pick', 'Jeden z typów jest nieprawidłowy.', ['status'=>422]);
             }
-            if (!in_array($teamId, $matchMap[$matchId], true)) {
+            if (!in_array($teamId, [(int)$matchMap[$matchId]['home_team_id'],(int)$matchMap[$matchId]['away_team_id']], true)) {
                 return new WP_Error('invalid_team', 'Wybrana drużyna nie gra w tym meczu.', ['status'=>422]);
+            }
+            if (!(int)$matchMap[$matchId]['start_time_known'] || empty($matchMap[$matchId]['starts_at'])) {
+                return new WP_Error('unknown_start', 'Termin tego meczu nie jest jeszcze potwierdzony.', ['status'=>409]);
+            }
+            if ((string)$matchMap[$matchId]['starts_at'] <= current_time('mysql')) {
+                return new WP_Error('match_started', 'Ten mecz już się rozpoczął. Typ nie został zapisany.', ['status'=>409]);
             }
             $clean[$matchId] = $teamId;
         }
@@ -117,6 +123,15 @@ class DT_REST {
         }
 
         $now = current_time('mysql');
+        foreach (array_keys($clean) as $matchId) {
+            $startsAt = $wpdb->get_var($wpdb->prepare(
+                "SELECT starts_at FROM " . DT_DB::table('matches') . " WHERE id=%d AND start_time_known=1",
+                $matchId
+            ));
+            if (!$startsAt || (string)$startsAt <= $now) {
+                return new WP_Error('match_started', 'Jeden z meczów właśnie się rozpoczął. Kupon nie został zapisany.', ['status'=>409]);
+            }
+        }
         $predTable = DT_DB::table('predictions');
         $wpdb->query('START TRANSACTION');
         try {
@@ -140,8 +155,9 @@ class DT_REST {
                         'selected_team_id'=>$teamId,
                         'points'=>0,
                         'scoring_code'=>null,
+                        'submitted_at'=>$now,
                         'updated_at'=>$now,
-                    ], ['id'=>(int) $predictionId], ['%d','%d','%d','%f','%s','%s'], ['%d']);
+                    ], ['id'=>(int) $predictionId], ['%d','%f','%s','%s','%s'], ['%d']);
                     if ($ok === false) throw new RuntimeException('Nie udało się zaktualizować starego typu.');
                 } else {
                     $ok = $wpdb->insert($predTable, [
@@ -360,6 +376,11 @@ class DT_REST {
         $round['closes_at_iso'] = self::iso_datetime($round['closes_at'] ?? null);
         $savedCount=count($predMap);
         $totalCount=count($matches);
+        $earnedPoints = array_sum(array_map(static fn(array $prediction): float=>(float)($prediction['points'] ?? 0),$predMap));
+        $perfectRound = $totalCount > 0 && $savedCount >= $totalCount
+            && count(array_filter($predMap,static fn(array $prediction): bool=>(string)($prediction['scoring_code'] ?? '') === 'winner')) >= $totalCount;
+        if ($perfectRound) $earnedPoints += (float)(DT_DB::settings()['perfect_round_bonus'] ?? 0);
+        $round['earned_points'] = $earnedPoints;
         $round['submission'] = $savedCount ? [
             'submitted'=>true,
             'complete'=>$savedCount >= $totalCount,
