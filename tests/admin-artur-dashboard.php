@@ -16,4 +16,6 @@ check(str_contains($source,'Pobierz podsumowanie 16:9') && str_contains($source,
 check(str_contains($graphics,'1920') && str_contains($graphics,'1080') && str_contains($graphics,'logoUrl'), 'Infographics are 16:9 and include the TypujKosza logo');
 check(str_contains($graphics,"rr(ctx,1360,48,500,118,24,C.white)"), 'TypujKosza logo has a white backing panel');
 check(!str_contains($graphics,'Typuje:') && !str_contains($graphics,'1920 × 1080  •'), 'Generated graphics do not contain the old footer');
+check(str_contains($graphics,"text(ctx,'WYNIK'") && str_contains($graphics,'homeWon?900:650') && str_contains($graphics,'awayWon?900:650'), 'Summary graphic has a score column and emphasizes the winning team');
+check(str_contains($source,"'score_home'=>") && str_contains($source,"'score_away'=>"), 'Graphic payload contains separate numeric scores');
 echo "Admin Artur dashboard: OK\n";

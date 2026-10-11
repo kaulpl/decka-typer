@@ -1,1362 +1,19 @@
-<?php
-if (!defined('ABSPATH')) exit;
-
-class DT_Admin {
-    public static function register(): void {
-        add_action('admin_menu', [__CLASS__, 'menu']);
-        add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
-        foreach ([
-            'sync_now','save_settings','save_match','add_match','add_round','adjust_points',
-            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert','update_feedback','test_notifications','save_notification_templates','cancel_late_prediction'
-        ] as $action) {
-            add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
-        }
-    }
-
-    public static function menu(): void {
-        $cap = 'manage_options';
-        add_menu_page('Decka Typer','Decka Typer',$cap,'decka-typer',[__CLASS__,'dashboard'],'dashicons-awards',26);
-        $items = [
-            ['decka-typer','Pulpit','dashboard'],
-            ['decka-typer-rounds','Kolejki','rounds'],
-            ['decka-typer-matches','Mecze','matches'],
-            ['decka-typer-predictions','Typy','predictions'],
-            ['decka-typer-artur','Kolejka z Arturem','artur_dashboard'],
-            ['decka-typer-users','UÅ¼ytkownicy','users'],
-            ['decka-typer-feedback','Feedback','feedback'],
-            ['decka-typer-notifications','Powiadomienia','notifications'],
-            ['decka-typer-stats','Statystyki','stats'],
-            ['decka-typer-sync','Synchronizacja danych PZKosz','sync'],
-            ['decka-typer-logs','Historia','logs'],
-            ['decka-typer-avatar','AVATAR','avatar'],
-            ['decka-typer-settings','Ustawienia','settings'],
-        ];
-        foreach ($items as [$slug,$label,$method]) {
-            add_submenu_page('decka-typer',$label,$label,$cap,$slug,[__CLASS__,$method]);
-        }
-    }
-
-    public static function assets(string $hook): void {
-        if (strpos($hook, 'decka-typer') === false) return;
-        wp_enqueue_style('dt-admin', DT_URL . 'assets/css/admin.css', [], DT_VERSION);
-        wp_enqueue_style('dt-admin-artur', DT_URL . 'assets/css/admin-artur.css', ['dt-admin'], DT_VERSION);
-        wp_enqueue_style('dt-admin-predictions', DT_URL . 'assets/css/admin-predictions.css', ['dt-admin'], DT_VERSION);
-        wp_enqueue_style('dt-admin-verification', DT_URL . 'assets/css/admin-verification.css', ['dt-admin'], DT_VERSION);
-        wp_enqueue_script('dt-admin', DT_URL . 'assets/js/admin.js', [], DT_VERSION, true);
-        wp_enqueue_script('dt-admin-artur-graphics', DT_URL . 'assets/js/admin-artur-graphics.js', ['dt-admin'], DT_VERSION, true);
-        wp_localize_script('dt-admin-artur-graphics','DeckaTyperArturGraphics',['logoUrl'=>DT_URL.'assets/img/typujkosza-logo-horizontal.png']);
-    }
-
-    private static function guard(string $nonce): void {
-        if (!current_user_can('manage_options')) wp_die('Brak uprawnieÅ„.');
-        check_admin_referer($nonce);
-    }
-
-    private static function shell(string $title, string $subtitle = ''): void {
-        echo '<div class="wrap dt-admin"><div class="dt-admin-head"><div><div class="dt-kicker">DECKA PELPLIN Â· TYPER</div><h1>' . esc_html($title) . '</h1>' . ($subtitle ? '<p>' . esc_html($subtitle) . '</p>' : '') . '</div><img src="' . esc_url(DT_URL . 'assets/img/decka-logo.png') . '" alt="Decka Pelplin"></div>';
-        self::notice();
-    }
-
-    private static function end_shell(): void { echo '</div>'; }
-
-    private static function notice(): void {
-        if (empty($_GET['dt_notice'])) return;
-        $type = sanitize_key($_GET['dt_type'] ?? 'success');
-        $msg = sanitize_text_field(wp_unslash($_GET['dt_notice']));
-        echo '<div class="dt-toast-static dt-' . esc_attr($type) . '"><span class="dashicons dashicons-' . ($type === 'error' ? 'warning' : 'yes-alt') . '"></span>' . esc_html($msg) . '</div>';
-    }
-
-    private static function redirect(string $page, string $notice, string $type = 'success', array $extra = []): void {
-        wp_safe_redirect(add_query_arg(array_merge(['page'=>$page,'dt_notice'=>$notice,'dt_type'=>$type], $extra), admin_url('admin.php')));
-        exit;
-    }
-
-    private static function badge(string $text, string $type = 'neutral'): string {
-        return '<span class="dt-badge dt-badge-' . esc_attr($type) . '">' . esc_html($text) . '</span>';
-    }
-
-    private static function round_badge(string $status): string {
-        return match ($status) {
-            'open' => self::badge('Otwarte do typowania','green'),
-            'closed' => self::badge('ZamkniÄ™te','red'),
-            default => self::badge('Szkic','neutral'),
-        };
-    }
-
-    private static function metric(string $label, $value, string $icon, string $tone): void {
-        echo '<div class="dt-metric dt-tone-' . esc_attr($tone) . '"><div class="dt-metric-icon"><span class="dashicons dashicons-' . esc_attr($icon) . '"></span></div><div><span>' . esc_html($label) . '</span><strong>' . esc_html((string)$value) . '</strong></div></div>';
-    }
-
-    /** DATETIME values in Decka Typer are stored as local site time. Never run them through strtotime()+wp_date(). */
-    private static function local_dt(?string $value): ?DateTimeImmutable {
-        if (!$value) return null;
-        $tz = wp_timezone();
-        $d = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, $tz);
-        if (!$d) $d = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $value, $tz);
-        return $d ?: null;
-    }
-
-    private static function date_pl(?string $value): string {
-        $d = self::local_dt($value);
-        return $d ? $d->format('d.m.Y Â· H:i') : 'â€”';
-    }
-
-    private static function html_datetime(?string $value): string {
-        $d = self::local_dt($value);
-        return $d ? $d->format('Y-m-d\TH:i') : '';
-    }
-
-    private static function artur_pick_state(int $selectedTeamId, int $homeTeamId, int $awayTeamId, ?int $scoreHome, ?int $scoreAway): string {
-        if ($selectedTeamId <= 0) return 'missing';
-        if ($scoreHome === null || $scoreAway === null || $scoreHome === $scoreAway) return 'pending';
-        $winnerId = $scoreHome > $scoreAway ? $homeTeamId : $awayTeamId;
-        return $selectedTeamId === $winnerId ? 'hit' : 'miss';
-    }
-
-    private static function artur_round_data(int $roundId, int $userId, array $bonusMap): array {
-        global $wpdb;
-        $matches = (array)$wpdb->get_results($wpdb->prepare(
-            "SELECT m.id,m.home_team_id,m.away_team_id,m.starts_at,m.score_home,m.score_away,
-             h.name home_name,a.name away_name,p.selected_team_id
-             FROM " . DT_DB::table('matches') . " m
-             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
-             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
-             LEFT JOIN " . DT_DB::table('predictions') . " p ON p.match_id=m.id AND p.user_id=%d
-             WHERE m.round_id=%d ORDER BY m.starts_at,m.id",
-            $userId,$roundId
-        ), ARRAY_A);
-        $hits = 0;
-        $typed = 0;
-        $resolved = 0;
-        foreach ($matches as &$match) {
-            $selected = (int)($match['selected_team_id'] ?? 0);
-            $homeScore = $match['score_home'] === null ? null : (int)$match['score_home'];
-            $awayScore = $match['score_away'] === null ? null : (int)$match['score_away'];
-            $state = self::artur_pick_state($selected,(int)$match['home_team_id'],(int)$match['away_team_id'],$homeScore,$awayScore);
-            $match['pick_state'] = $state;
-            $match['pick_name'] = $selected === (int)$match['home_team_id'] ? $match['home_name'] : ($selected === (int)$match['away_team_id'] ? $match['away_name'] : '');
-            $match['is_bonus'] = isset($bonusMap[$roundId]) && (int)$bonusMap[$roundId] === (int)$match['id'];
-            if ($selected > 0) $typed++;
-            if ($homeScore !== null && $awayScore !== null && $homeScore !== $awayScore) $resolved++;
-            if ($state === 'hit') $hits++;
-        }
-        unset($match);
-
-        $perfect = [];
-        $matchCount = count($matches);
-        if ($matchCount === 8) {
-            $perfect = (array)$wpdb->get_results($wpdb->prepare(
-                "SELECT p.user_id,u.display_name,
-                 (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=p.user_id AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name,
-                 COUNT(DISTINCT p.match_id) picks,
-                 SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) hits
-                 FROM " . DT_DB::table('predictions') . " p
-                 JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
-                 JOIN {$wpdb->users} u ON u.ID=p.user_id
-                 WHERE m.round_id=%d
-                 GROUP BY p.user_id,u.display_name
-                 HAVING picks=8 AND hits=8
-                 ORDER BY ranking_name,u.display_name",
-                $roundId
-            ), ARRAY_A);
-        }
-
-        $bonusHits = [];
-        $bonusMatchId = (int)($bonusMap[$roundId] ?? 0);
-        if ($bonusMatchId > 0) {
-            $bonusHits = (array)$wpdb->get_results($wpdb->prepare(
-                "SELECT p.user_id,u.display_name,
-                 (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=p.user_id AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name
-                 FROM " . DT_DB::table('predictions') . " p
-                 JOIN {$wpdb->users} u ON u.ID=p.user_id
-                 WHERE p.match_id=%d AND p.scoring_code='winner'
-                 ORDER BY ranking_name,u.display_name",
-                $bonusMatchId
-            ), ARRAY_A);
-        }
-        return ['matches'=>$matches,'typed'=>$typed,'resolved'=>$resolved,'hits'=>$hits,'perfect'=>$perfect,'bonus_hits'=>$bonusHits];
-    }
-
-    private static function artur_people(array $rows): string {
-        if (!$rows) return '<span class="dt-artur-empty-list">Brak</span>';
-        $names = [];
-        foreach ($rows as $row) $names[] = trim((string)($row['ranking_name'] ?: $row['display_name']));
-        return '<span class="dt-artur-people">' . esc_html(implode(', ',array_filter($names))) . '</span>';
-    }
-
-    private static function artur_round_panel(object $round, int $userId, array $bonusMap, string $column, string $arturName): void {
-        $data = self::artur_round_data((int)$round->id,$userId,$bonusMap);
-        echo '<section class="dt-card dt-artur-round-card"><header><div><span class="dt-eyebrow">' . esc_html((int)$round->round_no . '. KOLEJKA 1LM') . '</span><h2>' . esc_html($round->title) . '</h2></div><span class="dt-artur-record">' . esc_html($data['hits'] . '/' . $data['resolved']) . '<small>trafione</small></span></header>';
-        echo '<div class="dt-artur-match-list">';
-        if (!$data['matches']) echo '<p class="dt-empty">Brak meczÃ³w w tej kolejce.</p>';
-        foreach ($data['matches'] as $match) {
-            $state = (string)$match['pick_state'];
-            $labels = ['hit'=>'TRAFIONY','miss'=>'NIETRAFIONY','pending'=>'OCZEKUJE','missing'=>'BRAK TYPU'];
-            $score = $match['score_home'] === null || $match['score_away'] === null ? 'â€”' : (int)$match['score_home'] . ':' . (int)$match['score_away'];
-            echo '<article class="dt-artur-match is-' . esc_attr($state) . '"><div class="dt-artur-game"><strong>' . esc_html($match['home_name']) . '</strong><span>' . esc_html($score) . '</span><strong>' . esc_html($match['away_name']) . '</strong></div><div class="dt-artur-pick"><span>Typ Artura</span><strong>' . esc_html($match['pick_name'] ?: 'â€”') . '</strong></div><div class="dt-artur-match-status">' . (!empty($match['is_bonus']) ? '<b>â˜… BONUS</b>' : '') . '<span>' . esc_html($labels[$state] ?? 'â€”') . '</span></div></article>';
-        }
-        echo '</div><div class="dt-artur-graphic-summary"><span class="dt-eyebrow">PODSUMOWANIE DO GRAFIKI</span><div><article><small>Typy Artura</small><strong>' . esc_html($data['hits'] . '/' . $data['resolved']) . '</strong><p>' . esc_html($data['typed'] . '/' . count($data['matches']) . ' wytypowanych meczÃ³w') . '</p></article><article><small>Perfekcyjne 8/8</small><strong>' . esc_html((string)count($data['perfect'])) . '</strong><p>' . self::artur_people($data['perfect']) . '</p></article><article><small>Trafili BONUS</small><strong>' . esc_html((string)count($data['bonus_hits'])) . '</strong><p>' . self::artur_people($data['bonus_hits']) . '</p></article></div></div>';
-        $payload = [
-            'round_no'=>(int)$round->round_no,
-            'title'=>(string)$round->title,
-            'artur_name'=>$arturName,
-            'hits'=>(int)$data['hits'],
-            'resolved'=>(int)$data['resolved'],
-            'typed'=>(int)$data['typed'],
-            'match_count'=>count($data['matches']),
-            'perfect_names'=>array_values(array_filter(array_map(static fn(array $row): string=>trim((string)($row['ranking_name'] ?: $row['display_name'])),$data['perfect']))),
-            'bonus_names'=>array_values(array_filter(array_map(static fn(array $row): string=>trim((string)($row['ranking_name'] ?: $row['display_name'])),$data['bonus_hits']))),
-            'matches'=>array_map(static function(array $match): array {
-                return [
-                    'home'=>(string)$match['home_name'],'away'=>(string)$match['away_name'],
-                    'score'=>$match['score_home'] === null || $match['score_away'] === null ? '' : (int)$match['score_home'].':'.(int)$match['score_away'],
-                    'pick'=>(string)($match['pick_name'] ?: 'Brak typu'),'state'=>(string)$match['pick_state'],
-                    'bonus'=>!empty($match['is_bonus']),'starts_at'=>self::date_pl($match['starts_at'] ?? null),
-                ];
-            },$data['matches']),
-        ];
-        echo '<div class="dt-artur-export-actions">';
-        if ($column === 'left') {
-            echo '<button type="button" class="button button-primary dt-button" data-dt-artur-graphic="summary" data-payload="'.esc_attr(wp_json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-format-image"></span>Pobierz podsumowanie 16:9</button>';
-            echo '<button type="button" class="button dt-button" data-dt-artur-graphic="bonus" data-payload="'.esc_attr(wp_json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-star-filled"></span>Pobierz trafienia BONUS 16:9</button>';
-        } else {
-            echo '<button type="button" class="button button-primary dt-button" data-dt-artur-graphic="preview" data-payload="'.esc_attr(wp_json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-format-image"></span>Pobierz zapowiedÅº 16:9</button>';
-        }
-        echo '<span class="dt-artur-export-status" aria-live="polite"></span></div></section>';
-    }
-
-    private static function user_registration_stats(): array {
-        global $wpdb;
-        $localNow = new DateTimeImmutable('now', wp_timezone());
-        $utc = new DateTimeZone('UTC');
-        $now = $localNow->setTimezone($utc)->format('Y-m-d H:i:s');
-        $today = $localNow->setTime(0,0)->setTimezone($utc)->format('Y-m-d H:i:s');
-        $week = $localNow->modify('-7 days')->setTimezone($utc)->format('Y-m-d H:i:s');
-        $month = $localNow->modify('first day of this month')->setTime(0,0)->setTimezone($utc)->format('Y-m-d H:i:s');
-        $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT COUNT(*) total,
-             SUM(CASE WHEN user_registered BETWEEN %s AND %s THEN 1 ELSE 0 END) today,
-             SUM(CASE WHEN user_registered BETWEEN %s AND %s THEN 1 ELSE 0 END) week,
-             SUM(CASE WHEN user_registered BETWEEN %s AND %s THEN 1 ELSE 0 END) month
-             FROM {$wpdb->users}
-             WHERE user_registered<>'0000-00-00 00:00:00' AND user_registered<=%s",
-            $today,$now,$week,$now,$month,$now,$now
-        ));
-        return [
-            'total'=>(int)($row->total ?? 0),
-            'today'=>(int)($row->today ?? 0),
-            'week'=>(int)($row->week ?? 0),
-            'month'=>(int)($row->month ?? 0),
-        ];
-    }
-
-    private static function user_growth_item(string $label, int $value, int $total, string $tone): void {
-        $share = $total > 0 ? min(100, round(($value / $total) * 100, 2)) : 0;
-        $shareLabel = number_format_i18n($share, $share < 1 && $share > 0 ? 2 : 1) . '%';
-        echo '<div class="dt-user-growth-item dt-user-growth-' . esc_attr($tone) . '">';
-        echo '<div class="dt-user-ring" style="--dt-user-share:' . esc_attr((string)$share) . '%" role="img" aria-label="' . esc_attr($label . ': ' . $shareLabel . ' wszystkich uÅ¼ytkownikÃ³w') . '"><strong>' . esc_html($shareLabel) . '</strong></div>';
-        echo '<div><span>' . esc_html($label) . '</span><strong>' . esc_html((string)$value) . '</strong><small>nowych kont</small></div></div>';
-    }
-
-    private static function prediction_dashboard_stats(string $season): array {
-        global $wpdb;
-        $predictions = DT_DB::table('predictions');
-        $matches = DT_DB::table('matches');
-        $rounds = DT_DB::table('rounds');
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT r.id round_id,r.league_key,r.group_key,r.round_no,r.opens_at,r.closes_at,
-             MIN(CASE WHEN m.start_time_known=1 THEN m.starts_at END) first_match,
-             COUNT(DISTINCT m.id) eligible_matches,
-             COUNT(CASE WHEN p.selected_team_id IS NOT NULL THEN 1 END) submitted,
-             SUM(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL THEN 1 ELSE 0 END) resolved,
-             SUM(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND p.scoring_code='winner' THEN 1 ELSE 0 END) hits
-             FROM $rounds r
-             JOIN $matches m ON m.round_id=r.id AND m.start_time_known=1 AND m.starts_at IS NOT NULL
-             LEFT JOIN $predictions p ON p.match_id=m.id
-             WHERE r.season=%s AND r.status IN ('open','closed')",
-            $season
-        ) . ' GROUP BY r.id,r.league_key,r.group_key,r.round_no,r.opens_at,r.closes_at ORDER BY r.league_key,r.group_key,r.round_no', ARRAY_A);
-        $now = new DateTimeImmutable('now', wp_timezone());
-        $utc = new DateTimeZone('UTC');
-        $result = [];
-        foreach (['1lm', 'plk', '2lm'] as $key) {
-            $result[$key] = ['eligible_matches'=>0,'possible'=>0,'submitted'=>0,'resolved'=>0,'hits'=>0,
-                'bonus_resolved'=>0,'bonus_hits'=>0,'rounds'=>[]];
-        }
-        foreach ((array)$rows as $row) {
-            $league = (string)($row['league_key'] ?? '');
-            if (!isset($result[$league])) continue;
-            $close = self::local_dt((string)($row['closes_at'] ?: $row['first_match']));
-            $open = self::local_dt((string)($row['opens_at'] ?? ''));
-            if (!$close || ($open && $open > $now)) continue;
-            $cutoff = $close < $now ? $close : $now;
-            if ($open && $open > $cutoff) continue;
-            $registered = (int)$wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->users} WHERE user_registered<>'0000-00-00 00:00:00' AND user_registered<=%s",
-                $cutoff->setTimezone($utc)->format('Y-m-d H:i:s')
-            ));
-            $matchesCount = (int)$row['eligible_matches'];
-            $round = [
-                'id'=>(int)$row['round_id'], 'group'=>(string)$row['group_key'], 'number'=>(int)$row['round_no'],
-                'matches'=>$matchesCount,'users'=>$registered,'possible'=>$matchesCount*$registered,
-                'submitted'=>(int)$row['submitted'], 'resolved'=>(int)$row['resolved'], 'hits'=>(int)$row['hits'],
-            ];
-            $result[$league]['rounds'][] = $round;
-            foreach (['eligible_matches'=>'matches','possible'=>'possible','submitted'=>'submitted','resolved'=>'resolved','hits'=>'hits'] as $total=>$field) {
-                $result[$league][$total] += $round[$field];
-            }
-        }
-
-        $bonusIds = class_exists('DT_Bonus') ? array_values(array_filter(array_map('intval', DT_Bonus::match_ids()))) : [];
-        if ($bonusIds) {
-            $placeholders = implode(',', array_fill(0, count($bonusIds), '%d'));
-            $bonuses = $wpdb->get_results($wpdb->prepare(
-                "SELECT r.league_key,r.id round_id,
-                 COUNT(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL THEN 1 END) bonus_resolved,
-                 SUM(CASE WHEN p.selected_team_id IS NOT NULL AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND p.scoring_code='winner' THEN 1 ELSE 0 END) bonus_hits
-                 FROM $predictions p
-                 JOIN $matches m ON m.id=p.match_id
-                 JOIN $rounds r ON r.id=m.round_id
-                 WHERE m.id IN ($placeholders) AND r.season=%s AND r.status IN ('open','closed')
-                   AND m.start_time_known=1 AND m.starts_at IS NOT NULL
-                 GROUP BY r.league_key,r.id",
-                ...array_merge($bonusIds, [$season])
-            ), ARRAY_A);
-            foreach ((array)$bonuses as $bonus) {
-                $key = (string)$bonus['league_key'];
-                if (!isset($result[$key])) continue;
-                // Follow the same eligible rounds used for the possible-type denominator.
-                if (!in_array((int)$bonus['round_id'], array_column($result[$key]['rounds'], 'id'), true)) continue;
-                $result[$key]['bonus_resolved'] += (int)$bonus['bonus_resolved'];
-                $result[$key]['bonus_hits'] += (int)$bonus['bonus_hits'];
-            }
-        }
-        foreach ($result as &$league) {
-            $league['utilization'] = $league['possible'] > 0 ? min(100, round(100*$league['submitted']/$league['possible'], 1)) : 0.0;
-            $league['accuracy'] = $league['resolved'] > 0 ? round(100*$league['hits']/$league['resolved'], 1) : 0.0;
-            $league['bonus_accuracy'] = $league['bonus_resolved'] > 0 ? round(100*$league['bonus_hits']/$league['bonus_resolved'], 1) : 0.0;
-        }
-        unset($league);
-        return $result;
-    }
-
-    private static function prediction_dashboard_item(string $label, float $percent, int $value, int $total, string $description, string $tone): void {
-        $percentLabel = number_format_i18n($percent, 1) . '%';
-        echo '<article class="dt-prediction-stat dt-prediction-stat-' . esc_attr($tone) . '">';
-        echo '<div class="dt-prediction-ring" style="--dt-prediction-share:' . esc_attr((string)$percent) . '%" role="img" aria-label="' . esc_attr($label . ': ' . $percentLabel) . '"><strong>' . esc_html($percentLabel) . '</strong></div>';
-        echo '<div><span>' . esc_html($label) . '</span><strong>' . esc_html(number_format_i18n($value)) . ' <small>/ ' . esc_html(number_format_i18n($total)) . '</small></strong><p>' . esc_html($description) . '</p></div></article>';
-    }
-
-    private static function prediction_league_dashboard(string $label, array $stats): void {
-        echo '<section class="dt-prediction-league"><div class="dt-prediction-league-heading"><h3>' . esc_html($label) . '</h3><span>' . esc_html(number_format_i18n(count($stats['rounds']))) . ' kolejek Â· ' . esc_html(number_format_i18n($stats['eligible_matches'])) . ' meczÃ³w dostÄ™pnych do typowania</span></div>';
-        echo '<div class="dt-prediction-dashboard-grid">';
-        self::prediction_dashboard_item('Wykorzystanie typÃ³w',$stats['utilization'],$stats['submitted'],$stats['possible'],'oddane / moÅ¼liwe w tej lidze','blue');
-        self::prediction_dashboard_item('SkutecznoÅ›Ä‡',$stats['accuracy'],$stats['hits'],$stats['resolved'],'trafne / rozstrzygniÄ™te','green');
-        self::prediction_dashboard_item('Mecze BONUS',$stats['bonus_accuracy'],$stats['bonus_hits'],$stats['bonus_resolved'],'trafione / rozstrzygniÄ™te BONUS-y','orange');
-        echo '</div>';
-        if ($stats['rounds']) {
-            echo '<details class="dt-prediction-rounds"><summary>Jak policzono moÅ¼liwe typy</summary><div class="dt-prediction-rounds-scroll"><table class="widefat striped"><thead><tr><th>Kolejka</th><th>Mecze</th><th>UÅ¼ytkownicy</th><th>MoÅ¼liwe typy</th><th>Oddane typy</th></tr></thead><tbody>';
-            foreach ($stats['rounds'] as $round) {
-                $name = $round['number'] . '. kolejka' . ($round['group'] !== '' ? ' Â· grupa ' . $round['group'] : '');
-                echo '<tr><th scope="row">' . esc_html($name) . '</th><td>' . esc_html(number_format_i18n($round['matches'])) . '</td><td>' . esc_html(number_format_i18n($round['users'])) . '</td><td>' . esc_html(number_format_i18n($round['possible'])) . '</td><td>' . esc_html(number_format_i18n($round['submitted'])) . '</td></tr>';
-            }
-            echo '</tbody></table></div></details>';
-        }
-        echo '</section>';
-    }
-
-    public static function dashboard(): void {
-        global $wpdb;
-        $s = DT_DB::settings();
-        $season = $s['season'];
-        $rounds = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . DT_DB::table('rounds') . ' WHERE season=%s', $season));
-        $matches = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . DT_DB::table('matches') . ' m JOIN ' . DT_DB::table('rounds') . ' r ON r.id=m.round_id WHERE r.season=%s', $season));
-        $submissions = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s', $season));
-        $players = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(DISTINCT s.user_id) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s', $season));
-        $users = self::user_registration_stats();
-        $predictionStats = self::prediction_dashboard_stats($season);
-        $open = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . DT_DB::table('rounds') . " WHERE season=%s AND status='open' ORDER BY round_no LIMIT 1", $season));
-        $last = get_option('dt_last_sync');
-
-        self::shell('Pulpit', 'Sezon ' . $season . ' Â· kontrola Typera');
-        echo '<div class="dt-grid dt-grid-4">';
-        self::metric('Kolejki',$rounds,'calendar-alt','blue');
-        self::metric('Mecze',$matches,'tickets-alt','orange');
-        self::metric('Kupony',$submissions,'forms','violet');
-        self::metric('Gracze',$players,'groups','green');
-        echo '</div>';
-
-        echo '<section class="dt-card dt-section dt-user-dashboard"><div class="dt-card-head"><div><span class="dt-eyebrow">UÅ»YTKOWNICY</span><h2>Rejestracje w serwisie</h2><p class="dt-muted">BieÅ¼Ä…cy udziaÅ‚ nowych kont w caÅ‚ej bazie uÅ¼ytkownikÃ³w.</p></div><span class="dashicons dashicons-chart-area" aria-hidden="true"></span></div>';
-        echo '<div class="dt-user-dashboard-grid"><div class="dt-user-total"><div class="dt-user-total-icon"><span class="dashicons dashicons-groups"></span></div><div><span>Wszyscy zarejestrowani</span><strong>' . esc_html((string)$users['total']) . '</strong><small>kont uÅ¼ytkownikÃ³w</small></div></div><div class="dt-user-growth-grid">';
-        self::user_growth_item('Dzisiaj',$users['today'],$users['total'],'orange');
-        self::user_growth_item('Ostatnie 7 dni',$users['week'],$users['total'],'blue');
-        self::user_growth_item('Ten miesiÄ…c',$users['month'],$users['total'],'green');
-        echo '</div></div></section>';
-
-        echo '<section class="dt-card dt-section dt-prediction-dashboard"><div class="dt-card-head"><div><span class="dt-eyebrow">AKTYWNOÅšÄ† TYPOWANIA</span><h2>Wykorzystanie i skutecznoÅ›Ä‡ typÃ³w</h2><p class="dt-muted">BieÅ¼Ä…cy sezon Â· kolejki otwarte i zamkniÄ™te. TrafnoÅ›Ä‡ obejmuje wyÅ‚Ä…cznie rozstrzygniÄ™te mecze.</p></div><span class="dashicons dashicons-chart-pie" aria-hidden="true"></span></div>';
-        foreach (['1lm'=>'1LM','plk'=>'PLK','2lm'=>'2LM'] as $leagueKey=>$leagueLabel) self::prediction_league_dashboard($leagueLabel, $predictionStats[$leagueKey]);
-        echo '<p class="dt-prediction-footnote">MoÅ¼liwe typy sÄ… sumÄ… z kolejek: mecze ze znanÄ… godzinÄ… Ã— liczba kont zarejestrowanych przed zamkniÄ™ciem typowania danej kolejki. Dla kolejek nadal otwartych liczba kont jest liczona na teraz.</p></section>';
-
-        echo '<div class="dt-grid dt-grid-2 dt-section"><section class="dt-card"><span class="dt-eyebrow">AKTYWNE TYPOWANIE</span><h2>' . esc_html($open ? $open->title : 'Brak otwartej kolejki') . '</h2>';
-        if ($open) {
-            echo '<p>Typowanie zamknie siÄ™ <strong>' . esc_html(self::date_pl($open->closes_at)) . '</strong>.</p><a class="button dt-button" href="' . esc_url(admin_url('admin.php?page=decka-typer-rounds')) . '">ZarzÄ…dzaj kolejkÄ…</a>';
-        } else {
-            echo '<p class="dt-muted">OtwÃ³rz kolejkÄ™ w module â€Kolejkiâ€ i ustaw dokÅ‚adny termin zamkniÄ™cia kuponÃ³w.</p><a class="button dt-button" href="' . esc_url(admin_url('admin.php?page=decka-typer-rounds')) . '">OtwÃ³rz kolejkÄ™</a>';
-        }
-        echo '</section><section class="dt-card"><span class="dt-eyebrow">STAN SYSTEMU</span><h2>Kontrola</h2><div class="dt-health"><div><span>Ostatnia synchronizacja</span><strong>' . esc_html($last['at'] ?? 'jeszcze nie wykonano') . '</strong></div><div><span>Å¹rÃ³dÅ‚a</span><strong>PLK Â· PZKosz 1LM Â· PZKosz 2LM</strong></div><div><span>Tryb typowania</span><strong>ZwyciÄ™zca meczu</strong></div><div><span>Edycja kuponu</span><strong>WyÅ‚Ä…czona po zapisie</strong></div></div></section></div>';
-        echo '<section class="dt-card dt-section"><span class="dt-eyebrow">TOP 5</span><h2>Liderzy klasyfikacji</h2>';
-        self::ranking_table(DT_Scoring::ranking($season,5));
-        echo '</section>';
-        self::end_shell();
-    }
-
-    public static function rounds(): void {
-        global $wpdb;
-        $s = DT_DB::settings();
-        $league = sanitize_key($_GET['league'] ?? 'all');
-        if (!in_array($league,['all','plk','1lm','2lm'],true)) $league='all';
-        $group = $league === '2lm' ? strtoupper(sanitize_text_field($_GET['group'] ?? '')) : '';
-        if($league==='2lm'&&$group==='')$group=strtoupper((string)$wpdb->get_var($wpdb->prepare("SELECT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key LIMIT 1",$s['season'])));
-        $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND r.league_key=%s ', $league) : '';
-        $groupSql = $group !== '' ? $wpdb->prepare(' AND r.group_key=%s ', $group) : '';
-        $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
-        $total=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM ".DT_DB::table('rounds')." r WHERE r.season=%s $leagueSql $groupSql",$s['season']));
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT r.*,COUNT(m.id) matches,
-             MIN(CASE WHEN m.start_time_known=1 THEN m.starts_at END) first_known_match,
-             MAX(CASE WHEN m.start_time_known=1 THEN m.starts_at END) last_known_match,
-             (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss WHERE ss.round_id=r.id) submissions
-             FROM " . DT_DB::table('rounds') . " r LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
-             WHERE r.season=%s $leagueSql $groupSql GROUP BY r.id ORDER BY r.league_key,r.group_key,r.round_no LIMIT %d OFFSET %d", $s['season'],$perPage,($dtPage-1)*$perPage
-        ));
-        self::shell('Kolejki','Tylko kolejka otwarta przez administratora jest dostÄ™pna do nowych typÃ³w.');
-        echo '<div class="dt-toolbar">';
-        self::league_tabs('decka-typer-rounds',$league);
-        echo '<button class="button button-primary dt-button" data-dt-open="dt-round-modal"><span class="dashicons dashicons-plus-alt2"></span> Dodaj kolejkÄ™</button></div>';
-        if($league==='2lm') self::group_tabs('decka-typer-rounds',$group);
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Kolejka</th><th>Termin meczÃ³w</th><th>Mecze</th><th>Kupony</th><th>Status</th><th>ZamkniÄ™cie typowania</th><th>Å¹rÃ³dÅ‚o</th><th>Akcje</th></tr></thead><tbody>';
-        foreach ($rows as $r) {
-            $range = $r->first_known_match ? substr(self::date_pl($r->first_known_match),0,10) . ' â€“ ' . substr(self::date_pl($r->last_known_match),0,10) : 'â€”';
-            $openData = [
-                'id'=>(int)$r->id,
-                'title'=>$r->title,
-                'default_close'=>self::html_datetime($r->first_known_match),
-                'first_match'=>self::date_pl($r->first_known_match),
-            ];
-            $leagueLabel = strtoupper((string)$r->league_key) . ($r->group_key ? ' Â· grupa '.(string)$r->group_key : '');
-            echo '<tr><td><small class="dt-muted">'.esc_html($leagueLabel).'</small><br><strong>' . esc_html($r->title) . '</strong></td><td>' . esc_html($range) . '</td><td>' . (int)$r->matches . '</td><td>' . (int)$r->submissions . '</td><td>' . self::round_badge((string)$r->status) . '</td><td><strong>' . esc_html(self::date_pl($r->closes_at)) . '</strong></td><td>' . self::badge($r->source === 'manual' ? 'RÄ™cznie' : 'Auto PZKosz', $r->source === 'manual' ? 'orange' : 'blue') . '</td><td>';
-            if ($r->status === 'open') {
-                echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline">';
-                echo '<input type="hidden" name="action" value="dt_close_round"><input type="hidden" name="round_id" value="' . (int)$r->id . '">';
-                wp_nonce_field('dt_close_round');
-                echo '<button class="button" onclick="return confirm(\'ZamknÄ…Ä‡ typowanie tej kolejki?\')">Zamknij</button></form>';
-            } else {
-                echo '<button type="button" class="button dt-open-round" data-round="' . esc_attr(wp_json_encode($openData)) . '">OtwÃ³rz typowanie</button>';
-            }
-            $matchesUrl = add_query_arg(['page'=>'decka-typer-matches','league'=>$r->league_key,'group'=>$r->group_key,'round_id'=>(int)$r->id],admin_url('admin.php'));
-            echo ' <a class="button" href="'.esc_url($matchesUrl).'">PrzejdÅº do kolejki</a>';
-            echo '</td></tr>';
-        }
-        if (!$rows) echo '<tr><td colspan="8" class="dt-empty">Brak kolejek. Uruchom synchronizacjÄ™ danych PZKosz.</td></tr>';
-        echo '</tbody></table></section>';
-        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-rounds','league'=>$league,'group'=>$group]);
-
-        echo '<dialog id="dt-round-modal" class="dt-modal"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><button type="button" class="dt-modal-x" data-dt-close>Ã—</button><span class="dt-eyebrow">NOWA KOLEJKA</span><h2>Dodaj kolejkÄ™ rÄ™cznie</h2><input type="hidden" name="action" value="dt_add_round">';
-        wp_nonce_field('dt_add_round');
-        echo '<div class="dt-form-2"><label>Liga<select name="league_key"><option value="plk">PLK</option><option value="1lm" selected>1LM</option><option value="2lm">2LM</option></select></label><label>Grupa (dla 2LM)<input name="group_key" placeholder="np. A, B, C lub D"></label></div><label>Numer kolejki<input type="number" name="round_no" min="1" max="99" required></label><label>Nazwa<input name="title" placeholder="np. 12. kolejka"></label><div class="dt-inline-warning">Nowa kolejka powstanie jako szkic. Otworzysz jÄ… osobno po ustawieniu terminu zamkniÄ™cia typowania.</div><button class="button button-primary dt-button">Zapisz kolejkÄ™</button></form></dialog>';
-
-        echo '<dialog id="dt-open-round-modal" class="dt-modal"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><button type="button" class="dt-modal-x" data-dt-close>Ã—</button><span class="dt-eyebrow">OTWARCIE TYPOWANIA</span><h2 id="dt-open-round-title">OtwÃ³rz kolejkÄ™</h2><input type="hidden" name="action" value="dt_open_round"><input type="hidden" name="round_id" id="dt-open-round-id">';
-        wp_nonce_field('dt_open_round');
-        echo '<label>ZamkniÄ™cie moÅ¼liwoÅ›ci typowania<input type="datetime-local" name="closes_at" id="dt-open-round-close" required></label><div class="dt-inline-warning">Po zapisaniu kuponu uÅ¼ytkownik nie bÄ™dzie mÃ³gÅ‚ go zmieniÄ‡. Termin zamkniÄ™cia nie moÅ¼e byÄ‡ pÃ³Åºniejszy niÅ¼ start pierwszego meczu ze znanÄ… godzinÄ….</div><button class="button button-primary dt-button">OtwÃ³rz typowanie</button></form></dialog>';
-        echo '<script>document.addEventListener("click",function(e){var b=e.target.closest(".dt-open-round");if(!b)return;var d={};try{d=JSON.parse(b.dataset.round||"{}");}catch(_){return;}document.getElementById("dt-open-round-id").value=d.id||"";document.getElementById("dt-open-round-title").textContent="OtwÃ³rz: "+(d.title||"kolejkÄ™");document.getElementById("dt-open-round-close").value=d.default_close||"";document.getElementById("dt-open-round-modal").showModal();});</script>';
-        self::end_shell();
-    }
-
-    public static function feedback(): void {
-        global $wpdb;
-        $table = DT_DB::table('feedback');
-        $status = sanitize_key((string)($_GET['status'] ?? 'all'));
-        $allowed = ['all','new','in_progress','resolved','cancelled'];
-        if (!in_array($status, $allowed, true)) $status = 'all';
-        $where = $status === 'all' ? '' : $wpdb->prepare(' WHERE f.status=%s', $status);
-        $page = max(1, (int)($_GET['dt_paged'] ?? 1));
-        $perPage = 30;
-        $total = (int)$wpdb->get_var("SELECT COUNT(*) FROM $table f$where");
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT f.*,u.display_name FROM $table f LEFT JOIN {$wpdb->users} u ON u.ID=f.user_id$where ORDER BY f.created_at DESC,f.id DESC LIMIT %d OFFSET %d",
-            $perPage, ($page - 1) * $perPage
-        ));
-        $counts = array_fill_keys(['new','in_progress','resolved','cancelled'], 0);
-        foreach ((array)$wpdb->get_results("SELECT status,COUNT(*) total FROM $table GROUP BY status") as $row) {
-            if (isset($counts[$row->status])) $counts[$row->status] = (int)$row->total;
-        }
-        $labels = ['new'=>'Nowe','in_progress'=>'W trakcie','resolved'=>'RozwiÄ…zano','cancelled'=>'Anulowano'];
-        $tones = ['new'=>'orange','in_progress'=>'blue','resolved'=>'green','cancelled'=>'neutral'];
-
-        self::shell('Feedback', 'ZgÅ‚oszenia problemÃ³w przesÅ‚ane przez zalogowanych uÅ¼ytkownikÃ³w.');
-        echo '<div class="dt-feedback-summary">';
-        foreach ($labels as $key=>$label) self::metric($label, $counts[$key], $key === 'new' ? 'warning' : ($key === 'resolved' ? 'yes-alt' : 'feedback'), $tones[$key] === 'neutral' ? 'violet' : $tones[$key]);
-        echo '</div><div class="dt-toolbar dt-feedback-filters">';
-        $allUrl = add_query_arg(['page'=>'decka-typer-feedback','status'=>'all'], admin_url('admin.php'));
-        echo '<a class="button ' . ($status === 'all' ? 'button-primary' : '') . '" href="' . esc_url($allUrl) . '">Wszystkie</a>';
-        foreach ($labels as $key=>$label) {
-            $url = add_query_arg(['page'=>'decka-typer-feedback','status'=>$key], admin_url('admin.php'));
-            echo '<a class="button ' . ($status === $key ? 'button-primary' : '') . '" href="' . esc_url($url) . '">' . esc_html($label) . ' (' . $counts[$key] . ')</a>';
-        }
-        echo '</div><section class="dt-card dt-feedback-list">';
-        if (!$rows) echo '<div class="dt-empty">Brak zgÅ‚oszeÅ„ w wybranym statusie.</div>';
-        foreach ($rows as $row) {
-            echo '<article class="dt-feedback-item"><header><div><strong>#' . (int)$row->id . ' Â· ' . esc_html($row->display_name ?: 'UÅ¼ytkownik #' . (int)$row->user_id) . '</strong><a href="mailto:' . esc_attr($row->email) . '">' . esc_html($row->email) . '</a></div><div>' . self::badge($labels[$row->status] ?? 'Nowe', $tones[$row->status] ?? 'neutral') . '<time>' . esc_html(self::date_pl($row->created_at)) . '</time></div></header>';
-            echo '<div class="dt-feedback-message">' . nl2br(esc_html($row->message)) . '</div>';
-            if ($row->page_url) echo '<a class="dt-feedback-source" href="' . esc_url($row->page_url) . '" target="_blank" rel="noopener noreferrer"><span class="dashicons dashicons-admin-links"></span>' . esc_html($row->page_url) . '</a>';
-            echo '<footer><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_update_feedback"><input type="hidden" name="feedback_id" value="' . (int)$row->id . '"><input type="hidden" name="return_status" value="' . esc_attr($status) . '">';
-            wp_nonce_field('dt_update_feedback_' . (int)$row->id);
-            echo '<label>Status zgÅ‚oszenia <select name="status">';
-            foreach ($labels as $key=>$label) echo '<option value="' . esc_attr($key) . '" ' . selected($row->status, $key, false) . '>' . esc_html($label) . '</option>';
-            echo '</select></label><button class="button button-primary">Zapisz status</button></form></footer></article>';
-        }
-        echo '</section>';
-        if ($total > $perPage) {
-            $base = add_query_arg(['page'=>'decka-typer-feedback','status'=>$status,'dt_paged'=>'%#%'], admin_url('admin.php'));
-            echo '<div class="tablenav"><div class="tablenav-pages">' . wp_kses_post(paginate_links(['base'=>$base,'format'=>'','current'=>$page,'total'=>(int)ceil($total/$perPage)])) . '</div></div>';
-        }
-        self::end_shell();
-    }
-
-    public static function matches(): void {
-        global $wpdb;
-        $s = DT_DB::settings();
-        $league = sanitize_key($_GET['league'] ?? 'all');
-        if (!in_array($league,['all','plk','1lm','2lm'],true)) $league='all';
-        $group = $league === '2lm' ? strtoupper(sanitize_text_field($_GET['group'] ?? '')) : '';
-        if($league==='2lm'&&$group==='')$group=strtoupper((string)$wpdb->get_var($wpdb->prepare("SELECT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key LIMIT 1",$s['season'])));
-        $roundId = (int)($_GET['round_id'] ?? 0);
-        $leagueSql = $league !== 'all' ? $wpdb->prepare(' AND league_key=%s ', $league) : '';
-        $groupSql = $group !== '' ? $wpdb->prepare(' AND group_key=%s ', $group) : '';
-        $rounds = $wpdb->get_results($wpdb->prepare('SELECT * FROM ' . DT_DB::table('rounds') . " WHERE season=%s $leagueSql $groupSql ORDER BY league_key,group_key,round_no", $s['season']));
-        $roundIds = array_map('intval',wp_list_pluck($rounds,'id'));
-        if ($roundId && !in_array($roundId,$roundIds,true)) $roundId=0;
-        if (!$roundId && $rounds) $roundId = (int)$rounds[0]->id;
-        $currentRound = $roundId ? $wpdb->get_row($wpdb->prepare('SELECT * FROM '.DT_DB::table('rounds').' WHERE id=%d',$roundId)) : null;
-        $dtPage = max(1,(int)($_GET['dt_paged'] ?? 1));
-        $perPage = 25;
-        $total = $roundId ? (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM '.DT_DB::table('matches').' WHERE round_id=%d',$roundId)) : 0;
-        $rows = $roundId ? $wpdb->get_results($wpdb->prepare(
-            'SELECT m.*,h.name home_name,a.name away_name FROM ' . DT_DB::table('matches') . ' m JOIN ' . DT_DB::table('teams') . ' h ON h.id=m.home_team_id JOIN ' . DT_DB::table('teams') . ' a ON a.id=m.away_team_id WHERE m.round_id=%d ORDER BY m.starts_at,m.id LIMIT %d OFFSET %d', $roundId,$perPage,($dtPage-1)*$perPage
-        )) : [];
-        self::shell('Mecze','Wynik meczu sÅ‚uÅ¼y wyÅ‚Ä…cznie do rozliczenia wskazanego zwyciÄ™zcy.');
-        echo '<div class="dt-toolbar">'; self::league_tabs('decka-typer-matches',$league); echo '<button class="button button-primary dt-button" data-dt-open="dt-add-match"><span class="dashicons dashicons-plus-alt2"></span> Dodaj mecz</button></div>';
-        if($league==='2lm') self::group_tabs('decka-typer-matches',$group);
-        if ($rounds) {
-            echo '<nav class="dt-round-tabs" aria-label="WybÃ³r kolejki">';
-            foreach ($rounds as $r) {
-                $label = ($r->group_key ? 'Grupa '.strtoupper((string)$r->group_key).' Â· ' : '').$r->title;
-                $url=add_query_arg(['page'=>'decka-typer-matches','league'=>$league,'group'=>$group,'round_id'=>(int)$r->id],admin_url('admin.php'));
-                echo '<a class="dt-round-tab '.($roundId===(int)$r->id?'is-active':'').'" href="'.esc_url($url).'">'.esc_html($label).'</a>';
-            }
-            echo '</nav>';
-        }
-        if ($currentRound) echo '<div class="dt-list-context"><strong>'.esc_html(strtoupper((string)$currentRound->league_key).($currentRound->group_key?' Â· grupa '.strtoupper((string)$currentRound->group_key):'')).'</strong><span>'.esc_html($currentRound->title).' Â· '.(int)$total.' meczÃ³w</span></div>';
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Mecz</th><th>Start</th><th>Wynik</th><th>Status</th><th>Synchronizacja</th><th></th></tr></thead><tbody>';
-        foreach ($rows as $m) {
-            $score = $m->score_home === null ? 'â€”' : (int)$m->score_home . ' : ' . (int)$m->score_away;
-            $data = ['id'=>(int)$m->id,'home'=>$m->home_name,'away'=>$m->away_name,'starts_at'=>self::html_datetime($m->starts_at),'home_score'=>$m->score_home,'away_score'=>$m->score_away,'manual_lock'=>(int)$m->manual_lock];
-            echo '<tr><td><strong>' . esc_html($m->home_name) . '</strong><span class="dt-versus">vs</span><strong>' . esc_html($m->away_name) . '</strong></td><td>' . esc_html(self::date_pl($m->starts_at)) . '</td><td><span class="dt-score">' . esc_html($score) . '</span></td><td>' . self::badge($m->status === 'finished' ? 'ZakoÅ„czony':'Zaplanowany',$m->status === 'finished' ? 'green':'neutral') . '</td><td>' . ((int)$m->manual_lock ? self::badge('RÄ™czny Â· chroniony','orange') : self::badge('Auto PZKosz','blue')) . '</td><td><button type="button" class="button dt-edit-match" data-match="' . esc_attr(wp_json_encode($data)) . '">Edytuj</button></td></tr>';
-        }
-        if (!$rows) echo '<tr><td colspan="6" class="dt-empty">Brak meczÃ³w w tej kolejce.</td></tr>';
-        echo '</tbody></table></section>';
-        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-matches','league'=>$league,'group'=>$group,'round_id'=>$roundId]);
-        self::match_modal('dt-match-modal',false,$roundId);
-        self::match_modal('dt-add-match',true,$roundId);
-        self::end_shell();
-    }
-
-    public static function artur_dashboard(): void {
-        global $wpdb;
-        $season = (string)(DT_DB::settings()['season'] ?? '');
-        $rounds = (array)$wpdb->get_results($wpdb->prepare(
-            "SELECT r.*,COUNT(m.id) match_count,
-                    SUM(CASE WHEN m.score_home IS NOT NULL AND m.score_away IS NOT NULL THEN 1 ELSE 0 END) resolved_count,
-                    MIN(m.starts_at) first_match
-             FROM " . DT_DB::table('rounds') . " r
-             LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
-             WHERE r.season=%s AND r.league_key='1lm'
-             GROUP BY r.id ORDER BY r.round_no DESC",
-            $season
-        ));
-        $users = (array)$wpdb->get_results(
-            "SELECT DISTINCT u.ID,u.user_login,u.display_name,
-             (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name,
-             (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_typer_expert' LIMIT 1) is_expert
-             FROM {$wpdb->users} u
-             JOIN " . DT_DB::table('predictions') . " p ON p.user_id=u.ID
-             ORDER BY u.display_name,u.user_login"
-        );
-        $userIds = array_map('intval',wp_list_pluck($users,'ID'));
-        $userId = max(0,(int)($_GET['artur_user'] ?? 0));
-        if (!in_array($userId,$userIds,true)) {
-            $userId = 0;
-            foreach ($users as $user) {
-                $name = trim((string)($user->ranking_name ?: $user->display_name ?: $user->user_login));
-                if (stripos($name,'artur') !== false) { $userId=(int)$user->ID; break; }
-            }
-            if (!$userId) foreach ($users as $user) if (!empty($user->is_expert)) { $userId=(int)$user->ID; break; }
-            if (!$userId && $users) $userId=(int)$users[0]->ID;
-        }
-        $roundIds = array_map('intval',wp_list_pluck($rounds,'id'));
-        $leftId = max(0,(int)($_GET['left_round'] ?? 0));
-        $rightId = max(0,(int)($_GET['right_round'] ?? 0));
-        if (!in_array($leftId,$roundIds,true)) {
-            $leftId = 0;
-            foreach ($rounds as $round) {
-                if ((int)$round->match_count > 0 && (int)$round->resolved_count >= (int)$round->match_count) { $leftId=(int)$round->id; break; }
-            }
-            if (!$leftId) $leftId=(int)($roundIds[0] ?? 0);
-        }
-        if (!in_array($rightId,$roundIds,true)) {
-            $rightId = 0;
-            $leftNo = 0;
-            foreach ($rounds as $round) if ((int)$round->id === $leftId) { $leftNo=(int)$round->round_no; break; }
-            $nextRounds = array_values(array_filter($rounds,static fn(object $round): bool=>(int)$round->round_no > $leftNo));
-            usort($nextRounds,static fn(object $a,object $b): int=>(int)$a->round_no <=> (int)$b->round_no);
-            if ($nextRounds) $rightId=(int)$nextRounds[0]->id;
-            if (!$rightId) foreach (array_reverse($rounds) as $round) {
-                if ((int)$round->resolved_count < (int)$round->match_count) { $rightId=(int)$round->id; break; }
-            }
-            if (!$rightId) $rightId=$leftId;
-        }
-        $roundLookup = [];
-        foreach ($rounds as $round) $roundLookup[(int)$round->id]=$round;
-        $bonusMap = class_exists('DT_Bonus') ? DT_Bonus::map() : [];
-        $arturName = 'Artur';
-        foreach ($users as $user) if ((int)$user->ID === $userId) { $arturName=trim((string)($user->ranking_name ?: $user->display_name ?: $user->user_login)); break; }
-
-        self::shell('Kolejka z Arturem','Panel roboczy do podsumowania i przygotowania kolejnego odcinka.');
-        echo '<section class="dt-card dt-artur-controls"><form method="get" action="' . esc_url(admin_url('admin.php')) . '"><input type="hidden" name="page" value="decka-typer-artur"><div class="dt-artur-controls-grid"><label>Konto Artura<select name="artur_user">';
-        foreach ($users as $user) {
-            $name=trim((string)($user->ranking_name ?: $user->display_name ?: $user->user_login));
-            echo '<option value="' . (int)$user->ID . '" ' . selected($userId,(int)$user->ID,false) . '>' . esc_html($name . (!empty($user->is_expert)?' Â· Ekspert':'')) . '</option>';
-        }
-        echo '</select></label><label>Lewa kolumna<select name="left_round">';
-        foreach ($rounds as $round) echo '<option value="' . (int)$round->id . '" ' . selected($leftId,(int)$round->id,false) . '>' . esc_html((int)$round->round_no . '. kolejka Â· ' . (int)$round->match_count . ' meczÃ³w') . '</option>';
-        echo '</select></label><label>Prawa kolumna<select name="right_round">';
-        foreach ($rounds as $round) echo '<option value="' . (int)$round->id . '" ' . selected($rightId,(int)$round->id,false) . '>' . esc_html((int)$round->round_no . '. kolejka Â· ' . (int)$round->match_count . ' meczÃ³w') . '</option>';
-        echo '</select></label><button class="button button-primary dt-button"><span class="dashicons dashicons-update"></span>PokaÅ¼ zestawienie</button></div></form></section>';
-        if (!$users) {
-            echo '<section class="dt-card dt-section"><p class="dt-empty">Nie ma jeszcze uÅ¼ytkownikÃ³w z zapisanymi typami. Po oddaniu typÃ³w konto bÄ™dzie moÅ¼na wybraÄ‡ w tym panelu.</p></section>';
-        } elseif (!$rounds) {
-            echo '<section class="dt-card dt-section"><p class="dt-empty">Brak kolejek 1LM w bieÅ¼Ä…cym sezonie.</p></section>';
-        } else {
-            echo '<div class="dt-artur-columns dt-section">';
-            if (isset($roundLookup[$leftId])) self::artur_round_panel($roundLookup[$leftId],$userId,$bonusMap,'left',$arturName);
-            if (isset($roundLookup[$rightId])) self::artur_round_panel($roundLookup[$rightId],$userId,$bonusMap,'right',$arturName);
-            echo '</div>';
-        }
-        self::end_shell();
-    }
-
-    private static function match_modal(string $id, bool $add, int $roundId): void {
-        global $wpdb;
-        $teams = $wpdb->get_results('SELECT id,name FROM ' . DT_DB::table('teams') . ' ORDER BY name');
-        echo '<dialog id="' . esc_attr($id) . '" class="dt-modal"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><button type="button" class="dt-modal-x" data-dt-close>Ã—</button><span class="dt-eyebrow">' . ($add?'NOWY MECZ':'EDYCJA MECZU') . '</span><h2>' . ($add?'Dodaj mecz rÄ™cznie':'Popraw dane meczu') . '</h2><input type="hidden" name="action" value="' . ($add?'dt_add_match':'dt_save_match') . '">';
-        wp_nonce_field($add?'dt_add_match':'dt_save_match');
-        if (!$add) echo '<input type="hidden" name="match_id" data-field="id">';
-        echo '<input type="hidden" name="round_id" value="' . $roundId . '">';
-        if ($add) {
-            echo '<div class="dt-form-2"><label>Gospodarz<select name="home_team_id">'; foreach($teams as $t) echo '<option value="' . (int)$t->id . '">' . esc_html($t->name) . '</option>'; echo '</select></label><label>GoÅ›Ä‡<select name="away_team_id">'; foreach($teams as $t) echo '<option value="' . (int)$t->id . '">' . esc_html($t->name) . '</option>'; echo '</select></label></div>';
-        }
-        echo '<label>Data i godzina<input type="datetime-local" name="starts_at" data-field="starts_at" required></label><div class="dt-form-2"><label>Wynik gospodarzy<input type="number" name="score_home" data-field="home_score" min="0" max="250"></label><label>Wynik goÅ›ci<input type="number" name="score_away" data-field="away_score" min="0" max="250"></label></div>';
-        if (!$add) echo '<label class="dt-check"><input type="checkbox" name="manual_lock" value="1" data-field="manual_lock"><span><strong>ChroÅ„ przed synchronizacjÄ… danych PZKosz</strong><small>Automatyczny import nie nadpisze rÄ™cznie poprawionego terminu ani wyniku.</small></span></label>';
-        echo '<button class="button button-primary dt-button">Zapisz mecz</button></form></dialog>';
-    }
-
-    private static function league_tabs(string $page, string $active): void {
-        echo '<nav class="dt-league-tabs" aria-label="WybÃ³r ligi">';
-        foreach (['all'=>'Wszystkie','plk'=>'PLK','1lm'=>'1LM','2lm'=>'2LM'] as $key=>$label) {
-            $url=add_query_arg(['page'=>$page,'league'=>$key],admin_url('admin.php'));
-            echo '<a class="dt-league-tab '.($active===$key?'is-active':'').'" href="'.esc_url($url).'">'.esc_html($label).'</a>';
-        }
-        echo '</nav>';
-    }
-
-    private static function group_tabs(string $page, string $active): void {
-        global $wpdb;
-        $season=(string)(DT_DB::settings()['season']??'');
-        $active=strtoupper(trim($active));
-        $groups=array_values(array_unique(array_filter(array_map(static fn($group)=>strtoupper(trim((string)$group)),(array)$wpdb->get_col($wpdb->prepare("SELECT DISTINCT group_key FROM ".DT_DB::table('rounds')." WHERE season=%s AND league_key='2lm' AND group_key<>'' ORDER BY group_key",$season))))));
-        echo '<nav class="dt-group-tabs" aria-label="WybÃ³r grupy 2LM">';
-        foreach ($groups as $key) {
-            $label='Grupa '.$key;
-            $url=add_query_arg(['page'=>$page,'league'=>'2lm','group'=>$key],admin_url('admin.php'));
-            echo '<a class="dt-group-tab '.($active===$key?'is-active':'').'" href="'.esc_url($url).'">'.esc_html($label).'</a>';
-        }
-        echo '</nav>';
-    }
-
-    private static function pagination(int $total, int $perPage, int $current, array $args): void {
-        $pages=(int)ceil($total/$perPage);
-        if ($pages<2) return;
-        echo '<nav class="dt-pagination" aria-label="Stronicowanie">';
-        for ($page=1;$page<=$pages;$page++) {
-            $url=add_query_arg(array_merge($args,['dt_paged'=>$page]),admin_url('admin.php'));
-            echo '<a class="'.($page===$current?'is-active':'').'" href="'.esc_url($url).'">'.(int)$page.'</a>';
-        }
-        echo '</nav>';
-    }
-
-    public static function predictions(): void {
-        global $wpdb;
-        $type = sanitize_key((string)($_GET['prediction_type'] ?? 'all'));
-        if (!in_array($type, ['all','match','pre1','pre2'], true)) $type = 'all';
-        $statusFilter = sanitize_key((string)($_GET['prediction_status'] ?? 'all'));
-        if (!in_array($statusFilter, ['all','pending','winner','miss'], true)) $statusFilter = 'all';
-        $season = sanitize_text_field(wp_unslash((string)($_GET['season'] ?? 'all')));
-        $league = sanitize_key((string)($_GET['league'] ?? 'all'));
-        if (!in_array($league, ['all','1lm','plk','2lm'], true)) $league = 'all';
-        $group = $league === '2lm' ? strtoupper(sanitize_text_field(wp_unslash((string)($_GET['group'] ?? '')))) : '';
-        $roundId = max(0, (int)($_GET['round_id'] ?? 0));
-        if (in_array($type, ['pre1','pre2'], true)) $roundId = 0;
-        $search = trim(sanitize_text_field(wp_unslash((string)($_GET['s'] ?? ''))));
-        $dtPage = max(1, (int)($_GET['dt_paged'] ?? 1));
-        $perPage = 40;
-
-        $roundsTable = DT_DB::table('rounds');
-        $matchesTable = DT_DB::table('matches');
-        $predictionsTable = DT_DB::table('predictions');
-        $preseasonTable = DT_DB::table('preseason_predictions');
-        $teamsTable = DT_DB::table('teams');
-
-        $seasons = array_values(array_unique(array_filter(array_map('strval', (array)$wpdb->get_col(
-            "SELECT season FROM $roundsTable WHERE season<>'' UNION SELECT season FROM $preseasonTable WHERE season<>'' ORDER BY season DESC"
-        )))));
-        if ($season !== 'all' && !in_array($season, $seasons, true)) $season = 'all';
-
-        $roundFilter = '';
-        if ($season !== 'all') $roundFilter .= $wpdb->prepare(' AND season=%s', $season);
-        if ($league !== 'all') $roundFilter .= $wpdb->prepare(' AND league_key=%s', $league);
-        if ($group !== '') $roundFilter .= $wpdb->prepare(' AND UPPER(group_key)=%s', $group);
-        $rounds = $wpdb->get_results("SELECT id,title,season,league_key,group_key,round_no FROM $roundsTable WHERE 1=1 $roundFilter ORDER BY season DESC,league_key,group_key,round_no,id");
-        $validRoundIds = array_map('intval', wp_list_pluck((array)$rounds, 'id'));
-        if ($roundId && !in_array($roundId, $validRoundIds, true)) $roundId = 0;
-
-        $regularWhere = ' WHERE p.selected_team_id IS NOT NULL';
-        $preWhere = ' WHERE 1=1';
-        if ($season !== 'all') {
-            $regularWhere .= $wpdb->prepare(' AND r.season=%s', $season);
-            $preWhere .= $wpdb->prepare(' AND pp.season=%s', $season);
-        }
-        if ($league !== 'all') {
-            $regularWhere .= $wpdb->prepare(' AND r.league_key=%s', $league);
-            $preWhere .= $wpdb->prepare(' AND pp.league_key=%s', $league);
-        }
-        if ($group !== '') {
-            $regularWhere .= $wpdb->prepare(' AND UPPER(r.group_key)=%s', $group);
-            $preWhere .= $wpdb->prepare(' AND UPPER(pp.group_key)=%s', $group);
-        }
-        if ($roundId) $regularWhere .= $wpdb->prepare(' AND r.id=%d', $roundId);
-        if ($statusFilter === 'pending') $regularWhere .= ' AND (m.score_home IS NULL OR m.score_away IS NULL)';
-        elseif ($statusFilter === 'winner') $regularWhere .= " AND p.scoring_code='winner'";
-        elseif ($statusFilter === 'miss') $regularWhere .= " AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND (p.scoring_code<>'winner' OR p.scoring_code IS NULL)";
-
-        if ($search !== '') {
-            $like = '%' . $wpdb->esc_like($search) . '%';
-            $regularWhere .= $wpdb->prepare(
-                ' AND (u.display_name LIKE %s OR u.user_email LIKE %s OR h.name LIKE %s OR a.name LIKE %s OR sel.name LIKE %s OR r.title LIKE %s OR r.league_key LIKE %s OR p.scoring_code LIKE %s)',
-                $like, $like, $like, $like, $like, $like, $like, $like
-            );
-            $preTeamSearch='';
-            foreach ((array)$wpdb->get_col($wpdb->prepare("SELECT id FROM $teamsTable WHERE name LIKE %s LIMIT 30",$like)) as $teamId) {
-                $preTeamSearch .= $wpdb->prepare(' OR pp.selections REGEXP %s','(^|[^0-9])'.(int)$teamId.'([^0-9]|$)');
-            }
-            $preWhere .= $wpdb->prepare(
-                ' AND (u.display_name LIKE %s OR u.user_email LIKE %s OR pp.prediction_type LIKE %s OR pp.league_key LIKE %s OR pp.group_key LIKE %s OR pp.selections LIKE %s'.$preTeamSearch.')',
-                $like, $like, $like, $like, $like, $like
-            );
-        }
-
-        $parts = [];
-        if (in_array($type, ['all','match'], true)) {
-            $parts[] = "SELECT p.id source_id,'match' prediction_type,p.user_id,u.display_name,u.user_email,
-                        r.season,r.league_key,r.group_key,r.id round_id,r.round_no,r.title round_title,
-                        CONCAT(h.name,' â€“ ',a.name) context_label,sel.name selection_data,
-                        p.points,p.scoring_code,m.score_home,m.score_away,p.submitted_at
-                 FROM $predictionsTable p
-                 JOIN {$wpdb->users} u ON u.ID=p.user_id
-                 JOIN $matchesTable m ON m.id=p.match_id
-                 JOIN $roundsTable r ON r.id=m.round_id
-                 JOIN $teamsTable h ON h.id=m.home_team_id
-                 JOIN $teamsTable a ON a.id=m.away_team_id
-                 LEFT JOIN $teamsTable sel ON sel.id=p.selected_team_id
-                 $regularWhere";
-        }
-        if (!$roundId && in_array($type, ['all','pre1','pre2'], true) && in_array($statusFilter,['all','pending'],true)) {
-            if ($type !== 'all') $preWhere .= $wpdb->prepare(' AND pp.prediction_type=%s', $type);
-            $parts[] = "SELECT pp.id source_id,pp.prediction_type,pp.user_id,u.display_name,u.user_email,
-                        pp.season,pp.league_key,pp.group_key,0 round_id,0 round_no,UPPER(pp.prediction_type) round_title,
-                        'Typowanie przedsezonowe' context_label,pp.selections selection_data,
-                        pp.points,'pending' scoring_code,NULL score_home,NULL score_away,pp.submitted_at
-                 FROM $preseasonTable pp
-                 JOIN {$wpdb->users} u ON u.ID=pp.user_id
-                 $preWhere";
-        }
-
-        $union = $parts ? implode(' UNION ALL ', $parts) : '';
-        $total = $union !== '' ? (int)$wpdb->get_var("SELECT COUNT(*) FROM ($union) dt_all_types") : 0;
-        $pages = max(1, (int)ceil($total / $perPage));
-        if ($dtPage > $pages) $dtPage = $pages;
-        $offset = ($dtPage - 1) * $perPage;
-        $rows = $union !== '' ? $wpdb->get_results("SELECT * FROM ($union) dt_all_types ORDER BY submitted_at DESC,prediction_type,source_id DESC LIMIT ".(int)$perPage.' OFFSET '.(int)$offset) : [];
-
-        $teamNames = [];
-        foreach ((array)$wpdb->get_results("SELECT id,name FROM $teamsTable") as $team) $teamNames[(int)$team->id] = (string)$team->name;
-
-        self::shell('Typy','Wszystkie zapisane typy meczowe oraz prognozy PRE - FinalRanking i PRE - PlayOFF. ÅÄ…cznie: '.number_format_i18n($total).'.');
-        echo '<form method="get" class="dt-card dt-prediction-filters"><input type="hidden" name="page" value="decka-typer-predictions"><div class="dt-form-3">';
-        echo '<label>Rodzaj<select name="prediction_type"><option value="all" '.selected($type,'all',false).'>Wszystkie typy</option><option value="match" '.selected($type,'match',false).'>Typy meczowe</option><option value="pre1" '.selected($type,'pre1',false).'>PRE - FinalRanking</option><option value="pre2" '.selected($type,'pre2',false).'>PRE - PlayOFF</option></select></label>';
-        echo '<label>Status<select name="prediction_status"><option value="all" '.selected($statusFilter,'all',false).'>Wszystkie statusy</option><option value="pending" '.selected($statusFilter,'pending',false).'>OczekujÄ…ce</option><option value="winner" '.selected($statusFilter,'winner',false).'>Trafione</option><option value="miss" '.selected($statusFilter,'miss',false).'>Nietrafione</option></select></label>';
-        echo '<label>Sezon<select name="season"><option value="all">Wszystkie sezony</option>'; foreach ($seasons as $item) echo '<option value="'.esc_attr($item).'" '.selected($season,$item,false).'>'.esc_html($item).'</option>'; echo '</select></label>';
-        echo '<label>Liga<select name="league"><option value="all" '.selected($league,'all',false).'>Wszystkie ligi</option><option value="1lm" '.selected($league,'1lm',false).'>1LM</option><option value="plk" '.selected($league,'plk',false).'>PLK</option><option value="2lm" '.selected($league,'2lm',false).'>2LM</option></select></label>';
-        echo '<label>Grupa 2LM<input name="group" value="'.esc_attr($group).'" placeholder="A, B, C lub D"></label>';
-        echo '<label>Kolejka<select name="round_id"><option value="0">Wszystkie kolejki</option>'; foreach ((array)$rounds as $round) { $label=strtoupper((string)$round->league_key).($round->group_key?' Â· grupa '.strtoupper((string)$round->group_key):'').' Â· '.$round->title.' Â· '.$round->season; echo '<option value="'.(int)$round->id.'" '.selected($roundId,(int)$round->id,false).'>'.esc_html($label).'</option>'; } echo '</select></label>';
-        echo '<label>Wyszukaj<input type="search" name="s" value="'.esc_attr($search).'" placeholder="UÅ¼ytkownik, e-mail, druÅ¼yna, statusâ€¦"></label></div><div class="dt-prediction-filter-actions"><button class="button button-primary">Filtruj i wyszukaj</button><a class="button" href="'.esc_url(admin_url('admin.php?page=decka-typer-predictions')).'">WyczyÅ›Ä‡ filtry</a></div></form>';
-
-        echo '<section class="dt-card dt-predictions-table"><div class="dt-table-scroll"><table class="widefat dt-table"><thead><tr><th>Rodzaj</th><th>UÅ¼ytkownik</th><th>Liga</th><th>Kolejka / mecz</th><th>Oddany typ</th><th>Status</th><th>Punkty</th><th>Zapisano</th></tr></thead><tbody>';
-        foreach ((array)$rows as $row) {
-            $uid=(int)$row->user_id;
-            $displayName=class_exists('DT_User_Settings')?DT_User_Settings::ranking_name($uid,(string)$row->display_name):(string)$row->display_name;
-            $isPre=in_array((string)$row->prediction_type,['pre1','pre2'],true);
-            $typeLabel=$isPre?((string)$row->prediction_type==='pre1'?'PRE - FinalRanking':'PRE - PlayOFF'):'MECZ';
-            $leagueLabel=strtoupper((string)$row->league_key).($row->group_key?' Â· '.$row->group_key:'').' Â· '.$row->season;
-            $context=$isPre?$typeLabel:((string)$row->round_title.' Â· '.(string)$row->context_label);
-            $selection=$isPre?self::preseason_selection_label((string)$row->prediction_type,(string)$row->selection_data,$teamNames):(string)($row->selection_data?:'â€”');
-            if ($isPre) $status=self::badge('Oczekuje na rozliczenie','orange');
-            elseif ($row->score_home === null || $row->score_away === null) $status=self::badge('Oczekuje','neutral');
-            elseif ($row->scoring_code === 'winner') $status=self::badge('Trafiony','green');
-            else $status=self::badge('Nietrafiony','red');
-            echo '<tr><td>'.self::badge($typeLabel,$isPre?'orange':'blue').'</td><td><strong>'.esc_html($displayName).'</strong><small class="dt-muted">'.esc_html((string)$row->user_email).'</small></td><td>'.esc_html($leagueLabel).'</td><td>'.esc_html($context).'</td><td class="dt-prediction-selection">'.esc_html($selection).'</td><td>'.$status.'</td><td><strong>'.esc_html((string)(float)$row->points).'</strong></td><td>'.esc_html(self::date_pl((string)$row->submitted_at)).'</td></tr>';
-        }
-        if (!$rows) echo '<tr><td colspan="8" class="dt-empty">Brak zapisanych typÃ³w speÅ‚niajÄ…cych wybrane kryteria.</td></tr>';
-        echo '</tbody></table></div></section>';
-
-        $paginationArgs=['page'=>'decka-typer-predictions','prediction_type'=>$type,'prediction_status'=>$statusFilter,'season'=>$season,'league'=>$league,'group'=>$group,'round_id'=>$roundId,'s'=>$search];
-        if ($total > $perPage) {
-            $base=add_query_arg(array_merge($paginationArgs,['dt_paged'=>'%#%']),admin_url('admin.php'));
-            echo '<nav class="dt-pagination" aria-label="Stronicowanie">'.wp_kses_post(paginate_links(['base'=>$base,'format'=>'','current'=>$dtPage,'total'=>$pages,'mid_size'=>2,'end_size'=>1,'prev_text'=>'â†','next_text'=>'â†’'])).'</nav>';
-        }
-        self::end_shell();
-    }
-
-    private static function preseason_selection_label(string $type, string $json, array $teamNames): string {
-        $data=json_decode($json,true);
-        if (!is_array($data) || !$data) return 'â€”';
-        if ($type === 'pre1') {
-            $items=[];
-            foreach ($data as $teamId=>$bracket) $items[] = ($teamNames[(int)$teamId] ?? 'DruÅ¼yna #'.(int)$teamId).': '.$bracket;
-            return implode('; ', $items);
-        }
-        $items=[];
-        foreach ($data as $teamId) $items[]=$teamNames[(int)$teamId] ?? 'DruÅ¼yna #'.(int)$teamId;
-        return implode(', ', $items);
-    }
-
-    public static function ranking(): void {
-        $s = DT_DB::settings();
-        self::shell('Ranking','Klasyfikacja sezonu ' . $s['season']);
-        echo '<section class="dt-card">'; self::ranking_table(DT_Scoring::ranking($s['season'],500)); echo '</section>';
-        self::end_shell();
-    }
-
-    private static function ranking_table(array $rows): void {
-        echo '<table class="widefat dt-table"><thead><tr><th>#</th><th>UÅ¼ytkownik</th><th>Punkty</th><th>Trafienia</th><th>Typy</th><th>Perfekcyjne kolejki</th></tr></thead><tbody>';
-        foreach ($rows as $r) {
-            echo '<tr class="'.(!empty($r['is_expert'])?'dt-expert-row':'').'"><td><span class="dt-rank dt-rank-' . min(3,(int)$r['rank']) . '">' . (int)$r['rank'] . '</span></td><td><strong>' . esc_html($r['display_name']) . '</strong>'.(!empty($r['is_expert'])?' <span class="dt-expert-badge">EKSPERT!</span>':'').'</td><td><strong>' . esc_html((string)(int)$r['points']) . '</strong></td><td>' . (int)$r['winner_hits'] . '</td><td>' . (int)$r['predictions'] . '</td><td>' . (int)$r['perfect_rounds'] . '</td></tr>';
-        }
-        if (!$rows) echo '<tr><td colspan="6" class="dt-empty">Ranking jest jeszcze pusty.</td></tr>';
-        echo '</tbody></table>';
-    }
-
-    public static function users(): void {
-        global $wpdb;
-        $s = DT_DB::settings();
-        $seasonSql = $wpdb->prepare('%s', $s['season']);
-        $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
-        $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}");
-        $users = $wpdb->get_results(
-            "SELECT u.ID,u.display_name,u.user_email,
-                (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss JOIN " . DT_DB::table('rounds') . " rr ON rr.id=ss.round_id WHERE ss.user_id=u.ID AND rr.season=$seasonSql) submissions,
-                (SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.selected_team_id IS NOT NULL) predictions,
-                (SELECT COALESCE(SUM(pp.points),0) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.selected_team_id IS NOT NULL) points,
-                (SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.scoring_code='winner') winner_hits
-             FROM {$wpdb->users} u
-             ORDER BY points DESC,u.display_name LIMIT ".(int)$perPage." OFFSET ".(int)(($dtPage-1)*$perPage)
-        );
-        self::shell('UÅ¼ytkownicy','Wszystkie zarejestrowane konta i rÄ™czne korekty punktÃ³w');
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>UÅ¼ytkownik</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Ekspert</th><th>Korekta</th></tr></thead><tbody>';
-        foreach ($users as $u) {
-            $expert = DT_User_Settings::is_expert((int)$u->ID);
-            echo '<tr class="'.($expert?'dt-expert-row':'').'"><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($u->display_name) . ($expert?' <span class="dt-expert-badge">EKSPERT!</span>':'') . '</strong><small class="dt-muted">' . esc_html($u->user_email) . '</small></span></div></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_toggle_expert"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_toggle_expert'); echo '<button class="button '.($expert?'dt-unmark-expert':'dt-mark-expert').'">'.($expert?'Odznacz jako ekspert':'Oznacz jako ekspert').'</button></form></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="Â± pkt" required><input name="reason" placeholder="PowÃ³d" required><button class="button">Dodaj</button></form></td></tr>';
-        }
-        if (!$users) echo '<tr><td colspan="7" class="dt-empty">Brak zarejestrowanych uÅ¼ytkownikÃ³w.</td></tr>';
-        echo '</tbody></table></section>';
-        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-users']);
-        self::end_shell();
-    }
-
-    public static function notifications(): void {
-        global $wpdb;
-        $table=DT_DB::table('notifications');$page=max(1,(int)($_GET['dt_paged']??1));$perPage=40;
-        $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM $table");
-        $rows=$wpdb->get_results($wpdb->prepare("SELECT n.*,u.display_name,u.user_email FROM $table n LEFT JOIN {$wpdb->users} u ON u.ID=n.user_id ORDER BY n.created_at DESC,n.id DESC LIMIT %d OFFSET %d",$perPage,($page-1)*$perPage));
-        self::shell('Powiadomienia','Historia wysÅ‚anych i nieudanych przypomnieÅ„ Web Push/PWA (historia zawiera takÅ¼e dawne wiadomoÅ›ci e-mail). ÅÄ…cznie: '.number_format_i18n($total).'.');
-        self::notification_templates_form();
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Data</th><th>UÅ¼ytkownik</th><th>KanaÅ‚</th><th>Zdarzenie</th><th>WiadomoÅ›Ä‡</th><th>Status</th><th>OdpowiedÅº dostawcy</th></tr></thead><tbody>';
-        foreach ((array)$rows as $row) echo '<tr><td>'.esc_html(self::date_pl((string)$row->created_at)).'</td><td><strong>'.esc_html((string)($row->display_name?:'UÅ¼ytkownik #'.$row->user_id)).'</strong><small class="dt-muted">'.esc_html((string)$row->user_email).'</small></td><td>'.self::badge(strtoupper((string)$row->channel),'blue').'</td><td>'.esc_html((string)$row->event_type).'</td><td><strong>'.esc_html((string)$row->title).'</strong><small class="dt-muted">'.esc_html((string)$row->message).'</small></td><td>'.self::badge((string)$row->status,$row->status==='sent'?'green':($row->status==='failed'?'red':'orange')).'</td><td><code style="white-space:pre-wrap;word-break:break-word">'.esc_html((string)$row->provider_response).'</code></td></tr>';
-        if (!$rows) echo '<tr><td colspan="7" class="dt-empty">Historia powiadomieÅ„ jest jeszcze pusta.</td></tr>';
-        echo '</tbody></table></section>';
-        self::pagination($total,$perPage,$page,['page'=>'decka-typer-notifications']);self::end_shell();
-    }
-
-    public static function stats(): void {
-        global $wpdb;
-        $s = DT_DB::settings();
-        $total = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s',$s['season']));
-        $players = (int)$wpdb->get_var($wpdb->prepare('SELECT COUNT(DISTINCT s.user_id) FROM ' . DT_DB::table('round_submissions') . ' s JOIN ' . DT_DB::table('rounds') . ' r ON r.id=s.round_id WHERE r.season=%s',$s['season']));
-        $hits = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " p JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id WHERE r.season=%s AND p.scoring_code='winner'",$s['season']));
-        self::shell('Statystyki','AktywnoÅ›Ä‡ uczestnikÃ³w w sezonie ' . $s['season']);
-        echo '<div class="dt-grid dt-grid-3">'; self::metric('Kupony',$total,'forms','blue'); self::metric('Gracze',$players,'groups','green'); self::metric('Trafione mecze',$hits,'yes-alt','orange'); echo '</div>';
-        self::end_shell();
-    }
-
-    public static function sync(): void {
-        $s = DT_DB::settings();
-        $last = get_option('dt_last_sync');
-        self::shell('Synchronizacja danych PZKosz','Terminarze, wyniki i druÅ¼yny z PLK, 1LM oraz grup Aâ€“D 2LM');
-        echo '<section class="dt-card"><span class="dt-eyebrow">OFICJALNE Å¹RÃ“DÅA</span><h2>PLK i rozgrywki PZKosz</h2><div class="dt-health"><div><span>PLK</span><strong>'.esc_html($s['source_plk_url']).'</strong></div><div><span>1 Liga MÄ™Å¼czyzn</span><strong>'.esc_html($s['source_1lm_url']).'</strong></div><div><span>2 Liga MÄ™Å¼czyzn</span><strong>'.esc_html($s['source_2lm_url']).'</strong></div><div><span>CzÄ™stotliwoÅ›Ä‡</span><strong>Co '.(int)($s['sync_interval_minutes']??60).' minut</strong></div></div><div class="dt-sync-state"><span class="dt-dot ' . (!empty($s['sync_enabled'])?'is-on':'') . '"></span><div><strong>' . (!empty($s['sync_enabled'])?'Synchronizacja automatyczna aktywna':'Synchronizacja automatyczna wyÅ‚Ä…czona') . '</strong><small>Ostatnio: ' . esc_html($last['at'] ?? 'nigdy') . '</small></div></div><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_sync_now">'; wp_nonce_field('dt_sync_now'); echo '<button class="button button-primary dt-button"><span class="dashicons dashicons-update"></span> Synchronizuj wszystkie ligi</button></form></section>';
-        if (!empty($last['result'])) echo '<section class="dt-card dt-section"><span class="dt-eyebrow">OSTATNI IMPORT</span><h2>Podsumowanie</h2><pre style="white-space:pre-wrap">' . esc_html(wp_json_encode($last['result'],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)) . '</pre></section>';
-        self::end_shell();
-    }
-
-    public static function logs(): void {
-        global $wpdb;
-        $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=30;$total=(int)$wpdb->get_var('SELECT COUNT(*) FROM '.DT_DB::table('logs'));
-        $rows = $wpdb->get_results('SELECT l.*,u.display_name FROM ' . DT_DB::table('logs') . ' l LEFT JOIN ' . $wpdb->users . ' u ON u.ID=l.user_id ORDER BY l.id DESC LIMIT '.(int)$perPage.' OFFSET '.(int)(($dtPage-1)*$perPage));
-        self::shell('Historia','Log operacji, synchronizacji i zmian');
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Czas</th><th>Zdarzenie</th><th>Opis</th><th>UÅ¼ytkownik</th></tr></thead><tbody>';
-        foreach ($rows as $r) echo '<tr><td>' . esc_html(self::date_pl($r->created_at)) . '</td><td>' . self::badge($r->event,$r->level==='error'?'red':($r->level==='notice'?'orange':'neutral')) . '</td><td>' . esc_html($r->message) . '</td><td>' . esc_html($r->display_name ?: 'System') . '</td></tr>';
-        if (!$rows) echo '<tr><td colspan="4" class="dt-empty">Historia jest pusta.</td></tr>';
-        echo '</tbody></table></section>';
-        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-logs']);
-        self::end_shell();
-    }
-
-    public static function settings(): void {
-        $s = DT_DB::settings();
-        self::shell('Ustawienia','Rozgrywki, punktacja, logowanie i wyglÄ…d');
-        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" class="dt-settings"><input type="hidden" name="action" value="dt_save_settings">';
-        wp_nonce_field('dt_save_settings');
-        echo '<section class="dt-card"><span class="dt-eyebrow">TRYB SERWISU</span><h2>DostÄ™pnoÅ›Ä‡ TypujKosza.pl</h2><div class="dt-mode-options">';
-        foreach (['production'=>'Produkcyjny','test'=>'Testowy','break'=>'Przerwa'] as $value=>$label) echo '<label class="dt-mode-card"><input type="radio" name="site_mode" value="'.esc_attr($value).'" '.checked(($s['site_mode']??'test'),$value,false).'><span><strong>'.esc_html($label).'</strong><small>'.esc_html($value==='production'?'PeÅ‚ne dziaÅ‚anie serwisu.':($value==='test'?'Å»Ã³Å‚ty komunikat o wersji testowej.':'Ekran startowy; wp-admin pozostaje dostÄ™pny.')).'</small></span></label>';
-        echo '</div></section>';
-        echo '<section class="dt-card"><span class="dt-eyebrow">ROZGRYWKI</span><h2>Ligi i sezon</h2><div class="dt-form-2"><label>Sezon<input name="season" value="' . esc_attr($s['season']) . '"></label></div><div class="dt-form-3">';
-        foreach (['plk'=>'ORLEN Basket Liga','1lm'=>'1 Liga MÄ™Å¼czyzn','2lm'=>'2 Liga MÄ™Å¼czyzn'] as $key=>$label) echo '<div class="dt-league-setting"><label class="dt-check"><input type="checkbox" name="leagues[]" value="'.esc_attr($key).'" '.checked(!empty(($s['leagues']??[])[$key]),true,false).'><span><strong>'.esc_html(strtoupper($key)).'</strong><small>Aktywna w typowaniu i rankingach</small></span></label><label>Nazwa ligi<input name="league_names['.esc_attr($key).']" value="'.esc_attr(($s['league_names']??[])[$key]??$label).'"></label></div>';
-        echo '</div><div class="dt-form-3"><label>Adres terminarza PLK<input type="url" name="source_plk_url" value="' . esc_attr($s['source_plk_url']) . '"></label><label>Adres terminarza 1LM<input type="url" name="source_1lm_url" value="' . esc_attr($s['source_1lm_url']) . '"></label><label>Adres terminarza 2LM<input type="url" name="source_2lm_url" value="' . esc_attr($s['source_2lm_url']) . '"></label></div><div class="dt-form-2"><label class="dt-check"><input type="checkbox" name="sync_enabled" value="1" ' . checked(!empty($s['sync_enabled']),true,false) . '><span><strong>Automatyczna synchronizacja danych PZKosz</strong><small>Pobieraj terminarze, wyniki, druÅ¼yny i dostÄ™pne logotypy.</small></span></label><label>Synchronizuj co ile minut<input type="number" min="5" max="1440" step="5" name="sync_interval_minutes" value="'.esc_attr((int)($s['sync_interval_minutes']??60)).'"></label></div><div class="dt-settings-action"><button type="submit" name="sync_results_now" value="1" class="button button-primary dt-button"><span class="dashicons dashicons-update"></span> Synchronizuj wyniki teraz</button><p class="dt-muted">Zapisze powyÅ¼sze ustawienia i natychmiast pobierze aktualne terminarze oraz wyniki PLK, 1LM i 2LM.</p></div></section>';
-        echo '<section class="dt-card"><span class="dt-eyebrow">PUNKTACJA</span><h2>Zasady Typera</h2><div class="dt-form-3"><label>Punkty za poprawnego zwyciÄ™zcÄ™<input type="number" name="points_winner" step="1" value="' . esc_attr($s['points_winner']) . '"></label><label>Bonus za perfekcyjnÄ… kolejkÄ™<input type="number" name="perfect_round_bonus" step="1" value="' . esc_attr($s['perfect_round_bonus']) . '"></label><label>Dodatkowe punkty za mecz BONUS<input type="number" min="0" step="1" name="bonus_points" value="'.esc_attr(class_exists('DT_Bonus')?DT_Bonus::points():0).'"></label></div><h3>Typowania specjalne PRE</h3><div class="dt-form-2"><label>PRE - FinalRanking â€” punkty za kaÅ¼dÄ… trafionÄ… druÅ¼ynÄ™<input type="number" min="0" step="1" name="pre1_hit_points" value="'.esc_attr((float)($s['pre1_hit_points']??1)).'"></label><label>PRE - FinalRanking â€” bonus za perfekcyjny komplet<input type="number" min="0" step="1" name="pre1_perfect_bonus" value="'.esc_attr((float)($s['pre1_perfect_bonus']??0)).'"></label><label>PRE - PlayOFF â€” punkty za kaÅ¼dÄ… trafionÄ… druÅ¼ynÄ™<input type="number" min="0" step="1" name="pre2_hit_points" value="'.esc_attr((float)($s['pre2_hit_points']??1)).'"></label><label>PRE - PlayOFF â€” bonus za perfekcyjny komplet<input type="number" min="0" step="1" name="pre2_perfect_bonus" value="'.esc_attr((float)($s['pre2_perfect_bonus']??0)).'"></label></div><p class="dt-muted">Punktacja PRE zostanie uÅ¼yta podczas rozliczenia koÅ„cowej tabeli i skÅ‚adu play-off. Zmiana wartoÅ›ci nie usuwa zapisanych prognoz.</p><p class="dt-muted">UÅ¼ytkownik wybiera wyÅ‚Ä…cznie zwyciÄ™zcÄ™. DokÅ‚adny wynik nie jest typowany. W kaÅ¼dej kolejce moÅ¼na wskazaÄ‡ maksymalnie jeden mecz BONUS.</p></section>';
-        echo '<section class="dt-card"><span class="dt-eyebrow">ODLICZANIE</span><h2>Liczniki startu lig i meczÃ³w</h2><label class="dt-check"><input type="checkbox" name="show_countdowns" value="1" ' . checked(!empty($s['show_countdowns']),true,false) . '><span><strong>Pokazuj odliczanie uÅ¼ytkownikom</strong><small>WyÅ›wietla trzy liczniki startu lig na stronie gÅ‚Ã³wnej i w aplikacji oraz czas pozostaÅ‚y do rozpoczÄ™cia kaÅ¼dego meczu w zakÅ‚adce â€Typujâ€.</small></span></label></section>';
-        echo '<section class="dt-card"><span class="dt-eyebrow">REKLAMY</span><h2>Symulacja slotÃ³w reklamowych</h2><label class="dt-check"><input type="checkbox" name="ad_slot_preview" value="1" '.checked(!empty($s['ad_slot_preview']),true,false).'><span><strong>Pokazuj testowe miejsca reklamowe</strong><small>Wymiar przygotowywanej grafiki: H1 i F1 â€” 2360 Ã— 250 px; S1 i S2 â€” 325 Ã— 1210 px. Makiety sÄ… skalowane do rzeczywistego miejsca w interfejsie. Zwykli uÅ¼ytkownicy widzÄ… wyÅ‚Ä…cznie aktywne kampanie.</small></span></label><p class="dt-muted"><a href="'.esc_url(admin_url('admin.php?page=decka-typer-ads')).'">PrzejdÅº do zarzÄ…dzania kampaniami â†’</a></p></section>';
-        $aiKeyReady = defined('DT_GEMINI_API_KEY') && trim((string)DT_GEMINI_API_KEY) !== '';
-        echo '<section class="dt-card"><span class="dt-eyebrow">ARTUR AI</span><h2>KoÅ‚o ratunkowe Artura</h2><div class="dt-sync-state"><span class="dt-dot '.($aiKeyReady?'is-on':'').'"></span><div><strong>'.($aiKeyReady?'Klucz Gemini jest skonfigurowany':'Brak klucza DT_GEMINI_API_KEY').'</strong><small>Klucz jest odczytywany bezpiecznie z pliku wp-config.php i nie jest zapisywany w bazie.</small></div></div><label class="dt-check"><input type="checkbox" name="artur_ai_enabled" value="1" '.checked(!empty($s['artur_ai_enabled']),true,false).'><span><strong>WÅ‚Ä…cz KoÅ‚o ratunkowe Artura</strong><small>KaÅ¼dy uÅ¼ytkownik moÅ¼e wybraÄ‡ jeden mecz w kolejce i zadaÄ‡ Arturowi pytania dotyczÄ…ce tego spotkania.</small></span></label><div class="dt-inline-warning">W trybie testowym pytania nie majÄ… limitu, nie przypisujÄ… koÅ‚a do meczu i nie sÄ… trwale zapisywane. Tryb produkcyjny stosuje limit oraz blokadÄ™ jednego meczu na kolejkÄ™.</div><div class="dt-form-2"><label>Model Gemini<input name="artur_ai_model" value="'.esc_attr((string)($s['artur_ai_model']??'gemini-2.5-flash-lite')).'" maxlength="100"></label><label>Liczba pytaÅ„ po uÅ¼yciu koÅ‚a<input type="number" name="artur_ai_questions" min="1" max="5" value="'.esc_attr((int)($s['artur_ai_questions']??3)).'"></label></div><label>Instrukcja osobowoÅ›ci i odpowiedzi<textarea name="artur_ai_instruction" rows="8" maxlength="4000">'.esc_textarea((string)($s['artur_ai_instruction']??DT_DB::default_artur_ai_instruction())).'</textarea></label><p class="dt-muted">InstrukcjÄ™ moÅ¼esz dowolnie zmieniaÄ‡. Aktualizacje wtyczki nie nadpiszÄ… treÅ›ci zapisanej w bazie danych.</p></section>';
-        self::provider_fields('Google',[['google_client_id','Client ID','text'],['google_client_secret','Client Secret','password']],DT_OAuth::callback_url('google'),$s);
-        self::provider_fields('Facebook',[['facebook_app_id','App ID','text'],['facebook_app_secret','App Secret','password']],DT_OAuth::callback_url('facebook'),$s);
-        $privacyId = class_exists('DT_Legal') ? DT_Legal::privacy_page_id() : 0;
-        $contactId = class_exists('DT_Legal') ? DT_Legal::contact_page_id() : 0;
-        echo '<section class="dt-card"><span class="dt-eyebrow">STRONY I KONTAKT</span><h2>Polityka prywatnoÅ›ci i formularz kontaktowy</h2><div class="dt-form-2"><label>Adres odbierajÄ…cy wiadomoÅ›ci<input type="email" name="contact_email" value="'.esc_attr($s['contact_email'] ?? get_option('admin_email')).'" required></label><div class="dt-page-actions"><strong>TreÅ›ci publicznych stron</strong><p class="dt-muted">Strony sÄ… zwykÅ‚ymi stronami WordPressa. Aktualizacje wtyczki nie nadpisujÄ… zapisanych treÅ›ci.</p><p>' . ($privacyId ? '<a class="button" href="'.esc_url(get_edit_post_link($privacyId)).'">Edytuj politykÄ™ prywatnoÅ›ci</a> ' : '') . ($contactId ? '<a class="button" href="'.esc_url(get_edit_post_link($contactId)).'">Edytuj stronÄ™ Kontakt</a>' : '') . '</p></div></div></section>';
-        $leagueColors = wp_parse_args((array)($s['league_colors'] ?? []), ['1lm'=>'#055EFB','plk'=>'#FB5D0B','2lm'=>'#4F6F9D']);
-        echo '<section class="dt-card"><span class="dt-eyebrow">WYGLÄ„D</span><h2>Kolory interfejsu</h2><div class="dt-form-3"><label>Niebieski<input type="color" name="brand_primary" value="' . esc_attr($s['brand_primary']) . '"></label><label>Akcent<input type="color" name="brand_accent" value="' . esc_attr($s['brand_accent']) . '"></label><label>TÅ‚o<input type="color" name="brand_surface" value="' . esc_attr($s['brand_surface']) . '"></label></div><h3>Kolory lig</h3><p class="dt-muted">Te kolory oznaczajÄ… ligi w odliczaniu oraz przy kolejkach w zakÅ‚adce â€Moje typyâ€.</p><div class="dt-form-3"><label>1LM<input type="color" name="league_colors[1lm]" value="' . esc_attr($leagueColors['1lm']) . '"></label><label>PLK<input type="color" name="league_colors[plk]" value="' . esc_attr($leagueColors['plk']) . '"></label><label>2LM<input type="color" name="league_colors[2lm]" value="' . esc_attr($leagueColors['2lm']) . '"></label></div></section>';
-        echo '<div class="dt-savebar"><div><strong>Decka Typer ' . esc_html(DT_VERSION) . '</strong><span>Zmiany ustawieÅ„ obowiÄ…zujÄ… od razu.</span></div><button class="button button-primary dt-button">Zapisz ustawienia</button></div></form>';
-        echo '<section class="dt-card dt-verification-card"><span class="dt-eyebrow">BEZPIECZEÅƒSTWO TYPOWANIA</span><h2>Weryfikuj typowania</h2><p>SprawdÅº zapisane typy i wykryj te, ktÃ³re zostaÅ‚y oddane w chwili rozpoczÄ™cia meczu lub pÃ³Åºniej. Samo sprawdzenie niczego nie usuwa ani nie zmienia punktÃ³w.</p><p><a class="button button-primary dt-button" href="'.esc_url(add_query_arg(['page'=>'decka-typer-settings','verify_predictions'=>1],admin_url('admin.php'))).'"><span class="dashicons dashicons-search"></span> Weryfikuj typowania</a></p></section>';
-        $pushReady=class_exists('DT_Notifications')&&DT_Notifications::push_ready();
-        echo '<section class="dt-card"><span class="dt-eyebrow">POWIADOMIENIA</span><h2>Web Push / PWA</h2><div class="dt-sync-state"><span class="dt-dot '.($pushReady?'is-on':'').'"></span><div><strong>'.($pushReady?'OneSignal Web Push jest skonfigurowany':'Web Push oczekuje na konfiguracjÄ™ OneSignal').'</strong><small>Przypomnienia e-mail sÄ… wyÅ‚Ä…czone. Dla Push dodaj w wp-config.php staÅ‚e DT_ONESIGNAL_APP_ID i DT_ONESIGNAL_REST_API_KEY.</small></div></div><p class="dt-muted">Web Push kaÅ¼dy uÅ¼ytkownik wÅ‚Ä…cza samodzielnie w â€Moim koncieâ€. Aktualizacja nie nadpisuje tych ustawieÅ„.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" class="dt-section"><input type="hidden" name="action" value="dt_test_notifications">';
-        wp_nonce_field('dt_test_notifications');
-        echo '<label><input type="checkbox" name="confirm_broadcast" value="1" required> Potwierdzam wysÅ‚anie testu do wszystkich uÅ¼ytkownikÃ³w z wÅ‚Ä…czonym Web Push.</label><p><button type="submit" class="button dt-button"><span class="dashicons dashicons-bell"></span> WyÅ›lij test Push do wszystkich</button></p><p class="dt-muted">Test wyÅ›le wyÅ‚Ä…cznie Push do wszystkich kont z wÅ‚Ä…czonymi powiadomieniami, takÅ¼e administratorÃ³w. WysyÅ‚ka w partiach przez WP-Cron rozpocznie siÄ™ najwczeÅ›niej za 15 sekund i zaleÅ¼y od uruchamiania zadaÅ„ na stronie. UÅ¼ywany jest szablon â€RÄ™czny test powiadomieÅ„â€ z oznaczeniem TEST w tytule. Wyniki znajdziesz w historii; przyjÄ™cie wysyÅ‚ki nie potwierdza wyÅ›wietlenia banera.</p></form></section>';
-        self::notification_templates_form();
-        echo '<section class="dt-card dt-danger-zone"><span class="dt-eyebrow">NARZÄ˜DZIA TESTOWE</span><h2>WyczyÅ›Ä‡ dane Typera</h2><p>Usuwa wszystkie typy, punkty, wyniki, mecze, kolejki i druÅ¼yny, a nastÄ™pnie ponownie synchronizuje PLK, 1LM oraz 2LM. Konta WordPress, reklamy, Feedback, ustawienia Artura, AI i pozostaÅ‚a konfiguracja pozostajÄ… bez zmian.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'UsunÄ…Ä‡ bezpowrotnie dane typerskie i sportowe, a nastÄ™pnie pobraÄ‡ ligi od nowa?\')"><input type="hidden" name="action" value="dt_reset_typer_data">';
-        wp_nonce_field('dt_reset_typer_data');
-        echo '<label>Wpisz <strong>WYCZYÅšÄ†</strong>, aby potwierdziÄ‡<input name="confirmation" autocomplete="off" required></label><p><button class="button dt-danger-button"><span class="dashicons dashicons-trash"></span> WyczyÅ›Ä‡ dane i zsynchronizuj ligi</button></p></form></section>';
-        if (!empty($_GET['verify_predictions'])) self::late_predictions_modal();
-        self::end_shell();
-    }
-
-    private static function late_predictions(): array {
-        global $wpdb;
-        return (array)$wpdb->get_results(
-            "SELECT p.id prediction_id,p.user_id,p.match_id,p.selected_team_id,p.points,p.scoring_code,p.submitted_at,
-                    m.starts_at,m.round_id,h.name home_name,a.name away_name,r.title round_title,r.league_key,r.group_key,
-                    u.display_name,
-                    (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=p.user_id AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name
-             FROM " . DT_DB::table('predictions') . " p
-             JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id
-             JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
-             JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
-             JOIN " . DT_DB::table('teams') . " a ON a.id=m.away_team_id
-             JOIN {$wpdb->users} u ON u.ID=p.user_id
-             WHERE m.start_time_known=1 AND m.starts_at IS NOT NULL AND p.submitted_at>=m.starts_at
-             ORDER BY p.submitted_at DESC,p.id DESC",
-            ARRAY_A
-        );
-    }
-
-    private static function late_predictions_modal(): void {
-        $rows = self::late_predictions();
-        echo '<dialog id="dt-late-predictions-modal" class="dt-modal dt-verification-modal"><div class="dt-modal-card"><div class="dt-modal-head"><div><span class="dt-eyebrow">WYNIK WERYFIKACJI</span><h2>Typy oddane po rozpoczÄ™ciu meczu</h2></div><button type="button" class="button" data-dt-close>Zamknij</button></div>';
-        if (!$rows) {
-            echo '<div class="dt-verification-ok"><span class="dashicons dashicons-yes-alt"></span><div><strong>Nie znaleziono naruszeÅ„</strong><p>Wszystkie zapisane typy zostaÅ‚y oddane przed rozpoczÄ™ciem odpowiednich meczÃ³w.</p></div></div>';
-        } else {
-            echo '<p class="dt-inline-warning">Znaleziono '.esc_html((string)count($rows)).' '.(count($rows)===1?'typ wymagajÄ…cy':'typy wymagajÄ…ce').' sprawdzenia. Anulowanie usuwa typ i jego punkty; tej operacji nie moÅ¼na cofnÄ…Ä‡.</p><div class="dt-verification-list">';
-            foreach ($rows as $row) {
-                $name = trim((string)($row['ranking_name'] ?: $row['display_name']));
-                $league = strtoupper((string)$row['league_key']) . ((string)$row['group_key'] !== '' ? ' Â· grupa '.strtoupper((string)$row['group_key']) : '');
-                echo '<article class="dt-verification-row"><div><strong>'.esc_html($name).'</strong><span>'.esc_html($league.' Â· '.$row['round_title']).'</span><b>'.esc_html($row['home_name'].' â€“ '.$row['away_name']).'</b></div><dl><div><dt>Start meczu</dt><dd>'.esc_html(self::date_pl($row['starts_at'])).'</dd></div><div><dt>Oddano typ</dt><dd>'.esc_html(self::date_pl($row['submitted_at'])).'</dd></div><div><dt>Przyznane punkty</dt><dd>'.esc_html((string)(float)$row['points']).'</dd></div></dl><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'AnulowaÄ‡ ten typ i odjÄ…Ä‡ wszystkie wynikajÄ…ce z niego punkty?\')"><input type="hidden" name="action" value="dt_cancel_late_prediction"><input type="hidden" name="prediction_id" value="'.esc_attr((string)(int)$row['prediction_id']).'">';
-                wp_nonce_field('dt_cancel_late_prediction_'.(int)$row['prediction_id']);
-                echo '<button class="button dt-danger-button">ANULUJ TYPOWANIE</button></form></article>';
-            }
-            echo '</div>';
-        }
-        echo '</div></dialog><script>document.addEventListener("DOMContentLoaded",function(){var d=document.getElementById("dt-late-predictions-modal");if(d&&typeof d.showModal==="function")d.showModal();});</script>';
-    }
-
-    public static function cancel_late_prediction(): void {
-        if (!current_user_can('manage_options')) wp_die('Brak uprawnieÅ„.');
-        $predictionId = max(0,(int)($_POST['prediction_id'] ?? 0));
-        check_admin_referer('dt_cancel_late_prediction_'.$predictionId);
-        global $wpdb;
-        $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT p.*,m.starts_at,m.start_time_known,m.round_id FROM " . DT_DB::table('predictions') . " p JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id WHERE p.id=%d",
-            $predictionId
-        ), ARRAY_A);
-        if (!$row || !(int)$row['start_time_known'] || empty($row['starts_at']) || (string)$row['submitted_at'] < (string)$row['starts_at']) {
-            self::redirect('decka-typer-settings','Nie znaleziono naruszenia do anulowania.','error',['verify_predictions'=>1]);
-        }
-        $deleted = $wpdb->delete(DT_DB::table('predictions'),['id'=>$predictionId],['%d']);
-        if (!$deleted) self::redirect('decka-typer-settings','Nie udaÅ‚o siÄ™ anulowaÄ‡ typu.','error',['verify_predictions'=>1]);
-        $remaining = (int)$wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " p JOIN " . DT_DB::table('matches') . " m ON m.id=p.match_id WHERE p.user_id=%d AND m.round_id=%d",
-            (int)$row['user_id'],(int)$row['round_id']
-        ));
-        if ($remaining > 0) {
-            $wpdb->update(DT_DB::table('round_submissions'),['prediction_count'=>$remaining],['user_id'=>(int)$row['user_id'],'round_id'=>(int)$row['round_id']],['%d'],['%d','%d']);
-        } else {
-            $wpdb->delete(DT_DB::table('round_submissions'),['user_id'=>(int)$row['user_id'],'round_id'=>(int)$row['round_id']],['%d','%d']);
-        }
-        DT_Scoring::recalc_match((int)$row['match_id']);
-        DT_Logger::log('late_prediction_cancelled','Anulowano typ oddany po rozpoczÄ™ciu meczu.',['prediction_id'=>$predictionId,'match_id'=>(int)$row['match_id'],'submitted_at'=>$row['submitted_at'],'starts_at'=>$row['starts_at'],'removed_points'=>(float)$row['points']],'notice',(int)$row['user_id']);
-        self::redirect('decka-typer-settings','Typ zostaÅ‚ anulowany, a wynikajÄ…ce z niego punkty odjÄ™te.','success',['verify_predictions'=>1]);
-    }
-
-    public static function avatar(): void {
-        $messages = DT_Avatar::messages();
-        self::shell('AVATAR','Komunikaty pomocnika wyÅ›wietlane uÅ¼ytkownikom w odpowiednich momentach.');
-        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" class="dt-settings"><input type="hidden" name="action" value="dt_save_avatar">';
-        wp_nonce_field('dt_save_avatar');
-        echo '<section class="dt-card"><span class="dt-eyebrow">POMOCNIK TYPERA</span><h2>Teksty w chmurkach</h2><p class="dt-muted">Artur losuje jednÄ… z odpowiedzi przypisanych do sytuacji. Wszystkie teksty moÅ¼esz edytowaÄ‡ poniÅ¼ej.</p><div class="dt-avatar-admin-list">';
-        foreach ($messages as $key=>$item) {
-            echo '<details class="dt-avatar-admin-row"><summary><img src="'.esc_url($item['url']).'" alt=""><span><strong>'.esc_html($item['label']).'</strong><small>'.count($item['texts']).' edytowalnych odpowiedzi</small></span></summary><div class="dt-avatar-message-grid">';
-            foreach ($item['texts'] as $index=>$text) echo '<label><span>OdpowiedÅº '.($index+1).'</span><input name="messages['.esc_attr($key).']['.(int)$index.']" maxlength="180" value="'.esc_attr($text).'"></label>';
-            echo '</div></details>';
-        }
-        echo '</div></section><div class="dt-savebar"><div><strong>Komunikaty avatara</strong><span>Zmiany bÄ™dÄ… widoczne od razu po odÅ›wieÅ¼eniu aplikacji.</span></div><button class="button button-primary dt-button">Zapisz komunikaty</button></div></form>';
-        self::end_shell();
-    }
-
-    private static function provider_fields(string $title, array $fields, string $callback, array $s): void {
-        echo '<section class="dt-card"><span class="dt-eyebrow">LOGOWANIE</span><h2>' . esc_html($title) . '</h2><div class="dt-form-2">';
-        foreach ($fields as [$name,$label,$type]) echo '<label>' . esc_html($label) . '<input type="' . esc_attr($type) . '" name="' . esc_attr($name) . '" value="' . esc_attr($s[$name]) . '" ' . ($type === 'password' ? 'autocomplete="new-password"':'') . '></label>';
-        echo '</div><div class="dt-callback">Redirect URI: <code>' . esc_html($callback) . '</code></div></section>';
-    }
-
-    public static function sync_now(): void {
-        self::guard('dt_sync_now');
-        $r = DT_Sync::run(true);
-        self::redirect('decka-typer-sync',$r['ok']?'Synchronizacja zakoÅ„czona. Nowe: '.(int)$r['matches_new'].', zaktualizowane: '.(int)$r['matches_updated'].'.':($r['error']??'BÅ‚Ä…d synchronizacji.'),$r['ok']?'success':'error');
-    }
-
-    public static function save_settings(): void {
-        self::guard('dt_save_settings');
-        $old = DT_DB::settings();
-        $new = $old;
-        foreach (['season','source_url','source_plk_url','source_1lm_url','source_2lm_url','google_client_id','google_client_secret','facebook_app_id','facebook_app_secret'] as $k) {
-            $v = wp_unslash($_POST[$k] ?? '');
-            $new[$k] = str_contains($k, 'source_') || $k === 'source_url' ? esc_url_raw($v) : sanitize_text_field($v);
-        }
-        $contactEmail = sanitize_email(wp_unslash($_POST['contact_email'] ?? ''));
-        $new['contact_email'] = is_email($contactEmail) ? $contactEmail : sanitize_email(get_option('admin_email'));
-        foreach (['points_winner','perfect_round_bonus','pre1_hit_points','pre1_perfect_bonus','pre2_hit_points','pre2_perfect_bonus'] as $k) $new[$k] = max(0, (float)($_POST[$k] ?? 0));
-        foreach (['brand_primary','brand_accent','brand_surface'] as $k) $new[$k] = sanitize_hex_color($_POST[$k] ?? '') ?: $old[$k];
-        $oldLeagueColors = wp_parse_args((array)($old['league_colors'] ?? []), ['1lm'=>'#055EFB','plk'=>'#FB5D0B','2lm'=>'#4F6F9D']);
-        foreach (['1lm','plk','2lm'] as $key) $new['league_colors'][$key] = sanitize_hex_color($_POST['league_colors'][$key] ?? '') ?: $oldLeagueColors[$key];
-        $new['sync_enabled'] = !empty($_POST['sync_enabled']) ? 1 : 0;
-        $new['show_countdowns'] = !empty($_POST['show_countdowns']) ? 1 : 0;
-        $new['ad_slot_preview'] = !empty($_POST['ad_slot_preview']) ? 1 : 0;
-        $new['artur_ai_enabled'] = !empty($_POST['artur_ai_enabled']) ? 1 : 0;
-        $new['artur_ai_model'] = sanitize_text_field(wp_unslash($_POST['artur_ai_model'] ?? ($old['artur_ai_model'] ?? 'gemini-2.5-flash-lite')));
-        $new['artur_ai_questions'] = max(1,min(5,(int)($_POST['artur_ai_questions']??3)));
-        $instruction = trim(sanitize_textarea_field(wp_unslash($_POST['artur_ai_instruction'] ?? '')));
-        $new['artur_ai_instruction'] = $instruction !== '' ? $instruction : (string)($old['artur_ai_instruction'] ?? DT_DB::default_artur_ai_instruction());
-        $new['sync_interval_minutes'] = max(5,min(1440,(int)($_POST['sync_interval_minutes']??60)));
-        foreach(['plk','1lm','2lm'] as $key)$new['league_names'][$key]=sanitize_text_field(wp_unslash($_POST['league_names'][$key]??''));
-        $mode = sanitize_key($_POST['site_mode'] ?? 'test');
-        $new['site_mode'] = in_array($mode, ['production','test','break'], true) ? $mode : 'test';
-        $selected = array_map('sanitize_key', (array)($_POST['leagues'] ?? []));
-        $new['leagues'] = ['plk'=>in_array('plk',$selected,true)?1:0,'1lm'=>in_array('1lm',$selected,true)?1:0,'2lm'=>in_array('2lm',$selected,true)?1:0];
-        foreach (['apple_client_id','apple_team_id','apple_key_id','apple_private_key','points_exact','points_margin'] as $deprecated) unset($new[$deprecated]);
-        update_option('dt_settings',$new);
-        $timestamp=wp_next_scheduled('dt_sync_schedule');if($timestamp)wp_unschedule_event($timestamp,'dt_sync_schedule');DT_DB::ensure_cron();
-        DT_Logger::log('settings_saved','Zapisano ustawienia Typera.');
-        if (!empty($_POST['sync_results_now'])) {
-            $result = DT_Sync::run(true);
-            $message = !empty($result['ok'])
-                ? 'Synchronizacja zakoÅ„czona. Zaktualizowane mecze: '.(int)$result['matches_updated'].', przeliczone typy: '.(int)$result['scores'].'.'
-                : 'Synchronizacja zakoÅ„czona czÄ™Å›ciowo. '.implode(' ',array_slice((array)($result['warnings'] ?? []),0,3));
-            self::redirect('decka-typer-settings',$message,!empty($result['ok'])?'success':'error');
-        }
-        self::redirect('decka-typer-settings','Ustawienia zapisane.');
-    }
-
-    public static function add_round(): void {
-        self::guard('dt_add_round');
-        global $wpdb;
-        $s = DT_DB::settings();
-        $no = max(1,(int)($_POST['round_no'] ?? 0));
-        $title = sanitize_text_field($_POST['title'] ?? '') ?: $no . '. kolejka';
-        $now = current_time('mysql');
-        $ok = $wpdb->insert(DT_DB::table('rounds'),[
-            'season'=>$s['season'],'league_key'=>in_array(sanitize_key($_POST['league_key']??'1lm'),['plk','1lm','2lm'],true)?sanitize_key($_POST['league_key']):'1lm','group_key'=>sanitize_text_field($_POST['group_key']??''),'round_no'=>$no,'title'=>$title,'status'=>'draft','source'=>'manual',
-            'external_key'=>sha1($s['season'].'|manual|'.$no.'|'.($_POST['league_key']??'1lm').'|'.($_POST['group_key']??'')),'created_at'=>$now,'updated_at'=>$now
-        ]);
-        self::redirect('decka-typer-rounds',$ok?'Kolejka dodana jako szkic.':'Nie udaÅ‚o siÄ™ dodaÄ‡ kolejki.',$ok?'success':'error');
-    }
-
-    public static function open_round(): void {
-        self::guard('dt_open_round');
-        global $wpdb;
-        $id = (int)($_POST['round_id'] ?? 0);
-        $close = self::mysql_datetime($_POST['closes_at'] ?? '');
-        $round = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . DT_DB::table('rounds') . ' WHERE id=%d',$id));
-        if (!$round || !$close) self::redirect('decka-typer-rounds','NieprawidÅ‚owe dane kolejki lub terminu zamkniÄ™cia.','error');
-        $closeDt = self::local_dt($close);
-        $now = new DateTimeImmutable('now', wp_timezone());
-        if (!$closeDt || $closeDt <= $now) self::redirect('decka-typer-rounds','Termin zamkniÄ™cia musi byÄ‡ w przyszÅ‚oÅ›ci.','error');
-        $firstKnown = $wpdb->get_var($wpdb->prepare('SELECT MIN(starts_at) FROM ' . DT_DB::table('matches') . ' WHERE round_id=%d AND start_time_known=1 AND starts_at IS NOT NULL',$id));
-        $firstDt = self::local_dt($firstKnown ?: null);
-        if ($firstDt && $closeDt > $firstDt) self::redirect('decka-typer-rounds','Typowanie musi zostaÄ‡ zamkniÄ™te najpÃ³Åºniej o rozpoczÄ™ciu pierwszego meczu (' . self::date_pl($firstKnown) . ').','error');
-        if ($firstDt && $firstDt <= $now) self::redirect('decka-typer-rounds','Nie moÅ¼na otworzyÄ‡ kolejki po rozpoczÄ™ciu pierwszego meczu.','error');
-
-        $nowSql = current_time('mysql');
-        $wpdb->update(DT_DB::table('rounds'),['status'=>'open','manual_availability'=>1,'opens_at'=>$nowSql,'closes_at'=>$close,'updated_at'=>$nowSql],['id'=>$id],['%s','%d','%s','%s','%s'],['%d']);
-        DT_Logger::log('round_opened','Administrator otworzyÅ‚ kolejkÄ™ do typowania.',['round_id'=>$id,'closes_at'=>$close], 'notice', get_current_user_id());
-        self::redirect('decka-typer-rounds','Typowanie kolejki zostaÅ‚o otwarte do ' . self::date_pl($close) . '.');
-    }
-
-    public static function close_round(): void {
-        self::guard('dt_close_round');
-        global $wpdb;
-        $id = (int)($_POST['round_id'] ?? 0);
-        $now = current_time('mysql');
-        $ok = $wpdb->query($wpdb->prepare("UPDATE " . DT_DB::table('rounds') . " SET status='closed',manual_availability=1,closes_at=CASE WHEN closes_at IS NULL OR closes_at>%s THEN %s ELSE closes_at END,updated_at=%s WHERE id=%d",$now,$now,$now,$id));
-        DT_Logger::log('round_closed','Administrator zamknÄ…Å‚ typowanie kolejki.',['round_id'=>$id], 'notice', get_current_user_id());
-        self::redirect('decka-typer-rounds',$ok !== false ? 'Typowanie kolejki zamkniÄ™te.' : 'Nie udaÅ‚o siÄ™ zamknÄ…Ä‡ kolejki.',$ok !== false?'success':'error');
-    }
-
-    public static function add_match(): void {
-        self::guard('dt_add_match');
-        global $wpdb;
-        $roundId=(int)($_POST['round_id']??0); $home=(int)($_POST['home_team_id']??0); $away=(int)($_POST['away_team_id']??0); $start=self::mysql_datetime($_POST['starts_at']??'');
-        if(!$roundId||!$home||!$away||$home===$away||!$start) self::redirect('decka-typer-matches','SprawdÅº dane meczu.','error',['round_id'=>$roundId]);
-        $sh=self::nullable_int($_POST['score_home']??''); $sa=self::nullable_int($_POST['score_away']??''); $now=current_time('mysql');
-        $wpdb->insert(DT_DB::table('matches'),['round_id'=>$roundId,'external_key'=>sha1('manual|'.$roundId.'|'.$home.'|'.$away.'|'.$start.'|'.wp_generate_uuid4()),'home_team_id'=>$home,'away_team_id'=>$away,'starts_at'=>$start,'start_time_known'=>1,'score_home'=>$sh,'score_away'=>$sa,'status'=>($sh!==null&&$sa!==null)?'finished':'scheduled','manual_lock'=>1,'created_at'=>$now,'updated_at'=>$now]);
-        $mid=(int)$wpdb->insert_id; if($mid&&$sh!==null&&$sa!==null) DT_Scoring::recalc_match($mid);
-        DT_Logger::log('match_added','Dodano mecz rÄ™cznie.',['match_id'=>$mid]);
-        self::redirect('decka-typer-matches','Mecz dodany i zabezpieczony przed synchronizacjÄ….','success',['round_id'=>$roundId]);
-    }
-
-    public static function save_match(): void {
-        self::guard('dt_save_match');
-        global $wpdb;
-        $id=(int)($_POST['match_id']??0); $m=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.DT_DB::table('matches').' WHERE id=%d',$id));
-        if(!$m) self::redirect('decka-typer-matches','Nie znaleziono meczu.','error');
-        $start=self::mysql_datetime($_POST['starts_at']??''); $sh=self::nullable_int($_POST['score_home']??''); $sa=self::nullable_int($_POST['score_away']??'');
-        $data=['starts_at'=>$start?:$m->starts_at,'start_time_known'=>1,'score_home'=>$sh,'score_away'=>$sa,'status'=>($sh!==null&&$sa!==null)?'finished':'scheduled','manual_lock'=>!empty($_POST['manual_lock'])?1:0,'updated_at'=>current_time('mysql')];
-        $resetUsers=[];
-        if ((string)$data['starts_at']!==(string)$m->starts_at) {
-            $predictionTable=DT_DB::table('predictions');$submissionTable=DT_DB::table('round_submissions');$matchTable=DT_DB::table('matches');
-            $resetUsers=array_map('intval',(array)$wpdb->get_col($wpdb->prepare("SELECT user_id FROM $predictionTable WHERE match_id=%d",$id)));
-            $wpdb->delete($predictionTable,['match_id'=>$id],['%d']);
-            foreach ($resetUsers as $resetUid) {
-                $count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $predictionTable p JOIN $matchTable mm ON mm.id=p.match_id WHERE p.user_id=%d AND mm.round_id=%d",$resetUid,(int)$m->round_id));
-                if ($count) $wpdb->update($submissionTable,['prediction_count'=>$count],['user_id'=>$resetUid,'round_id'=>(int)$m->round_id],['%d'],['%d','%d']);
-                else $wpdb->delete($submissionTable,['user_id'=>$resetUid,'round_id'=>(int)$m->round_id],['%d','%d']);
-            }
-        }
-        $wpdb->update(DT_DB::table('matches'),$data,['id'=>$id]);
-        if ($resetUsers && class_exists('DT_Notifications')) DT_Notifications::schedule_changed($id,(int)$m->round_id,(string)$m->starts_at,(string)$data['starts_at'],$resetUsers);
-        if($sh!==null&&$sa!==null) DT_Scoring::recalc_match($id);
-        DT_Logger::log('match_updated','Administrator poprawiÅ‚ mecz.',['match_id'=>$id,'manual_lock'=>$data['manual_lock']]);
-        self::redirect('decka-typer-matches','Mecz zaktualizowany.','success',['round_id'=>(int)$m->round_id]);
-    }
-
-    public static function adjust_points(): void {
-        self::guard('dt_adjust_points');
-        global $wpdb;
-        $s=DT_DB::settings(); $uid=(int)($_POST['user_id']??0); $points=(float)($_POST['points']??0); $reason=sanitize_text_field($_POST['reason']??'');
-        if(!$uid||$reason==='') self::redirect('decka-typer-users','SprawdÅº dane korekty.','error');
-        $wpdb->insert(DT_DB::table('point_adjustments'),['user_id'=>$uid,'season'=>$s['season'],'points'=>$points,'reason'=>$reason,'admin_user_id'=>get_current_user_id(),'created_at'=>current_time('mysql')]);
-        DT_Logger::log('points_adjusted','Administrator skorygowaÅ‚ punkty.',['target_user'=>$uid,'points'=>$points,'reason'=>$reason],'notice',get_current_user_id());
-        self::redirect('decka-typer-users','Korekta punktÃ³w zapisana.');
-    }
-
-    public static function toggle_expert(): void {
-        self::guard('dt_toggle_expert');
-        $uid = (int)($_POST['user_id'] ?? 0);
-        $user = $uid > 0 ? get_userdata($uid) : false;
-        if (!$user) self::redirect('decka-typer-users','Nie znaleziono uÅ¼ytkownika.','error');
-        $wasExpert = DT_User_Settings::is_expert($uid);
-        if ($wasExpert) delete_user_meta($uid, 'dt_typer_expert');
-        else update_user_meta($uid, 'dt_typer_expert', 1);
-        DT_Logger::log('expert_status_changed',$wasExpert?'Odebrano oznaczenie eksperta.':'Nadano oznaczenie eksperta.',['target_user'=>$uid,'is_expert'=>$wasExpert?0:1],'notice',get_current_user_id());
-        self::redirect('decka-typer-users',$wasExpert?'UÅ¼ytkownik nie jest juÅ¼ oznaczony jako ekspert.':'UÅ¼ytkownik zostaÅ‚ oznaczony jako ekspert.');
-    }
-
-    public static function update_feedback(): void {
-        $id = max(0, (int)($_POST['feedback_id'] ?? 0));
-        self::guard('dt_update_feedback_' . $id);
-        global $wpdb;
-        $status = sanitize_key((string)($_POST['status'] ?? 'new'));
-        if (!in_array($status, ['new','in_progress','resolved','cancelled'], true)) {
-            self::redirect('decka-typer-feedback', 'NieprawidÅ‚owy status zgÅ‚oszenia.', 'error');
-        }
-        $ok = $wpdb->update(DT_DB::table('feedback'), [
-            'status'=>$status,
-            'admin_user_id'=>get_current_user_id(),
-            'updated_at'=>current_time('mysql'),
-        ], ['id'=>$id], ['%s','%d','%s'], ['%d']);
-        DT_Logger::log('feedback_status_changed', 'Administrator zmieniÅ‚ status zgÅ‚oszenia.', ['feedback_id'=>$id,'status'=>$status], 'notice', get_current_user_id());
-        $returnStatus = sanitize_key((string)($_POST['return_status'] ?? 'all'));
-        self::redirect('decka-typer-feedback', $ok !== false ? 'Status zgÅ‚oszenia zostaÅ‚ zapisany.' : 'Nie udaÅ‚o siÄ™ zapisaÄ‡ statusu.', $ok !== false ? 'success' : 'error', ['status'=>$returnStatus]);
-    }
-
-    private static function notification_templates_form(): void {
-        echo '<section class="dt-card"><h2>Szablony powiadomieÅ„</h2><p>TytuÅ‚y otrzymujÄ… automatycznie prefiks <strong>TypujKosza.pl - </strong>. Szablony przypomnieÅ„ i zmian terminÃ³w sÄ… wspÃ³lne dla Push i wiadomoÅ›ci w aplikacji. Zmienne w nawiasach klamrowych uzupeÅ‚niamy danymi meczu i uÅ¼ytkownika. Daty podajemy w strefie czasowej WordPressa. Zmiana tekstu nie zmienia harmonogramu wysyÅ‚ki.</p><p>Powitanie dotyczy pierwszej subskrypcji Push. W OneSignal wybierz integracjÄ™ Custom Code, aby uÅ¼ywaÄ‡ powitania z tych ustawieÅ„. NazwÄ™ ÅºrÃ³dÅ‚a powiadomienia moÅ¼e dodatkowo wyÅ›wietlaÄ‡ system telefonu.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'"><input type="hidden" name="action" value="dt_save_notification_templates">';
-        wp_nonce_field('dt_save_notification_templates');
-        foreach (DT_Notifications::templates() as $key=>$template) {
-            echo '<fieldset class="dt-section"><legend><strong>'.esc_html($template['label']).'</strong></legend><p><label for="dt-template-'.$key.'-title">TytuÅ‚ (bez prefiksu)</label><br><input class="large-text" id="dt-template-'.$key.'-title" name="templates['.$key.'][title]" value="'.esc_attr($template['title']).'" required></p><p><label for="dt-template-'.$key.'-message">TreÅ›Ä‡</label><br><textarea class="large-text" rows="3" id="dt-template-'.$key.'-message" name="templates['.$key.'][message]" required>'.esc_textarea($template['message']).'</textarea></p><p class="description">DostÄ™pne zmienne: ';
-            echo $template['variables']?esc_html(implode(', ',array_map(static fn($v)=>'{'.$v.'}',$template['variables']))):'brak â€” tekst staÅ‚y';
-            echo '</p></fieldset>';
-        }
-        echo '<p class="description">{liga}: PLK/1LM/2LM; {grupa}: np. grupa A lub pusty tekst; {kolejka}: nazwa kolejki; {mecz}: gospodarz â€“ goÅ›Ä‡; {termin}, {stary_termin}, {nowy_termin}: data i godzina lub â€termin do ustaleniaâ€; {pozostalo}: liczba meczÃ³w bez typu dla odbiorcy.</p><button class="button button-primary" type="submit">Zapisz szablony powiadomieÅ„</button></form></section>';
-    }
-
-    public static function save_notification_templates(): void {
-        self::guard('dt_save_notification_templates');
-        $result=DT_Notifications::save_templates((array)wp_unslash($_POST['templates']??[]));
-        self::redirect('decka-typer-notifications',is_wp_error($result)?$result->get_error_message():'Zapisano szablony powiadomieÅ„.',is_wp_error($result)?'error':'success');
-    }
-
-    public static function test_notifications(): void {
-        self::guard('dt_test_notifications');
-        if (($_POST['confirm_broadcast']??'')!=='1') {
-            self::redirect('decka-typer-settings','Zaznacz potwierdzenie wysyÅ‚ki testu do wszystkich.','error');
-            return;
-        }
-        if (!class_exists('DT_Notifications') || !DT_Notifications::push_ready()) {
-            self::redirect('decka-typer-settings','OneSignal nie jest skonfigurowany.','error');
-            return;
-        }
-        $result=DT_Notifications::queue_admin_test();
-        $message='Zaplanowano test Push dla '.$result['queued'].' kont z wÅ‚Ä…czonymi powiadomieniami. WysyÅ‚ka partiami przez WP-Cron, najwczeÅ›niej za 15 sekund. Wyniki sprawdzisz w historii.';
-        if (!$result['queued'] && !$result['failed']) $message='Brak uÅ¼ytkownikÃ³w z wÅ‚Ä…czonym Web Push. Nie zaplanowano wysyÅ‚ki.';
-        if ($result['failed']) $message.=' Nie udaÅ‚o siÄ™ zaplanowaÄ‡ wysyÅ‚ki dla '.$result['failed'].' kont.';
-        self::redirect('decka-typer-settings',$message,$result['failed']?'error':'success');
-    }
-
-    public static function save_avatar(): void {
-        self::guard('dt_save_avatar');
-        DT_Avatar::save((array)($_POST['messages'] ?? []));
-        DT_Logger::log('avatar_messages_saved','Zapisano komunikaty avatara.',[], 'notice', get_current_user_id());
-        self::redirect('decka-typer-avatar','Komunikaty avatara zostaÅ‚y zapisane.');
-    }
-
-    public static function reset_typer_data(): void {
-        self::guard('dt_reset_typer_data');
-        if (trim((string)wp_unslash($_POST['confirmation'] ?? '')) !== 'WYCZYÅšÄ†') {
-            self::redirect('decka-typer-settings','Nie wpisano prawidÅ‚owego potwierdzenia WYCZYÅšÄ†.','error');
-        }
-        global $wpdb;
-        $wpdb->query('START TRANSACTION');
-        try {
-            // Delete dependent data first, then the complete sports catalogue. This
-            // also removes manually entered scores and locks, so the following sync
-            // always rebuilds leagues from their official sources.
-            foreach (['predictions','round_submissions','point_adjustments','artur_ai','preseason_predictions','matches','rounds','teams'] as $table) {
-                if ($wpdb->query('DELETE FROM '.DT_DB::table($table)) === false) throw new RuntimeException($wpdb->last_error ?: 'BÅ‚Ä…d czyszczenia tabeli '.$table);
-            }
-            if ($wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->usermeta} WHERE meta_key IN (%s,%s)",'dt_ranking_name','dt_favorite_team_id')) === false) {
-                throw new RuntimeException($wpdb->last_error ?: 'BÅ‚Ä…d czyszczenia ustawieÅ„ uÅ¼ytkownikÃ³w');
-            }
-            $wpdb->query('COMMIT');
-        } catch (Throwable $e) {
-            $wpdb->query('ROLLBACK');
-            DT_Logger::log('typer_reset_failed',$e->getMessage(),[], 'error', get_current_user_id());
-            self::redirect('decka-typer-settings','Nie udaÅ‚o siÄ™ wyczyÅ›ciÄ‡ danych Typera.','error');
-        }
-
-        // Match IDs and round IDs are recreated by the import. Remove only their
-        // mapping; keep the configured BONUS point value and every other setting.
-        delete_option('dt_bonus_matches');
-        delete_option('dt_1lm_standings_cache');
-        $contextCache = $wpdb->esc_like('_transient_dt_lctx_') . '%';
-        $contextTimeout = $wpdb->esc_like('_transient_timeout_dt_lctx_') . '%';
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
-            $contextCache,
-            $contextTimeout
-        ));
-
-        DT_Logger::log(
-            'typer_data_reset',
-            'Administrator usunÄ…Å‚ dane typerskie, wyniki, mecze, kolejki i druÅ¼yny. Konta oraz konfiguracjÄ™ wtyczki zachowano.',
-            [],
-            'warning',
-            get_current_user_id()
-        );
-
-        $sync = DT_Sync::run(true);
-        $leagueResults = (array)($sync['leagues'] ?? []);
-        $synced = [];
-        $failed = [];
-        foreach (['plk'=>'PLK','1lm'=>'1LM','2lm'=>'2LM'] as $key=>$label) {
-            if (!empty($leagueResults[$key]['ok'])) $synced[] = $label;
-            else $failed[] = $label;
-        }
-
-        $message = 'Dane Typera zostaÅ‚y wyczyszczone. Ponownie pobrano: ' . ($synced ? implode(', ', $synced) : 'brak lig') . '.';
-        if ($failed) {
-            $message .= ' Nie udaÅ‚o siÄ™ pobraÄ‡: ' . implode(', ', $failed) . '. SzczegÃ³Å‚y zapisano w Historii.';
-            self::redirect('decka-typer-sync', $message, 'error');
-        }
-        $message .= ' Zaimportowano ' . (int)($sync['matches_new'] ?? 0) . ' meczÃ³w.';
-        self::redirect('decka-typer-sync', $message, 'success');
-    }
-
-    private static function nullable_int($value): ?int {
-        if ($value === '' || $value === null) return null;
-        return max(0,(int)$value);
-    }
-
-    private static function mysql_datetime($value): ?string {
-        $value = sanitize_text_field(wp_unslash((string)$value));
-        if (!$value) return null;
-        $tz = wp_timezone();
-        $d = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value, $tz);
-        if (!$d) $d = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, $tz);
-        return $d ? $d->format('Y-m-d H:i:s') : null;
-    }
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíãmtñ:-jZ.¶›­–)Ş³m|ğğıÁ¡À)¥˜€ …‘•™¥¹• 	MAQ œ¤¤•á¥Ğì()±…ÍÌQ}‘µ¥¸ì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸É•¥ÍÑ•È ¤èÙ½¥ì(€€€€€€€…‘‘}…Ñ¥½¸ …‘µ¥¹}µ•¹Ôœ°m}}1MM}|°€µ•¹Ôt¤ì(€€€€€€€…‘‘}…Ñ¥½¸ …‘µ¥¹}•¹ÅÕ•Õ•}ÍÉ¥ÁÑÌœ°m}}1MM}|°€…ÍÍ•ÑÌt¤ì(€€€€€€€™½É•… €¡l(€€€€€€€€€€€€Íå¹}¹½Üœ°Í…Ù•}Í•ÑÑ¥¹Ìœ°Í…Ù•}µ…Ñ œ°…‘‘}µ…Ñ œ°…‘‘}É½Õ¹œ°…‘©ÕÍÑ}Á½¥¹ÑÌœ°(€€€€€€€€€€€€½Á•¹}É½Õ¹œ°±½Í•}É½Õ¹œ°É•Í•Ñ}ÑåÁ•É}‘…Ñ„œ°Í…Ù•}…Ù…Ñ…Èœ°Ñ½±•}•áÁ•ÉĞœ°ÕÁ‘…Ñ•}™••‘‰…¬œ°Ñ•ÍÑ}¹½Ñ¥™¥…Ñ¥½¹Ìœ°Í…Ù•}¹½Ñ¥™¥…Ñ¥½¹}Ñ•µÁ±…Ñ•Ìœ°…¹•±}±…Ñ•}ÁÉ•‘¥Ñ¥½¸œ(€€€€€€€t…Ì€‘…Ñ¥½¸¤ì(€€€€€€€€€€€…‘‘}…Ñ¥½¸ …‘µ¥¹}Á½ÍÑ}‘Ñ|œ€¸€‘…Ñ¥½¸°m}}1MM}|°€‘…Ñ¥½¹t¤ì(€€€€€€€ô(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸µ•¹Ô ¤èÙ½¥ì(€€€€€€€€‘…À€ô€µ…¹…•}½ÁÑ¥½¹Ìœì(€€€€€€€…‘‘}µ•¹Õ}Á…” •­„QåÁ•Èœ°•­„QåÁ•Èœ°‘…À°‘•­„µÑåÁ•Èœ±m}}1MM}|°‘…Í¡‰½…Ét°‘…Í¡¥½¹Ìµ…İ…É‘Ìœ°ÈØ¤ì(€€€€€€€€‘¥Ñ•µÌ€ôl(€€€€€€€€€€€l‘•­„µÑåÁ•Èœ°AÕ±Á¥Ğœ°‘…Í¡‰½…Ét°(€€€€€€€€€€€l‘•­„µÑåÁ•ÈµÉ½Õ¹‘Ìœ°-½±•©­¤œ°É½Õ¹‘Ìt°(€€€€€€€€€€€l‘•­„µÑåÁ•Èµµ…Ñ¡•Ìœ°5•é”œ°µ…Ñ¡•Ìt°(€€€€€€€€€€€l‘•­„µÑåÁ•ÈµÁÉ•‘¥Ñ¥½¹Ìœ°QåÁäœ°ÁÉ•‘¥Ñ¥½¹Ìt°(€€€€€€€€€€€l‘•­„µÑåÁ•Èµ…ÉÑÕÈœ°-½±•©­„èÉÑÕÉ•´œ°…ÉÑÕÉ}‘…Í¡‰½…Ét°(€€€€€€€€€€€l‘•­„µÑåÁ•ÈµÕÍ•ÉÌœ°WñåÑ­½İ¹¥äœ°ÕÍ•ÉÌt°(€€€€€€€€€€€l‘•­„µÑåÁ•Èµ™••‘‰…¬œ°••‘‰…¬œ°™••‘‰…¬t°(€€€€€€€€€€€l‘•­„µÑåÁ•Èµ¹½Ñ¥™¥…Ñ¥½¹Ìœ°A½İ¥…‘½µ¥•¹¥„œ°¹½Ñ¥™¥…Ñ¥½¹Ìt°(€€€€€€€€€€€l‘•­„µÑåÁ•ÈµÍÑ…ÑÌœ°MÑ…ÑåÍÑå­¤œ°ÍÑ…ÑÌt°(€€€€€€€€€€€l‘•­„µÑåÁ•ÈµÍå¹Œœ°Må¹¡É½¹¥é…©„‘…¹å Ai-½Íèœ°Íå¹Œt°(€€€€€€€€€€€l‘•­„µÑåÁ•Èµ±½Ìœ°!¥ÍÑ½É¥„œ°±½Ìt°(€€€€€€€€€€€l‘•­„µÑåÁ•Èµ…Ù…Ñ…Èœ°YQHœ°…Ù…Ñ…Èt°(€€€€€€€€€€€l‘•­„µÑåÁ•ÈµÍ•ÑÑ¥¹Ìœ°UÍÑ…İ¥•¹¥„œ°Í•ÑÑ¥¹Ìt°(€€€€€€€tì(€€€€€€€™½É•… € ‘¥Ñ•µÌ…Ìl‘Í±Õœ°‘±…‰•°°‘µ•Ñ¡½‘t¤ì(€€€€€€€€€€€…‘‘}ÍÕ‰µ•¹Õ}Á…” ‘•­„µÑåÁ•Èœ°‘±…‰•°°‘±…‰•°°‘…À°‘Í±Õœ±m}}1MM}|°‘µ•Ñ¡½‘t¤ì(€€€€€€€ô(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸…ÍÍ•ÑÌ¡ÍÑÉ¥¹œ€‘¡½½¬¤èÙ½¥ì(€€€€€€€¥˜€¡ÍÑÉÁ½Ì ‘¡½½¬°€‘•­„µÑåÁ•Èœ¤€ôôô™…±Í”¤É•ÑÕÉ¸ì(€€€€€€€İÁ}•¹ÅÕ•Õ•}ÍÑå±” ‘Ğµ…‘µ¥¸œ°Q}UI0€¸€…ÍÍ•ÑÌ½ÍÌ½…‘µ¥¸¹ÍÌœ°mt°Q}YIM%=8¤ì(€€€€€€€İÁ}•¹ÅÕ•Õ•}ÍÑå±” ‘Ğµ…‘µ¥¸µ…ÉÑÕÈœ°Q}UI0€¸€…ÍÍ•ÑÌ½ÍÌ½…‘µ¥¸µ…ÉÑÕÈ¹ÍÌœ°l‘Ğµ…‘µ¥¸t°Q}YIM%=8¤ì(€€€€€€€İÁ}•¹ÅÕ•Õ•}ÍÑå±” ‘Ğµ…‘µ¥¸µÁÉ•‘¥Ñ¥½¹Ìœ°Q}UI0€¸€…ÍÍ•ÑÌ½ÍÌ½…‘µ¥¸µÁÉ•‘¥Ñ¥½¹Ì¹ÍÌœ°l‘Ğµ…‘µ¥¸t°Q}YIM%=8¤ì(€€€€€€€İÁ}•¹ÅÕ•Õ•}ÍÑå±” ‘Ğµ…‘µ¥¸µÙ•É¥™¥…Ñ¥½¸œ°Q}UI0€¸€…ÍÍ•ÑÌ½ÍÌ½…‘µ¥¸µÙ•É¥™¥…Ñ¥½¸¹ÍÌœ°l‘Ğµ…‘µ¥¸t°Q}YIM%=8¤ì(€€€€€€€İÁ}•¹ÅÕ•Õ•}ÍÉ¥ÁĞ ‘Ğµ…‘µ¥¸œ°Q}UI0€¸€…ÍÍ•ÑÌ½©Ì½…‘µ¥¸¹©Ìœ°mt°Q}YIM%=8°ÑÉÕ”¤ì(€€€€€€€İÁ}•¹ÅÕ•Õ•}ÍÉ¥ÁĞ ‘Ğµ…‘µ¥¸µ…ÉÑÕÈµÉ…Á¡¥Ìœ°Q}UI0€¸€…ÍÍ•ÑÌ½©Ì½…‘µ¥¸µ…ÉÑÕÈµÉ…Á¡¥Ì¹©Ìœ°l‘Ğµ…‘µ¥¸t°Q}YIM%=8°ÑÉÕ”¤ì(€€€€€€€İÁ}±½…±¥é•}ÍÉ¥ÁĞ ‘Ğµ…‘µ¥¸µ…ÉÑÕÈµÉ…Á¡¥Ìœ°•­…QåÁ•ÉÉÑÕÉÉ…Á¡¥Ìœ±l±½½UÉ°œôùQ}UI0¸…ÍÍ•ÑÌ½¥µœ½ÑåÁÕ©­½Íé„µ±½¼µ¡½É¥é½¹Ñ…°¹Á¹œt¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸Õ…É¡ÍÑÉ¥¹œ€‘¹½¹”¤èÙ½¥ì(€€€€€€€¥˜€ …ÕÉÉ•¹Ñ}ÕÍ•É}…¸ µ…¹…•}½ÁÑ¥½¹Ìœ¤¤İÁ}‘¥” 	É…¬ÕÁÉ…İ¹¥—¸œ¤ì(€€€€€€€¡•­}…‘µ¥¹}É•™•É•È ‘¹½¹”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸Í¡•±°¡ÍÑÉ¥¹œ€‘Ñ¥Ñ±”°ÍÑÉ¥¹œ€‘ÍÕ‰Ñ¥Ñ±”€ô€œœ¤èÙ½¥ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰İÉ…À‘Ğµ…‘µ¥¸ˆøñ‘¥Ø±…ÍÌô‰‘Ğµ…‘µ¥¸µ¡•…ˆøñ‘¥Øøñ‘¥Ø±…ÍÌô‰‘Ğµ­¥­•Èˆù-A1A1%8ƒ
+ÜQeAHğ½‘¥Øøñ Äøœ€¸•Í}¡Ñµ° ‘Ñ¥Ñ±”¤€¸€œğ½ Äøœ€¸€ ‘ÍÕ‰Ñ¥Ñ±”€ü€œñÀøœ€¸•Í}¡Ñµ° ‘ÍÕ‰Ñ¥Ñ±”¤€¸€œğ½Àøœ€è€œœ¤€¸€œğ½‘¥Øøñ¥µœÍÉŒôˆœ€¸•Í}ÕÉ°¡Q}UI0€¸€…ÍÍ•ÑÌ½¥µœ½‘•­„µ±½¼¹Á¹œœ¤€¸€œˆ…±Ğô‰•­„A•±Á±¥¸ˆøğ½‘¥Øøœì(€€€€€€€Í•±˜èé¹½Ñ¥” ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸•¹‘}Í¡•±° ¤èÙ½¥ì•¡¼€œğ½‘¥Øøœìô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸¹½Ñ¥” ¤èÙ½¥ì(€€€€€€€¥˜€¡•µÁÑä ‘}Ql‘Ñ}¹½Ñ¥”t¤¤É•ÑÕÉ¸ì(€€€€€€€€‘ÑåÁ”€ôÍ…¹¥Ñ¥é•}­•ä ‘}Ql‘Ñ}ÑåÁ”t€üü€ÍÕ•ÍÌœ¤ì(€€€€€€€€‘µÍœ€ôÍ…¹¥Ñ¥é•}Ñ•áÑ}™¥•±¡İÁ}Õ¹Í±…Í  ‘}Ql‘Ñ}¹½Ñ¥”t¤¤ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÑ½…ÍĞµÍÑ…Ñ¥Œ‘Ğ´œ€¸•Í}…ÑÑÈ ‘ÑåÁ”¤€¸€œˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹Ì´œ€¸€ ‘ÑåÁ”€ôôô€•ÉÉ½Èœ€ü€İ…É¹¥¹œœ€è€å•Ìµ…±Ğœ¤€¸€œˆøğ½ÍÁ…¸øœ€¸•Í}¡Ñµ° ‘µÍœ¤€¸€œğ½‘¥Øøœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸É•‘¥É•Ğ¡ÍÑÉ¥¹œ€‘Á…”°ÍÑÉ¥¹œ€‘¹½Ñ¥”°ÍÑÉ¥¹œ€‘ÑåÁ”€ô€ÍÕ•ÍÌœ°…ÉÉ…ä€‘•áÑÉ„€ômt¤èÙ½¥ì(€€€€€€€İÁ}Í…™•}É•‘¥É•Ğ¡…‘‘}ÅÕ•Éå}…Éœ¡…ÉÉ…å}µ•É”¡lÁ…”œôø‘Á…”°‘Ñ}¹½Ñ¥”œôø‘¹½Ñ¥”°‘Ñ}ÑåÁ”œôø‘ÑåÁ•t°€‘•áÑÉ„¤°…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤¤ì(€€€€€€€•á¥Ğì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸‰…‘”¡ÍÑÉ¥¹œ€‘Ñ•áĞ°ÍÑÉ¥¹œ€‘ÑåÁ”€ô€¹•ÕÑÉ…°œ¤èÍÑÉ¥¹œì(€€€€€€€É•ÑÕÉ¸€œñÍÁ…¸±…ÍÌô‰‘Ğµ‰…‘”‘Ğµ‰…‘”´œ€¸•Í}…ÑÑÈ ‘ÑåÁ”¤€¸€œˆøœ€¸•Í}¡Ñµ° ‘Ñ•áĞ¤€¸€œğ½ÍÁ…¸øœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸É½Õ¹‘}‰…‘”¡ÍÑÉ¥¹œ€‘ÍÑ…ÑÕÌ¤èÍÑÉ¥¹œì(€€€€€€€É•ÑÕÉ¸µ…Ñ € ‘ÍÑ…ÑÕÌ¤ì(€€€€€€€€€€€€½Á•¸œ€ôøÍ•±˜èé‰…‘” =Ñİ…ÉÑ”‘¼ÑåÁ½İ…¹¥„œ°É••¸œ¤°(€€€€€€€€€€€€±½Í•œ€ôøÍ•±˜èé‰…‘” i…µ­¹§eÑ”œ°É•œ¤°(€€€€€€€€€€€‘•™…Õ±Ğ€ôøÍ•±˜èé‰…‘” Mé­¥Œœ°¹•ÕÑÉ…°œ¤°(€€€€€€€ôì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸µ•ÑÉ¥Œ¡ÍÑÉ¥¹œ€‘±…‰•°°€‘Ù…±Õ”°ÍÑÉ¥¹œ€‘¥½¸°ÍÑÉ¥¹œ€‘Ñ½¹”¤èÙ½¥ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµµ•ÑÉ¥Œ‘ĞµÑ½¹”´œ€¸•Í}…ÑÑÈ ‘Ñ½¹”¤€¸€œˆøñ‘¥Ø±…ÍÌô‰‘Ğµµ•ÑÉ¥Œµ¥½¸ˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹Ì´œ€¸•Í}…ÑÑÈ ‘¥½¸¤€¸€œˆøğ½ÍÁ…¸øğ½‘¥Øøñ‘¥ØøñÍÁ…¸øœ€¸•Í}¡Ñµ° ‘±…‰•°¤€¸€œğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ¡ÍÑÉ¥¹œ¤‘Ù…±Õ”¤€¸€œğ½ÍÑÉ½¹œøğ½‘¥Øøğ½‘¥Øøœì(€€€ô((€€€€¼¨¨QQ%5Ù…±Õ•Ì¥¸•­„QåÁ•È…É”ÍÑ½É•…Ì±½…°Í¥Ñ”Ñ¥µ”¸9•Ù•ÈÉÕ¸Ñ¡•´Ñ¡É½Õ ÍÑÉÑ½Ñ¥µ” ¤­İÁ}‘…Ñ” ¤¸€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸±½…±}‘Ğ ıÍÑÉ¥¹œ€‘Ù…±Õ”¤è€ı…Ñ•Q¥µ•%µµÕÑ…‰±”ì(€€€€€€€¥˜€ „‘Ù…±Õ”¤É•ÑÕÉ¸¹Õ±°ì(€€€€€€€€‘Ñè€ôİÁ}Ñ¥µ•é½¹” ¤ì(€€€€€€€€‘€ô…Ñ•Q¥µ•%µµÕÑ…‰±”èéÉ•…Ñ•É½µ½Éµ…Ğ œ…dµ´µ é¤éÌœ°€‘Ù…±Õ”°€‘Ñè¤ì(€€€€€€€¥˜€ „‘¤€‘€ô…Ñ•Q¥µ•%µµÕÑ…‰±”èéÉ•…Ñ•É½µ½Éµ…Ğ œ…dµ´µ é¤œ°€‘Ù…±Õ”°€‘Ñè¤ì(€€€€€€€É•ÑÕÉ¸€‘€üè¹Õ±°ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸‘…Ñ•}Á° ıÍÑÉ¥¹œ€‘Ù…±Õ”¤èÍÑÉ¥¹œì(€€€€€€€€‘€ôÍ•±˜èé±½…±}‘Ğ ‘Ù…±Õ”¤ì(€€€€€€€É•ÑÕÉ¸€‘€ü€‘´ù™½Éµ…Ğ ¹´¹dƒ
+Ü é¤œ¤€è€ŸŠPœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸¡Ñµ±}‘…Ñ•Ñ¥µ” ıÍÑÉ¥¹œ€‘Ù…±Õ”¤èÍÑÉ¥¹œì(€€€€€€€€‘€ôÍ•±˜èé±½…±}‘Ğ ‘Ù…±Õ”¤ì(€€€€€€€É•ÑÕÉ¸€‘€ü€‘´ù™½Éµ…Ğ dµ´µ‘qQ é¤œ¤€è€œœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸…ÉÑÕÉ}Á¥­}ÍÑ…Ñ”¡¥¹Ğ€‘Í•±•Ñ•‘Q•…µ%°¥¹Ğ€‘¡½µ•Q•…µ%°¥¹Ğ€‘…İ…åQ•…µ%°€ı¥¹Ğ€‘Í½É•!½µ”°€ı¥¹Ğ€‘Í½É•İ…ä¤èÍÑÉ¥¹œì(€€€€€€€¥˜€ ‘Í•±•Ñ•‘Q•…µ%€ğô€À¤É•ÑÕÉ¸€µ¥ÍÍ¥¹œœì(€€€€€€€¥˜€ ‘Í½É•!½µ”€ôôô¹Õ±°ñğ€‘Í½É•İ…ä€ôôô¹Õ±°ñğ€‘Í½É•!½µ”€ôôô€‘Í½É•İ…ä¤É•ÑÕÉ¸€Á•¹‘¥¹œœì(€€€€€€€€‘İ¥¹¹•É%€ô€‘Í½É•!½µ”€ø€‘Í½É•İ…ä€ü€‘¡½µ•Q•…µ%€è€‘…İ…åQ•…µ%ì(€€€€€€€É•ÑÕÉ¸€‘Í•±•Ñ•‘Q•…µ%€ôôô€‘İ¥¹¹•É%€ü€¡¥Ğœ€è€µ¥ÍÌœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸…ÉÑÕÉ}É½Õ¹‘}‘…Ñ„¡¥¹Ğ€‘É½Õ¹‘%°¥¹Ğ€‘ÕÍ•É%°…ÉÉ…ä€‘‰½¹ÕÍ5…À¤è…ÉÉ…äì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘µ…Ñ¡•Ì€ô€¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€‰M1P´¹¥±´¹¡½µ•}Ñ•…µ}¥±´¹…İ…å}Ñ•…µ}¥±´¹ÍÑ…ÉÑÍ}…Ğ±´¹Í½É•}¡½µ”±´¹Í½É•}…İ…ä°(€€€€€€€€€€€€ ¹¹…µ”¡½µ•}¹…µ”±„¹¹…µ”…İ…å}¹…µ”±À¹Í•±•Ñ•‘}Ñ•…µ}¥(€€€€€€€€€€€€I=4€ˆ€¸Q}èéÑ…‰±” µ…Ñ¡•Ìœ¤€¸€ˆ´(€€€€€€€€€€€€)=%8€ˆ€¸Q}èéÑ…‰±” Ñ•…µÌœ¤€¸€ˆ =8 ¹¥õ´¹¡½µ•}Ñ•…µ}¥(€€€€€€€€€€€€)=%8€ˆ€¸Q}èéÑ…‰±” Ñ•…µÌœ¤€¸€ˆ„=8„¹¥õ´¹…İ…å}Ñ•…µ}¥(€€€€€€€€€€€€1P)=%8€ˆ€¸Q}èéÑ…‰±” ÁÉ•‘¥Ñ¥½¹Ìœ¤€¸€ˆÀ=8À¹µ…Ñ¡}¥õ´¹¥9À¹ÕÍ•É}¥ô•(€€€€€€€€€€€€]!I´¹É½Õ¹‘}¥ô•=IH	d´¹ÍÑ…ÉÑÍ}…Ğ±´¹¥ˆ°(€€€€€€€€€€€€‘ÕÍ•É%°‘É½Õ¹‘%(€€€€€€€€¤°IIe}¤ì(€€€€€€€€‘¡¥ÑÌ€ô€Àì(€€€€€€€€‘ÑåÁ•€ô€Àì(€€€€€€€€‘É•Í½±Ù•€ô€Àì(€€€€€€€™½É•… € ‘µ…Ñ¡•Ì…Ì€˜‘µ…Ñ ¤ì(€€€€€€€€€€€€‘Í•±•Ñ•€ô€¡¥¹Ğ¤ ‘µ…Ñ¡lÍ•±•Ñ•‘}Ñ•…µ}¥t€üü€À¤ì(€€€€€€€€€€€€‘¡½µ•M½É”€ô€‘µ…Ñ¡lÍ½É•}¡½µ”t€ôôô¹Õ±°€ü¹Õ±°€è€¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}¡½µ”tì(€€€€€€€€€€€€‘…İ…åM½É”€ô€‘µ…Ñ¡lÍ½É•}…İ…ät€ôôô¹Õ±°€ü¹Õ±°€è€¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}…İ…ätì(€€€€€€€€€€€€‘ÍÑ…Ñ”€ôÍ•±˜èé…ÉÑÕÉ}Á¥­}ÍÑ…Ñ” ‘Í•±•Ñ•°¡¥¹Ğ¤‘µ…Ñ¡l¡½µ•}Ñ•…µ}¥t°¡¥¹Ğ¤‘µ…Ñ¡l…İ…å}Ñ•…µ}¥t°‘¡½µ•M½É”°‘…İ…åM½É”¤ì(€€€€€€€€€€€€‘µ…Ñ¡lÁ¥­}ÍÑ…Ñ”t€ô€‘ÍÑ…Ñ”ì(€€€€€€€€€€€€‘µ…Ñ¡lÁ¥­}¹…µ”t€ô€‘Í•±•Ñ•€ôôô€¡¥¹Ğ¤‘µ…Ñ¡l¡½µ•}Ñ•…µ}¥t€ü€‘µ…Ñ¡l¡½µ•}¹…µ”t€è€ ‘Í•±•Ñ•€ôôô€¡¥¹Ğ¤‘µ…Ñ¡l…İ…å}Ñ•…µ}¥t€ü€‘µ…Ñ¡l…İ…å}¹…µ”t€è€œœ¤ì(€€€€€€€€€€€€‘µ…Ñ¡l¥Í}‰½¹ÕÌt€ô¥ÍÍ•Ğ ‘‰½¹ÕÍ5…Ál‘É½Õ¹‘%‘t¤€˜˜€¡¥¹Ğ¤‘‰½¹ÕÍ5…Ál‘É½Õ¹‘%‘t€ôôô€¡¥¹Ğ¤‘µ…Ñ¡l¥tì(€€€€€€€€€€€¥˜€ ‘Í•±•Ñ•€ø€À¤€‘ÑåÁ•¬¬ì(€€€€€€€€€€€¥˜€ ‘¡½µ•M½É”€„ôô¹Õ±°€˜˜€‘…İ…åM½É”€„ôô¹Õ±°€˜˜€‘¡½µ•M½É”€„ôô€‘…İ…åM½É”¤€‘É•Í½±Ù•¬¬ì(€€€€€€€€€€€¥˜€ ‘ÍÑ…Ñ”€ôôô€¡¥Ğœ¤€‘¡¥ÑÌ¬¬ì(€€€€€€€ô(€€€€€€€Õ¹Í•Ğ ‘µ…Ñ ¤ì((€€€€€€€€‘Á•É™•Ğ€ômtì(€€€€€€€€‘µ…Ñ¡½Õ¹Ğ€ô½Õ¹Ğ ‘µ…Ñ¡•Ì¤ì(€€€€€€€¥˜€ ‘µ…Ñ¡½Õ¹Ğ€ôôô€à¤ì(€€€€€€€€€€€€‘Á•É™•Ğ€ô€¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€€€€€‰M1PÀ¹ÕÍ•É}¥±Ô¹‘¥ÍÁ±…å}¹…µ”°(€€€€€€€€€€€€€€€€€¡M1PÕ´¹µ•Ñ…}Ù…±Õ”I=4ì‘İÁ‘ˆ´ùÕÍ•Éµ•Ñ…ôÕ´]!IÕ´¹ÕÍ•É}¥õÀ¹ÕÍ•É}¥9Õ´¹µ•Ñ…}­•äô‘Ñ}É…¹­¥¹}¹…µ”œ1%5%P€Ä¤É…¹­¥¹}¹…µ”°(€€€€€€€€€€€€€€€€=U9P¡%MQ%9PÀ¹µ…Ñ¡}¥¤Á¥­Ì°(€€€€€€€€€€€€€€€€MU4¡M]!8À¹Í½É¥¹}½‘”ôİ¥¹¹•ÈœQ!8€Ä1M€À9¤¡¥ÑÌ(€€€€€€€€€€€€€€€€I=4€ˆ€¸Q}èéÑ…‰±” ÁÉ•‘¥Ñ¥½¹Ìœ¤€¸€ˆÀ(€€€€€€€€€€€€€€€€)=%8€ˆ€¸Q}èéÑ…‰±” µ…Ñ¡•Ìœ¤€¸€ˆ´=8´¹¥õÀ¹µ…Ñ¡}¥(€€€€€€€€€€€€€€€€)=%8ì‘İÁ‘ˆ´ùÕÍ•ÉÍôÔ=8Ô¹%õÀ¹ÕÍ•É}¥(€€€€€€€€€€€€€€€€]!I´¹É½Õ¹‘}¥ô•(€€€€€€€€€€€€€€€€I=U@	dÀ¹ÕÍ•É}¥±Ô¹‘¥ÍÁ±…å}¹…µ”(€€€€€€€€€€€€€€€€!Y%9Á¥­Ìôà9¡¥ÑÌôà(€€€€€€€€€€€€€€€€=IH	dÉ…¹­¥¹}¹…µ”±Ô¹‘¥ÍÁ±…å}¹…µ”ˆ°(€€€€€€€€€€€€€€€€‘É½Õ¹‘%(€€€€€€€€€€€€¤°IIe}¤ì(€€€€€€€ô((€€€€€€€€‘‰½¹ÕÍ!¥ÑÌ€ômtì(€€€€€€€€‘‰½¹ÕÍ5…Ñ¡%€ô€¡¥¹Ğ¤ ‘‰½¹ÕÍ5…Ál‘É½Õ¹‘%‘t€üü€À¤ì(€€€€€€€¥˜€ ‘‰½¹ÕÍ5…Ñ¡%€ø€À¤ì(€€€€€€€€€€€€‘‰½¹ÕÍ!¥ÑÌ€ô€¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€€€€€‰M1PÀ¹ÕÍ•É}¥±Ô¹‘¥ÍÁ±…å}¹…µ”°(€€€€€€€€€€€€€€€€€¡M1PÕ´¹µ•Ñ…}Ù…±Õ”I=4ì‘İÁ‘ˆ´ùÕÍ•Éµ•Ñ…ôÕ´]!IÕ´¹ÕÍ•É}¥õÀ¹ÕÍ•É}¥9Õ´¹µ•Ñ…}­•äô‘Ñ}É…¹­¥¹}¹…µ”œ1%5%P€Ä¤É…¹­¥¹}¹…µ”(€€€€€€€€€€€€€€€€I=4€ˆ€¸Q}èéÑ…‰±” ÁÉ•‘¥Ñ¥½¹Ìœ¤€¸€ˆÀ(€€€€€€€€€€€€€€€€)=%8ì‘İÁ‘ˆ´ùÕÍ•ÉÍôÔ=8Ô¹%õÀ¹ÕÍ•É}¥(€€€€€€€€€€€€€€€€]!IÀ¹µ…Ñ¡}¥ô•9À¹Í½É¥¹}½‘”ôİ¥¹¹•Èœ(€€€€€€€€€€€€€€€€=IH	dÉ…¹­¥¹}¹…µ”±Ô¹‘¥ÍÁ±…å}¹…µ”ˆ°(€€€€€€€€€€€€€€€€‘‰½¹ÕÍ5…Ñ¡%(€€€€€€€€€€€€¤°IIe}¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸lµ…Ñ¡•Ìœôø‘µ…Ñ¡•Ì°ÑåÁ•œôø‘ÑåÁ•°É•Í½±Ù•œôø‘É•Í½±Ù•°¡¥ÑÌœôø‘¡¥ÑÌ°Á•É™•Ğœôø‘Á•É™•Ğ°‰½¹ÕÍ}¡¥ÑÌœôø‘‰½¹ÕÍ!¥ÑÍtì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸…ÉÑÕÉ}Á•½Á±”¡…ÉÉ…ä€‘É½İÌ¤èÍÑÉ¥¹œì(€€€€€€€¥˜€ „‘É½İÌ¤É•ÑÕÉ¸€œñÍÁ…¸±…ÍÌô‰‘Ğµ…ÉÑÕÈµ•µÁÑäµ±¥ÍĞˆù	É…¬ğ½ÍÁ…¸øœì(€€€€€€€€‘¹…µ•Ì€ômtì(€€€€€€€™½É•… € ‘É½İÌ…Ì€‘É½Ü¤€‘¹…µ•Ímt€ôÑÉ¥´ ¡ÍÑÉ¥¹œ¤ ‘É½İlÉ…¹­¥¹}¹…µ”t€üè€‘É½İl‘¥ÍÁ±…å}¹…µ”t¤¤ì(€€€€€€€É•ÑÕÉ¸€œñÍÁ…¸±…ÍÌô‰‘Ğµ…ÉÑÕÈµÁ•½Á±”ˆøœ€¸•Í}¡Ñµ°¡¥µÁ±½‘” œ°€œ±…ÉÉ…å}™¥±Ñ•È ‘¹…µ•Ì¤¤¤€¸€œğ½ÍÁ…¸øœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸…ÉÑÕÉ}É½Õ¹‘}Á…¹•°¡½‰©•Ğ€‘É½Õ¹°¥¹Ğ€‘ÕÍ•É%°…ÉÉ…ä€‘‰½¹ÕÍ5…À°ÍÑÉ¥¹œ€‘½±Õµ¸°ÍÑÉ¥¹œ€‘…ÉÑÕÉ9…µ”¤èÙ½¥ì(€€€€€€€€‘‘…Ñ„€ôÍ•±˜èé…ÉÑÕÉ}É½Õ¹‘}‘…Ñ„ ¡¥¹Ğ¤‘É½Õ¹´ù¥°‘ÕÍ•É%°‘‰½¹ÕÍ5…À¤ì(€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘Ğµ…ÉÑÕÈµÉ½Õ¹µ…Éˆøñ¡•…‘•Èøñ‘¥ØøñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½Üˆøœ€¸•Í}¡Ñµ° ¡¥¹Ğ¤‘É½Õ¹´ùÉ½Õ¹‘}¹¼€¸€œ¸-=1)-€Å14œ¤€¸€œğ½ÍÁ…¸øñ Èøœ€¸•Í}¡Ñµ° ‘É½Õ¹´ùÑ¥Ñ±”¤€¸€œğ½ Èøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰‘Ğµ…ÉÑÕÈµÉ•½Éˆøœ€¸•Í}¡Ñµ° ‘‘…Ñ…l¡¥ÑÌt€¸€œ¼œ€¸€‘‘…Ñ…lÉ•Í½±Ù•t¤€¸€œñÍµ…±°ùÑÉ…™¥½¹”ğ½Íµ…±°øğ½ÍÁ…¸øğ½¡•…‘•Èøœì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµµ…Ñ µ±¥ÍĞˆøœì(€€€€€€€¥˜€ „‘‘…Ñ…lµ…Ñ¡•Ìt¤•¡¼€œñÀ±…ÍÌô‰‘Ğµ•µÁÑäˆù	É…¬µ•ëÍÜÜÑ•¨­½±•©”¸ğ½Àøœì(€€€€€€€™½É•… € ‘‘…Ñ…lµ…Ñ¡•Ìt…Ì€‘µ…Ñ ¤ì(€€€€€€€€€€€€‘ÍÑ…Ñ”€ô€¡ÍÑÉ¥¹œ¤‘µ…Ñ¡lÁ¥­}ÍÑ…Ñ”tì(€€€€€€€€€€€€‘±…‰•±Ì€ôl¡¥ĞœôøQI%=9dœ°µ¥ÍÌœôø9%QI%=9dœ°Á•¹‘¥¹œœôø=i-U)œ°µ¥ÍÍ¥¹œœôø	I,QeATtì(€€€€€€€€€€€€‘Í½É”€ô€‘µ…Ñ¡lÍ½É•}¡½µ”t€ôôô¹Õ±°ñğ€‘µ…Ñ¡lÍ½É•}…İ…ät€ôôô¹Õ±°€ü€ŸŠPœ€è€¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}¡½µ”t€¸€œèœ€¸€¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}…İ…ätì(€€€€€€€€€€€•¡¼€œñ…ÉÑ¥±”±…ÍÌô‰‘Ğµ…ÉÑÕÈµµ…Ñ ¥Ì´œ€¸•Í}…ÑÑÈ ‘ÍÑ…Ñ”¤€¸€œˆøñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµ…µ”ˆøñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘µ…Ñ¡l¡½µ•}¹…µ”t¤€¸€œğ½ÍÑÉ½¹œøñÍÁ…¸øœ€¸•Í}¡Ñµ° ‘Í½É”¤€¸€œğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘µ…Ñ¡l…İ…å}¹…µ”t¤€¸€œğ½ÍÑÉ½¹œøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµÁ¥¬ˆøñÍÁ…¸ùQåÀÉÑÕÉ„ğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘µ…Ñ¡lÁ¥­}¹…µ”t€üè€ŸŠPœ¤€¸€œğ½ÍÑÉ½¹œøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµµ…Ñ µÍÑ…ÑÕÌˆøœ€¸€ …•µÁÑä ‘µ…Ñ¡l¥Í}‰½¹ÕÌt¤€ü€œñˆûŠb	=9ULğ½ˆøœ€è€œœ¤€¸€œñÍÁ…¸øœ€¸•Í}¡Ñµ° ‘±…‰•±Íl‘ÍÑ…Ñ•t€üü€ŸŠPœ¤€¸€œğ½ÍÁ…¸øğ½‘¥Øøğ½…ÉÑ¥±”øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµÉ…Á¡¥ŒµÍÕµµ…ÉäˆøñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½ÜˆùA=MU5=]9%<I%-$ğ½ÍÁ…¸øñ‘¥Øøñ…ÉÑ¥±”øñÍµ…±°ùQåÁäÉÑÕÉ„ğ½Íµ…±°øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘‘…Ñ…l¡¥ÑÌt€¸€œ¼œ€¸€‘‘…Ñ…lÉ•Í½±Ù•t¤€¸€œğ½ÍÑÉ½¹œøñÀøœ€¸•Í}¡Ñµ° ‘‘…Ñ…lÑåÁ•t€¸€œ¼œ€¸½Õ¹Ğ ‘‘…Ñ…lµ…Ñ¡•Ìt¤€¸€œİåÑåÁ½İ…¹å µ•ëÍÜœ¤€¸€œğ½Àøğ½…ÉÑ¥±”øñ…ÉÑ¥±”øñÍµ…±°ùA•É™•­å©¹”€à¼àğ½Íµ…±°øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ¡ÍÑÉ¥¹œ¥½Õ¹Ğ ‘‘…Ñ…lÁ•É™•Ğt¤¤€¸€œğ½ÍÑÉ½¹œøñÀøœ€¸Í•±˜èé…ÉÑÕÉ}Á•½Á±” ‘‘…Ñ…lÁ•É™•Ğt¤€¸€œğ½Àøğ½…ÉÑ¥±”øñ…ÉÑ¥±”øñÍµ…±°ùQÉ…™¥±¤	=9ULğ½Íµ…±°øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ¡ÍÑÉ¥¹œ¥½Õ¹Ğ ‘‘…Ñ…l‰½¹ÕÍ}¡¥ÑÌt¤¤€¸€œğ½ÍÑÉ½¹œøñÀøœ€¸Í•±˜èé…ÉÑÕÉ}Á•½Á±” ‘‘…Ñ…l‰½¹ÕÍ}¡¥ÑÌt¤€¸€œğ½Àøğ½…ÉÑ¥±”øğ½‘¥Øøğ½‘¥Øøœì(€€€€€€€€‘Á…å±½…€ôl(€€€€€€€€€€€€É½Õ¹‘}¹¼œôø¡¥¹Ğ¤‘É½Õ¹´ùÉ½Õ¹‘}¹¼°(€€€€€€€€€€€€Ñ¥Ñ±”œôø¡ÍÑÉ¥¹œ¤‘É½Õ¹´ùÑ¥Ñ±”°(€€€€€€€€€€€€…ÉÑÕÉ}¹…µ”œôø‘…ÉÑÕÉ9…µ”°(€€€€€€€€€€€€¡¥ÑÌœôø¡¥¹Ğ¤‘‘…Ñ…l¡¥ÑÌt°(€€€€€€€€€€€€É•Í½±Ù•œôø¡¥¹Ğ¤‘‘…Ñ…lÉ•Í½±Ù•t°(€€€€€€€€€€€€ÑåÁ•œôø¡¥¹Ğ¤‘‘…Ñ…lÑåÁ•t°(€€€€€€€€€€€€µ…Ñ¡}½Õ¹Ğœôù½Õ¹Ğ ‘‘…Ñ…lµ…Ñ¡•Ìt¤°(€€€€€€€€€€€€Á•É™•Ñ}¹…µ•Ìœôù…ÉÉ…å}Ù…±Õ•Ì¡…ÉÉ…å}™¥±Ñ•È¡…ÉÉ…å}µ…À¡ÍÑ…Ñ¥Œ™¸¡…ÉÉ…ä€‘É½Ü¤èÍÑÉ¥¹œôùÑÉ¥´ ¡ÍÑÉ¥¹œ¤ ‘É½İlÉ…¹­¥¹}¹…µ”t€üè€‘É½İl‘¥ÍÁ±…å}¹…µ”t¤¤°‘‘…Ñ…lÁ•É™•Ğt¤¤¤°(€€€€€€€€€€€€‰½¹ÕÍ}¹…µ•Ìœôù…ÉÉ…å}Ù…±Õ•Ì¡…ÉÉ…å}™¥±Ñ•È¡…ÉÉ…å}µ…À¡ÍÑ…Ñ¥Œ™¸¡…ÉÉ…ä€‘É½Ü¤èÍÑÉ¥¹œôùÑÉ¥´ ¡ÍÑÉ¥¹œ¤ ‘É½İlÉ…¹­¥¹}¹…µ”t€üè€‘É½İl‘¥ÍÁ±…å}¹…µ”t¤¤°‘‘…Ñ…l‰½¹ÕÍ}¡¥ÑÌt¤¤¤°(€€€€€€€€€€€€µ…Ñ¡•Ìœôù…ÉÉ…å}µ…À¡ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸¡…ÉÉ…ä€‘µ…Ñ ¤è…ÉÉ…äì(€€€€€€€€€€€€€€€É•ÑÕÉ¸l(€€€€€€€€€€€€€€€€€€€€¡½µ”œôø¡ÍÑÉ¥¹œ¤‘µ…Ñ¡l¡½µ•}¹…µ”t°…İ…äœôø¡ÍÑÉ¥¹œ¤‘µ…Ñ¡l…İ…å}¹…µ”t°(€€€€€€€€€€€€€€€€€€€€Í½É”œôø‘µ…Ñ¡lÍ½É•}¡½µ”t€ôôô¹Õ±°ñğ€‘µ…Ñ¡lÍ½É•}…İ…ät€ôôô¹Õ±°€ü€œœ€è€¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}¡½µ”t¸œèœ¸¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}…İ…ät°(€€€€€€€€€€€€€€€€€€€€Í½É•}¡½µ”œôø‘µ…Ñ¡lÍ½É•}¡½µ”t€ôôô¹Õ±°€ü¹Õ±°€è€¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}¡½µ”t°(€€€€€€€€€€€€€€€€€€€€Í½É•}…İ…äœôø‘µ…Ñ¡lÍ½É•}…İ…ät€ôôô¹Õ±°€ü¹Õ±°€è€¡¥¹Ğ¤‘µ…Ñ¡lÍ½É•}…İ…ät°(€€€€€€€€€€€€€€€€€€€€Á¥¬œôø¡ÍÑÉ¥¹œ¤ ‘µ…Ñ¡lÁ¥­}¹…µ”t€üè€	É…¬ÑåÁÔœ¤°ÍÑ…Ñ”œôø¡ÍÑÉ¥¹œ¤‘µ…Ñ¡lÁ¥­}ÍÑ…Ñ”t°(€€€€€€€€€€€€€€€€€€€€‰½¹ÕÌœôø…•µÁÑä ‘µ…Ñ¡l¥Í}‰½¹ÕÌt¤°ÍÑ…ÉÑÍ}…ĞœôùÍ•±˜èé‘…Ñ•}Á° ‘µ…Ñ¡lÍÑ…ÉÑÍ}…Ğt€üü¹Õ±°¤°(€€€€€€€€€€€€€€€tì(€€€€€€€€€€€ô°‘‘…Ñ…lµ…Ñ¡•Ìt¤°(€€€€€€€tì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµ•áÁ½ÉĞµ…Ñ¥½¹Ìˆøœì(€€€€€€€¥˜€ ‘½±Õµ¸€ôôô€±•™Ğœ¤ì(€€€€€€€€€€€•¡¼€œñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆ‘…Ñ„µ‘Ğµ…ÉÑÕÈµÉ…Á¡¥Œô‰ÍÕµµ…Éäˆ‘…Ñ„µÁ…å±½…ôˆœ¹•Í}…ÑÑÈ¡İÁ}©Í½¹}•¹½‘” ‘Á…å±½…±)M=9}U9MA}U9%=ñ)M=9}U9MA}M1M!L¤¤¸œˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹Ìµ™½Éµ…Ğµ¥µ…”ˆøğ½ÍÁ…¸ùA½‰¥•ÉèÁ½‘ÍÕµ½İ…¹¥”€ÄØèäğ½‰ÕÑÑ½¸øœì(€€€€€€€€€€€•¡¼€œñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‰ÕÑÑ½¸‘Ğµ‰ÕÑÑ½¸ˆ‘…Ñ„µ‘Ğµ…ÉÑÕÈµÉ…Á¡¥Œô‰‰½¹ÕÌˆ‘…Ñ„µÁ…å±½…ôˆœ¹•Í}…ÑÑÈ¡İÁ}©Í½¹}•¹½‘” ‘Á…å±½…±)M=9}U9MA}U9%=ñ)M=9}U9MA}M1M!L¤¤¸œˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹ÌµÍÑ…Èµ™¥±±•ˆøğ½ÍÁ…¸ùA½‰¥•ÉèÑÉ…™¥•¹¥„	=9UL€ÄØèäğ½‰ÕÑÑ½¸øœì(€€€€€€€ô•±Í”ì(€€€€€€€€€€€•¡¼€œñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆ‘…Ñ„µ‘Ğµ…ÉÑÕÈµÉ…Á¡¥Œô‰ÁÉ•Ù¥•Üˆ‘…Ñ„µÁ…å±½…ôˆœ¹•Í}…ÑÑÈ¡İÁ}©Í½¹}•¹½‘” ‘Á…å±½…±)M=9}U9MA}U9%=ñ)M=9}U9MA}M1M!L¤¤¸œˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹Ìµ™½Éµ…Ğµ¥µ…”ˆøğ½ÍÁ…¸ùA½‰¥•Éèé…Á½İ¥•“è€ÄØèäğ½‰ÕÑÑ½¸øœì(€€€€€€€ô(€€€€€€€•¡¼€œñÍÁ…¸±…ÍÌô‰‘Ğµ…ÉÑÕÈµ•áÁ½ÉĞµÍÑ…ÑÕÌˆ…É¥„µ±¥Ù”ô‰Á½±¥Ñ”ˆøğ½ÍÁ…¸øğ½‘¥Øøğ½Í•Ñ¥½¸øœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸ÕÍ•É}É•¥ÍÑÉ…Ñ¥½¹}ÍÑ…ÑÌ ¤è…ÉÉ…äì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘±½…±9½Ü€ô¹•Ü…Ñ•Q¥µ•%µµÕÑ…‰±” ¹½Üœ°İÁ}Ñ¥µ•é½¹” ¤¤ì(€€€€€€€€‘ÕÑŒ€ô¹•Ü…Ñ•Q¥µ•i½¹” UQœ¤ì(€€€€€€€€‘¹½Ü€ô€‘±½…±9½Ü´ùÍ•ÑQ¥µ•é½¹” ‘ÕÑŒ¤´ù™½Éµ…Ğ dµ´µ é¤éÌœ¤ì(€€€€€€€€‘Ñ½‘…ä€ô€‘±½…±9½Ü´ùÍ•ÑQ¥µ” À°À¤´ùÍ•ÑQ¥µ•é½¹” ‘ÕÑŒ¤´ù™½Éµ…Ğ dµ´µ é¤éÌœ¤ì(€€€€€€€€‘İ••¬€ô€‘±½…±9½Ü´ùµ½‘¥™ä œ´Ü‘…åÌœ¤´ùÍ•ÑQ¥µ•é½¹” ‘ÕÑŒ¤´ù™½Éµ…Ğ dµ´µ é¤éÌœ¤ì(€€€€€€€€‘µ½¹Ñ €ô€‘±½…±9½Ü´ùµ½‘¥™ä ™¥ÉÍĞ‘…ä½˜Ñ¡¥Ìµ½¹Ñ œ¤´ùÍ•ÑQ¥µ” À°À¤´ùÍ•ÑQ¥µ•é½¹” ‘ÕÑŒ¤´ù™½Éµ…Ğ dµ´µ é¤éÌœ¤ì(€€€€€€€€‘É½Ü€ô€‘İÁ‘ˆ´ù•Ñ}É½Ü ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€‰M1P=U9P ¨¤Ñ½Ñ…°°(€€€€€€€€€€€€MU4¡M]!8ÕÍ•É}É•¥ÍÑ•É•	Q]8€•Ì9€•ÌQ!8€Ä1M€À9¤Ñ½‘…ä°(€€€€€€€€€€€€MU4¡M]!8ÕÍ•É}É•¥ÍÑ•É•	Q]8€•Ì9€•ÌQ!8€Ä1M€À9¤İ••¬°(€€€€€€€€€€€€MU4¡M]!8ÕÍ•É}É•¥ÍÑ•É•	Q]8€•Ì9€•ÌQ!8€Ä1M€À9¤µ½¹Ñ (€€€€€€€€€€€€I=4ì‘İÁ‘ˆ´ùÕÍ•ÉÍô(€€€€€€€€€€€€]!IÕÍ•É}É•¥ÍÑ•É•ğøœÀÀÀÀ´ÀÀ´ÀÀ€ÀÀèÀÀèÀÀœ9ÕÍ•É}É•¥ÍÑ•É•ğô•Ìˆ°(€€€€€€€€€€€€‘Ñ½‘…ä°‘¹½Ü°‘İ••¬°‘¹½Ü°‘µ½¹Ñ °‘¹½Ü°‘¹½Ü(€€€€€€€€¤¤ì(€€€€€€€É•ÑÕÉ¸l(€€€€€€€€€€€€Ñ½Ñ…°œôø¡¥¹Ğ¤ ‘É½Ü´ùÑ½Ñ…°€üü€À¤°(€€€€€€€€€€€€Ñ½‘…äœôø¡¥¹Ğ¤ ‘É½Ü´ùÑ½‘…ä€üü€À¤°(€€€€€€€€€€€€İ••¬œôø¡¥¹Ğ¤ ‘É½Ü´ùİ••¬€üü€À¤°(€€€€€€€€€€€€µ½¹Ñ œôø¡¥¹Ğ¤ ‘É½Ü´ùµ½¹Ñ €üü€À¤°(€€€€€€€tì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸ÕÍ•É}É½İÑ¡}¥Ñ•´¡ÍÑÉ¥¹œ€‘±…‰•°°¥¹Ğ€‘Ù…±Õ”°¥¹Ğ€‘Ñ½Ñ…°°ÍÑÉ¥¹œ€‘Ñ½¹”¤èÙ½¥ì(€€€€€€€€‘Í¡…É”€ô€‘Ñ½Ñ…°€ø€À€üµ¥¸ ÄÀÀ°É½Õ¹  ‘Ù…±Õ”€¼€‘Ñ½Ñ…°¤€¨€ÄÀÀ°€È¤¤€è€Àì(€€€€€€€€‘Í¡…É•1…‰•°€ô¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘Í¡…É”°€‘Í¡…É”€ğ€Ä€˜˜€‘Í¡…É”€ø€À€ü€È€è€Ä¤€¸€œ”œì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÕÍ•ÈµÉ½İÑ µ¥Ñ•´‘ĞµÕÍ•ÈµÉ½İÑ ´œ€¸•Í}…ÑÑÈ ‘Ñ½¹”¤€¸€œˆøœì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÕÍ•ÈµÉ¥¹œˆÍÑå±”ôˆ´µ‘ĞµÕÍ•ÈµÍ¡…É”èœ€¸•Í}…ÑÑÈ ¡ÍÑÉ¥¹œ¤‘Í¡…É”¤€¸€œ”ˆÉ½±”ô‰¥µœˆ…É¥„µ±…‰•°ôˆœ€¸•Í}…ÑÑÈ ‘±…‰•°€¸€œè€œ€¸€‘Í¡…É•1…‰•°€¸€œİÍéåÍÑ­¥ ×ñåÑ­½İ¹¥¯ÍÜœ¤€¸€œˆøñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘Í¡…É•1…‰•°¤€¸€œğ½ÍÑÉ½¹œøğ½‘¥Øøœì(€€€€€€€•¡¼€œñ‘¥ØøñÍÁ…¸øœ€¸•Í}¡Ñµ° ‘±…‰•°¤€¸€œğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ¡ÍÑÉ¥¹œ¤‘Ù…±Õ”¤€¸€œğ½ÍÑÉ½¹œøñÍµ…±°ù¹½İå ­½¹Ğğ½Íµ…±°øğ½‘¥Øøğ½‘¥Øøœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸ÁÉ•‘¥Ñ¥½¹}‘…Í¡‰½…É‘}ÍÑ…ÑÌ¡ÍÑÉ¥¹œ€‘Í•…Í½¸¤è…ÉÉ…äì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘ÁÉ•‘¥Ñ¥½¹Ì€ôQ}èéÑ…‰±” ÁÉ•‘¥Ñ¥½¹Ìœ¤ì(€€€€€€€€‘µ…Ñ¡•Ì€ôQ}èéÑ…‰±” µ…Ñ¡•Ìœ¤ì(€€€€€€€€‘É½Õ¹‘Ì€ôQ}èéÑ…‰±” É½Õ¹‘Ìœ¤ì(€€€€€€€€‘É½İÌ€ô€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€‰M1PÈ¹¥É½Õ¹‘}¥±È¹±•…Õ•}­•ä±È¹É½ÕÁ}­•ä±È¹É½Õ¹‘}¹¼±È¹½Á•¹Í}…Ğ±È¹±½Í•Í}…Ğ°(€€€€€€€€€€€€5%8¡M]!8´¹ÍÑ…ÉÑ}Ñ¥µ•}­¹½İ¸ôÄQ!8´¹ÍÑ…ÉÑÍ}…Ğ9¤™¥ÉÍÑ}µ…Ñ °(€€€€€€€€€€€€=U9P¡%MQ%9P´¹¥¤•±¥¥‰±•}µ…Ñ¡•Ì°(€€€€€€€€€€€€=U9P¡M]!8À¹Í•±•Ñ•‘}Ñ•…µ}¥%L9=P9U10Q!8€Ä9¤ÍÕ‰µ¥ÑÑ•°(€€€€€€€€€€€€MU4¡M]!8À¹Í•±•Ñ•‘}Ñ•…µ}¥%L9=P9U109´¹Í½É•}¡½µ”%L9=P9U109´¹Í½É•}…İ…ä%L9=P9U10Q!8€Ä1M€À9¤É•Í½±Ù•°(€€€€€€€€€€€€MU4¡M]!8À¹Í•±•Ñ•‘}Ñ•…µ}¥%L9=P9U109´¹Í½É•}¡½µ”%L9=P9U109´¹Í½É•}…İ…ä%L9=P9U109À¹Í½É¥¹}½‘”ôİ¥¹¹•ÈœQ!8€Ä1M€À9¤¡¥ÑÌ(€€€€€€€€€€€€I=4€‘É½Õ¹‘ÌÈ(€€€€€€€€€€€€)=%8€‘µ…Ñ¡•Ì´=8´¹É½Õ¹‘}¥õÈ¹¥9´¹ÍÑ…ÉÑ}Ñ¥µ•}­¹½İ¸ôÄ9´¹ÍÑ…ÉÑÍ}…Ğ%L9=P9U10(€€€€€€€€€€€€1P)=%8€‘ÁÉ•‘¥Ñ¥½¹ÌÀ=8À¹µ…Ñ¡}¥õ´¹¥(€€€€€€€€€€€€]!IÈ¹Í•…Í½¸ô•Ì9È¹ÍÑ…ÑÕÌ%8€ ½Á•¸œ°±½Í•œ¤ˆ°(€€€€€€€€€€€€‘Í•…Í½¸(€€€€€€€€¤€¸€œI=U@	dÈ¹¥±È¹±•…Õ•}­•ä±È¹É½ÕÁ}­•ä±È¹É½Õ¹‘}¹¼±È¹½Á•¹Í}…Ğ±È¹±½Í•Í}…Ğ=IH	dÈ¹±•…Õ•}­•ä±È¹É½ÕÁ}­•ä±È¹É½Õ¹‘}¹¼œ°IIe}¤ì(€€€€€€€€‘¹½Ü€ô¹•Ü…Ñ•Q¥µ•%µµÕÑ…‰±” ¹½Üœ°İÁ}Ñ¥µ•é½¹” ¤¤ì(€€€€€€€€‘ÕÑŒ€ô¹•Ü…Ñ•Q¥µ•i½¹” UQœ¤ì(€€€€€€€€‘É•ÍÕ±Ğ€ômtì(€€€€€€€™½É•… €¡lœÅ±´œ°€Á±¬œ°€œÉ±´t…Ì€‘­•ä¤ì(€€€€€€€€€€€€‘É•ÍÕ±Ñl‘­•åt€ôl•±¥¥‰±•}µ…Ñ¡•ÌœôøÀ°Á½ÍÍ¥‰±”œôøÀ°ÍÕ‰µ¥ÑÑ•œôøÀ°É•Í½±Ù•œôøÀ°¡¥ÑÌœôøÀ°(€€€€€€€€€€€€€€€€‰½¹ÕÍ}É•Í½±Ù•œôøÀ°‰½¹ÕÍ}¡¥ÑÌœôøÀ°É½Õ¹‘Ìœôùmutì(€€€€€€€ô(€€€€€€€™½É•… € ¡…ÉÉ…ä¤‘É½İÌ…Ì€‘É½Ü¤ì(€€€€€€€€€€€€‘±•…Õ”€ô€¡ÍÑÉ¥¹œ¤ ‘É½İl±•…Õ•}­•ät€üü€œœ¤ì(€€€€€€€€€€€¥˜€ …¥ÍÍ•Ğ ‘É•ÍÕ±Ñl‘±•…Õ•t¤¤½¹Ñ¥¹Õ”ì(€€€€€€€€€€€€‘±½Í”€ôÍ•±˜èé±½…±}‘Ğ ¡ÍÑÉ¥¹œ¤ ‘É½İl±½Í•Í}…Ğt€üè€‘É½İl™¥ÉÍÑ}µ…Ñ t¤¤ì(€€€€€€€€€€€€‘½Á•¸€ôÍ•±˜èé±½…±}‘Ğ ¡ÍÑÉ¥¹œ¤ ‘É½İl½Á•¹Í}…Ğt€üü€œœ¤¤ì(€€€€€€€€€€€¥˜€ „‘±½Í”ñğ€ ‘½Á•¸€˜˜€‘½Á•¸€ø€‘¹½Ü¤¤½¹Ñ¥¹Õ”ì(€€€€€€€€€€€€‘ÕÑ½™˜€ô€‘±½Í”€ğ€‘¹½Ü€ü€‘±½Í”€è€‘¹½Üì(€€€€€€€€€€€¥˜€ ‘½Á•¸€˜˜€‘½Á•¸€ø€‘ÕÑ½™˜¤½¹Ñ¥¹Õ”ì(€€€€€€€€€€€€‘É•¥ÍÑ•É•€ô€¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€€€€€‰M1P=U9P ¨¤I=4ì‘İÁ‘ˆ´ùÕÍ•ÉÍô]!IÕÍ•É}É•¥ÍÑ•É•ğøœÀÀÀÀ´ÀÀ´ÀÀ€ÀÀèÀÀèÀÀœ9ÕÍ•É}É•¥ÍÑ•É•ğô•Ìˆ°(€€€€€€€€€€€€€€€€‘ÕÑ½™˜´ùÍ•ÑQ¥µ•é½¹” ‘ÕÑŒ¤´ù™½Éµ…Ğ dµ´µ é¤éÌœ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€‘µ…Ñ¡•Í½Õ¹Ğ€ô€¡¥¹Ğ¤‘É½İl•±¥¥‰±•}µ…Ñ¡•Ìtì(€€€€€€€€€€€€‘É½Õ¹€ôl(€€€€€€€€€€€€€€€€¥œôø¡¥¹Ğ¤‘É½İlÉ½Õ¹‘}¥t°€É½ÕÀœôø¡ÍÑÉ¥¹œ¤‘É½İlÉ½ÕÁ}­•ät°€¹Õµ‰•Èœôø¡¥¹Ğ¤‘É½İlÉ½Õ¹‘}¹¼t°(€€€€€€€€€€€€€€€€µ…Ñ¡•Ìœôø‘µ…Ñ¡•Í½Õ¹Ğ°ÕÍ•ÉÌœôø‘É•¥ÍÑ•É•°Á½ÍÍ¥‰±”œôø‘µ…Ñ¡•Í½Õ¹Ğ¨‘É•¥ÍÑ•É•°(€€€€€€€€€€€€€€€€ÍÕ‰µ¥ÑÑ•œôø¡¥¹Ğ¤‘É½İlÍÕ‰µ¥ÑÑ•t°€É•Í½±Ù•œôø¡¥¹Ğ¤‘É½İlÉ•Í½±Ù•t°€¡¥ÑÌœôø¡¥¹Ğ¤‘É½İl¡¥ÑÌt°(€€€€€€€€€€€tì(€€€€€€€€€€€€‘É•ÍÕ±Ñl‘±•…Õ•ulÉ½Õ¹‘Ìumt€ô€‘É½Õ¹ì(€€€€€€€€€€€™½É•… €¡l•±¥¥‰±•}µ…Ñ¡•Ìœôøµ…Ñ¡•Ìœ°Á½ÍÍ¥‰±”œôøÁ½ÍÍ¥‰±”œ°ÍÕ‰µ¥ÑÑ•œôøÍÕ‰µ¥ÑÑ•œ°É•Í½±Ù•œôøÉ•Í½±Ù•œ°¡¥ÑÌœôø¡¥ÑÌt…Ì€‘Ñ½Ñ…°ôø‘™¥•±¤ì(€€€€€€€€€€€€€€€€‘É•ÍÕ±Ñl‘±•…Õ•ul‘Ñ½Ñ…±t€¬ô€‘É½Õ¹‘l‘™¥•±‘tì(€€€€€€€€€€€ô(€€€€€€€ô((€€€€€€€€‘‰½¹ÕÍ%‘Ì€ô±…ÍÍ}•á¥ÍÑÌ Q}	½¹ÕÌœ¤€ü…ÉÉ…å}Ù…±Õ•Ì¡…ÉÉ…å}™¥±Ñ•È¡…ÉÉ…å}µ…À ¥¹ÑÙ…°œ°Q}	½¹ÕÌèéµ…Ñ¡}¥‘Ì ¤¤¤¤€èmtì(€€€€€€€¥˜€ ‘‰½¹ÕÍ%‘Ì¤ì(€€€€€€€€€€€€‘Á±…•¡½±‘•ÉÌ€ô¥µÁ±½‘” œ°œ°…ÉÉ…å}™¥±° À°½Õ¹Ğ ‘‰½¹ÕÍ%‘Ì¤°€œ•œ¤¤ì(€€€€€€€€€€€€‘‰½¹ÕÍ•Ì€ô€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€€€€€‰M1PÈ¹±•…Õ•}­•ä±È¹¥É½Õ¹‘}¥°(€€€€€€€€€€€€€€€€=U9P¡M]!8À¹Í•±•Ñ•‘}Ñ•…µ}¥%L9=P9U109´¹Í½É•}¡½µ”%L9=P9U109´¹Í½É•}…İ…ä%L9=P9U10Q!8€Ä9¤‰½¹ÕÍ}É•Í½±Ù•°(€€€€€€€€€€€€€€€€MU4¡M]!8À¹Í•±•Ñ•‘}Ñ•…µ}¥%L9=P9U109´¹Í½É•}¡½µ”%L9=P9U109´¹Í½É•}…İ…ä%L9=P9U109À¹Í½É¥¹}½‘”ôİ¥¹¹•ÈœQ!8€Ä1M€À9¤‰½¹ÕÍ}¡¥ÑÌ(€€€€€€€€€€€€€€€€I=4€‘ÁÉ•‘¥Ñ¥½¹ÌÀ(€€€€€€€€€€€€€€€€)=%8€‘µ…Ñ¡•Ì´=8´¹¥õÀ¹µ…Ñ¡}¥(€€€€€€€€€€€€€€€€)=%8€‘É½Õ¹‘ÌÈ=8È¹¥õ´¹É½Õ¹‘}¥(€€€€€€€€€€€€€€€€]!I´¹¥%8€ ‘Á±…•¡½±‘•ÉÌ¤9È¹Í•…Í½¸ô•Ì9È¹ÍÑ…ÑÕÌ%8€ ½Á•¸œ°±½Í•œ¤(€€€€€€€€€€€€€€€€€€9´¹ÍÑ…ÉÑ}Ñ¥µ•}­¹½İ¸ôÄ9´¹ÍÑ…ÉÑÍ}…Ğ%L9=P9U10(€€€€€€€€€€€€€€€€I=U@	dÈ¹±•…Õ•}­•ä±È¹¥ˆ°(€€€€€€€€€€€€€€€€¸¸¹…ÉÉ…å}µ•É” ‘‰½¹ÕÍ%‘Ì°l‘Í•…Í½¹t¤(€€€€€€€€€€€€¤°IIe}¤ì(€€€€€€€€€€€™½É•… € ¡…ÉÉ…ä¤‘‰½¹ÕÍ•Ì…Ì€‘‰½¹ÕÌ¤ì(€€€€€€€€€€€€€€€€‘­•ä€ô€¡ÍÑÉ¥¹œ¤‘‰½¹ÕÍl±•…Õ•}­•ätì(€€€€€€€€€€€€€€€¥˜€ …¥ÍÍ•Ğ ‘É•ÍÕ±Ñl‘­•åt¤¤½¹Ñ¥¹Õ”ì(€€€€€€€€€€€€€€€€¼¼½±±½ÜÑ¡”Í…µ”•±¥¥‰±”É½Õ¹‘ÌÕÍ•™½ÈÑ¡”Á½ÍÍ¥‰±”µÑåÁ”‘•¹½µ¥¹…Ñ½È¸(€€€€€€€€€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ¡¥¹Ğ¤‘‰½¹ÕÍlÉ½Õ¹‘}¥t°…ÉÉ…å}½±Õµ¸ ‘É•ÍÕ±Ñl‘­•åulÉ½Õ¹‘Ìt°€¥œ¤°ÑÉÕ”¤¤½¹Ñ¥¹Õ”ì(€€€€€€€€€€€€€€€€‘É•ÍÕ±Ñl‘­•åul‰½¹ÕÍ}É•Í½±Ù•t€¬ô€¡¥¹Ğ¤‘‰½¹ÕÍl‰½¹ÕÍ}É•Í½±Ù•tì(€€€€€€€€€€€€€€€€‘É•ÍÕ±Ñl‘­•åul‰½¹ÕÍ}¡¥ÑÌt€¬ô€¡¥¹Ğ¤‘‰½¹ÕÍl‰½¹ÕÍ}¡¥ÑÌtì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€™½É•… € ‘É•ÍÕ±Ğ…Ì€˜‘±•…Õ”¤ì(€€€€€€€€€€€€‘±•…Õ•lÕÑ¥±¥é…Ñ¥½¸t€ô€‘±•…Õ•lÁ½ÍÍ¥‰±”t€ø€À€üµ¥¸ ÄÀÀ°É½Õ¹ ÄÀÀ¨‘±•…Õ•lÍÕ‰µ¥ÑÑ•t¼‘±•…Õ•lÁ½ÍÍ¥‰±”t°€Ä¤¤€è€À¸Àì(€€€€€€€€€€€€‘±•…Õ•l…ÕÉ…ät€ô€‘±•…Õ•lÉ•Í½±Ù•t€ø€À€üÉ½Õ¹ ÄÀÀ¨‘±•…Õ•l¡¥ÑÌt¼‘±•…Õ•lÉ•Í½±Ù•t°€Ä¤€è€À¸Àì(€€€€€€€€€€€€‘±•…Õ•l‰½¹ÕÍ}…ÕÉ…ät€ô€‘±•…Õ•l‰½¹ÕÍ}É•Í½±Ù•t€ø€À€üÉ½Õ¹ ÄÀÀ¨‘±•…Õ•l‰½¹ÕÍ}¡¥ÑÌt¼‘±•…Õ•l‰½¹ÕÍ}É•Í½±Ù•t°€Ä¤€è€À¸Àì(€€€€€€€ô(€€€€€€€Õ¹Í•Ğ ‘±•…Õ”¤ì(€€€€€€€É•ÑÕÉ¸€‘É•ÍÕ±Ğì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸ÁÉ•‘¥Ñ¥½¹}‘…Í¡‰½…É‘}¥Ñ•´¡ÍÑÉ¥¹œ€‘±…‰•°°™±½…Ğ€‘Á•É•¹Ğ°¥¹Ğ€‘Ù…±Õ”°¥¹Ğ€‘Ñ½Ñ…°°ÍÑÉ¥¹œ€‘‘•ÍÉ¥ÁÑ¥½¸°ÍÑÉ¥¹œ€‘Ñ½¹”¤èÙ½¥ì(€€€€€€€€‘Á•É•¹Ñ1…‰•°€ô¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘Á•É•¹Ğ°€Ä¤€¸€œ”œì(€€€€€€€•¡¼€œñ…ÉÑ¥±”±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µÍÑ…Ğ‘ĞµÁÉ•‘¥Ñ¥½¸µÍÑ…Ğ´œ€¸•Í}…ÑÑÈ ‘Ñ½¹”¤€¸€œˆøœì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µÉ¥¹œˆÍÑå±”ôˆ´µ‘ĞµÁÉ•‘¥Ñ¥½¸µÍ¡…É”èœ€¸•Í}…ÑÑÈ ¡ÍÑÉ¥¹œ¤‘Á•É•¹Ğ¤€¸€œ”ˆÉ½±”ô‰¥µœˆ…É¥„µ±…‰•°ôˆœ€¸•Í}…ÑÑÈ ‘±…‰•°€¸€œè€œ€¸€‘Á•É•¹Ñ1…‰•°¤€¸€œˆøñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘Á•É•¹Ñ1…‰•°¤€¸€œğ½ÍÑÉ½¹œøğ½‘¥Øøœì(€€€€€€€•¡¼€œñ‘¥ØøñÍÁ…¸øœ€¸•Í}¡Ñµ° ‘±…‰•°¤€¸€œğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘Ù…±Õ”¤¤€¸€œ€ñÍµ…±°ø¼€œ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘Ñ½Ñ…°¤¤€¸€œğ½Íµ…±°øğ½ÍÑÉ½¹œøñÀøœ€¸•Í}¡Ñµ° ‘‘•ÍÉ¥ÁÑ¥½¸¤€¸€œğ½Àøğ½‘¥Øøğ½…ÉÑ¥±”øœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸ÁÉ•‘¥Ñ¥½¹}±•…Õ•}‘…Í¡‰½…É¡ÍÑÉ¥¹œ€‘±…‰•°°…ÉÉ…ä€‘ÍÑ…ÑÌ¤èÙ½¥ì(€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µ±•…Õ”ˆøñ‘¥Ø±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µ±•…Õ”µ¡•…‘¥¹œˆøñ Ìøœ€¸•Í}¡Ñµ° ‘±…‰•°¤€¸€œğ½ ÌøñÍÁ…¸øœ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸¡½Õ¹Ğ ‘ÍÑ…ÑÍlÉ½Õ¹‘Ìt¤¤¤€¸€œ­½±•©•¬ƒ
+Ü€œ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘ÍÑ…ÑÍl•±¥¥‰±•}µ…Ñ¡•Ìt¤¤€¸€œµ•ëÍÜ‘½ÍÓeÁ¹å ‘¼ÑåÁ½İ…¹¥„ğ½ÍÁ…¸øğ½‘¥Øøœì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µ‘…Í¡‰½…ÉµÉ¥ˆøœì(€€€€€€€Í•±˜èéÁÉ•‘¥Ñ¥½¹}‘…Í¡‰½…É‘}¥Ñ•´ ]å­½ÉéåÍÑ…¹¥”ÑåÃÍÜœ°‘ÍÑ…ÑÍlÕÑ¥±¥é…Ñ¥½¸t°‘ÍÑ…ÑÍlÍÕ‰µ¥ÑÑ•t°‘ÍÑ…ÑÍlÁ½ÍÍ¥‰±”t°½‘‘…¹”€¼µ¿ñ±¥İ”ÜÑ•¨±¥‘é”œ°‰±Õ”œ¤ì(€€€€€€€Í•±˜èéÁÉ•‘¥Ñ¥½¹}‘…Í¡‰½…É‘}¥Ñ•´ M­ÕÑ•é¹¿oœ°‘ÍÑ…ÑÍl…ÕÉ…ät°‘ÍÑ…ÑÍl¡¥ÑÌt°‘ÍÑ…ÑÍlÉ•Í½±Ù•t°ÑÉ…™¹”€¼É½éÍÑÉéå¹§eÑ”œ°É••¸œ¤ì(€€€€€€€Í•±˜èéÁÉ•‘¥Ñ¥½¹}‘…Í¡‰½…É‘}¥Ñ•´ 5•é”	=9ULœ°‘ÍÑ…ÑÍl‰½¹ÕÍ}…ÕÉ…ät°‘ÍÑ…ÑÍl‰½¹ÕÍ}¡¥ÑÌt°‘ÍÑ…ÑÍl‰½¹ÕÍ}É•Í½±Ù•t°ÑÉ…™¥½¹”€¼É½éÍÑÉéå¹§eÑ”	=9ULµäœ°½É…¹”œ¤ì(€€€€€€€•¡¼€œğ½‘¥Øøœì(€€€€€€€¥˜€ ‘ÍÑ…ÑÍlÉ½Õ¹‘Ìt¤ì(€€€€€€€€€€€•¡¼€œñ‘•Ñ…¥±Ì±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µÉ½Õ¹‘ÌˆøñÍÕµµ…Éäù)…¬Á½±¥é½¹¼µ¿ñ±¥İ”ÑåÁäğ½ÍÕµµ…Éäøñ‘¥Ø±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µÉ½Õ¹‘ÌµÍÉ½±°ˆøñÑ…‰±”±…ÍÌô‰İ¥‘•™…ĞÍÑÉ¥Á•ˆøñÑ¡•…øñÑÈøñÑ ù-½±•©­„ğ½Ñ øñÑ ù5•é”ğ½Ñ øñÑ ùWñåÑ­½İ¹¥äğ½Ñ øñÑ ù5¿ñ±¥İ”ÑåÁäğ½Ñ øñÑ ù=‘‘…¹”ÑåÁäğ½Ñ øğ½ÑÈøğ½Ñ¡•…øñÑ‰½‘äøœì(€€€€€€€€€€€™½É•… € ‘ÍÑ…ÑÍlÉ½Õ¹‘Ìt…Ì€‘É½Õ¹¤ì(€€€€€€€€€€€€€€€€‘¹…µ”€ô€‘É½Õ¹‘l¹Õµ‰•Èt€¸€œ¸­½±•©­„œ€¸€ ‘É½Õ¹‘lÉ½ÕÀt€„ôô€œœ€ü€œƒ
+ÜÉÕÁ„€œ€¸€‘É½Õ¹‘lÉ½ÕÀt€è€œœ¤ì(€€€€€€€€€€€€€€€•¡¼€œñÑÈøñÑ Í½Á”ô‰É½Üˆøœ€¸•Í}¡Ñµ° ‘¹…µ”¤€¸€œğ½Ñ øñÑøœ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘É½Õ¹‘lµ…Ñ¡•Ìt¤¤€¸€œğ½ÑøñÑøœ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘É½Õ¹‘lÕÍ•ÉÌt¤¤€¸€œğ½ÑøñÑøœ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘É½Õ¹‘lÁ½ÍÍ¥‰±”t¤¤€¸€œğ½ÑøñÑøœ€¸•Í}¡Ñµ°¡¹Õµ‰•É}™½Éµ…Ñ}¤Äá¸ ‘É½Õ¹‘lÍÕ‰µ¥ÑÑ•t¤¤€¸€œğ½Ñøğ½ÑÈøœì(€€€€€€€€€€€ô(€€€€€€€€€€€•¡¼€œğ½Ñ‰½‘äøğ½Ñ…‰±”øğ½‘¥Øøğ½‘•Ñ…¥±Ìøœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½Í•Ñ¥½¸øœì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸‘…Í¡‰½…É ¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘Ì€ôQ}èéÍ•ÑÑ¥¹Ì ¤ì(€€€€€€€€‘Í•…Í½¸€ô€‘ÍlÍ•…Í½¸tì(€€€€€€€€‘É½Õ¹‘Ì€ô€¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” M1P=U9P ¨¤I=4€œ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€œ]!IÍ•…Í½¸ô•Ìœ°€‘Í•…Í½¸¤¤ì(€€€€€€€€‘µ…Ñ¡•Ì€ô€¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” M1P=U9P ¨¤I=4€œ€¸Q}èéÑ…‰±” µ…Ñ¡•Ìœ¤€¸€œ´)=%8€œ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€œÈ=8È¹¥õ´¹É½Õ¹‘}¥]!IÈ¹Í•…Í½¸ô•Ìœ°€‘Í•…Í½¸¤¤ì(€€€€€€€€‘ÍÕ‰µ¥ÍÍ¥½¹Ì€ô€¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” M1P=U9P ¨¤I=4€œ€¸Q}èéÑ…‰±” É½Õ¹‘}ÍÕ‰µ¥ÍÍ¥½¹Ìœ¤€¸€œÌ)=%8€œ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€œÈ=8È¹¥õÌ¹É½Õ¹‘}¥]!IÈ¹Í•…Í½¸ô•Ìœ°€‘Í•…Í½¸¤¤ì(€€€€€€€€‘Á±…å•ÉÌ€ô€¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” M1P=U9P¡%MQ%9PÌ¹ÕÍ•É}¥¤I=4€œ€¸Q}èéÑ…‰±” É½Õ¹‘}ÍÕ‰µ¥ÍÍ¥½¹Ìœ¤€¸€œÌ)=%8€œ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€œÈ=8È¹¥õÌ¹É½Õ¹‘}¥]!IÈ¹Í•…Í½¸ô•Ìœ°€‘Í•…Í½¸¤¤ì(€€€€€€€€‘ÕÍ•ÉÌ€ôÍ•±˜èéÕÍ•É}É•¥ÍÑÉ…Ñ¥½¹}ÍÑ…ÑÌ ¤ì(€€€€€€€€‘ÁÉ•‘¥Ñ¥½¹MÑ…ÑÌ€ôÍ•±˜èéÁÉ•‘¥Ñ¥½¹}‘…Í¡‰½…É‘}ÍÑ…ÑÌ ‘Í•…Í½¸¤ì(€€€€€€€€‘½Á•¸€ô€‘İÁ‘ˆ´ù•Ñ}É½Ü ‘İÁ‘ˆ´ùÁÉ•Á…É” ‰M1P€¨I=4€ˆ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€ˆ]!IÍ•…Í½¸ô•Ì9ÍÑ…ÑÕÌô½Á•¸œ=IH	dÉ½Õ¹‘}¹¼1%5%P€Äˆ°€‘Í•…Í½¸¤¤ì(€€€€€€€€‘±…ÍĞ€ô•Ñ}½ÁÑ¥½¸ ‘Ñ}±…ÍÑ}Íå¹Œœ¤ì((€€€€€€€Í•±˜èéÍ¡•±° AÕ±Á¥Ğœ°€M•é½¸€œ€¸€‘Í•…Í½¸€¸€œƒ
+Ü­½¹ÑÉ½±„QåÁ•É„œ¤ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÉ¥‘ĞµÉ¥´Ğˆøœì(€€€€€€€Í•±˜èéµ•ÑÉ¥Œ -½±•©­¤œ°‘É½Õ¹‘Ì°…±•¹‘…Èµ…±Ğœ°‰±Õ”œ¤ì(€€€€€€€Í•±˜èéµ•ÑÉ¥Œ 5•é”œ°‘µ…Ñ¡•Ì°Ñ¥­•ÑÌµ…±Ğœ°½É…¹”œ¤ì(€€€€€€€Í•±˜èéµ•ÑÉ¥Œ -ÕÁ½¹äœ°‘ÍÕ‰µ¥ÍÍ¥½¹Ì°™½ÉµÌœ°Ù¥½±•Ğœ¤ì(€€€€€€€Í•±˜èéµ•ÑÉ¥Œ É…é”œ°‘Á±…å•ÉÌ°É½ÕÁÌœ°É••¸œ¤ì(€€€€€€€•¡¼€œğ½‘¥Øøœì((€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘ĞµÍ•Ñ¥½¸‘ĞµÕÍ•Èµ‘…Í¡‰½…Éˆøñ‘¥Ø±…ÍÌô‰‘Ğµ…Éµ¡•…ˆøñ‘¥ØøñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½ÜˆùWíeQ-=]9%dğ½ÍÁ…¸øñ ÈùI•©•ÍÑÉ…©”ÜÍ•Éİ¥Í¥”ğ½ ÈøñÀ±…ÍÌô‰‘ĞµµÕÑ•ˆù	¥—óäÕ‘é¥‡¹½İå ­½¹ĞÜ‡	•¨‰…é¥”×ñåÑ­½İ¹¥¯ÍÜ¸ğ½Àøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹Ìµ¡…ÉĞµ…É•„ˆ…É¥„µ¡¥‘‘•¸ô‰ÑÉÕ”ˆøğ½ÍÁ…¸øğ½‘¥Øøœì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÕÍ•Èµ‘…Í¡‰½…ÉµÉ¥ˆøñ‘¥Ø±…ÍÌô‰‘ĞµÕÍ•ÈµÑ½Ñ…°ˆøñ‘¥Ø±…ÍÌô‰‘ĞµÕÍ•ÈµÑ½Ñ…°µ¥½¸ˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹ÌµÉ½ÕÁÌˆøğ½ÍÁ…¸øğ½‘¥Øøñ‘¥ØøñÍÁ…¸ù]ÍéåÍäé…É•©•ÍÑÉ½İ…¹¤ğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ¡ÍÑÉ¥¹œ¤‘ÕÍ•ÉÍlÑ½Ñ…°t¤€¸€œğ½ÍÑÉ½¹œøñÍµ…±°ù­½¹Ğ×ñåÑ­½İ¹¥¯ÍÜğ½Íµ…±°øğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘ĞµÕÍ•ÈµÉ½İÑ µÉ¥ˆøœì(€€€€€€€Í•±˜èéÕÍ•É}É½İÑ¡}¥Ñ•´ é¥Í¥…¨œ°‘ÕÍ•ÉÍlÑ½‘…ät°‘ÕÍ•ÉÍlÑ½Ñ…°t°½É…¹”œ¤ì(€€€€€€€Í•±˜èéÕÍ•É}É½İÑ¡}¥Ñ•´ =ÍÑ…Ñ¹¥”€Ü‘¹¤œ°‘ÕÍ•ÉÍlİ••¬t°‘ÕÍ•ÉÍlÑ½Ñ…°t°‰±Õ”œ¤ì(€€€€€€€Í•±˜èéÕÍ•É}É½İÑ¡}¥Ñ•´ Q•¸µ¥•Í§Œœ°‘ÕÍ•ÉÍlµ½¹Ñ t°‘ÕÍ•ÉÍlÑ½Ñ…°t°É••¸œ¤ì(€€€€€€€•¡¼€œğ½‘¥Øøğ½‘¥Øøğ½Í•Ñ¥½¸øœì((€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘ĞµÍ•Ñ¥½¸‘ĞµÁÉ•‘¥Ñ¥½¸µ‘…Í¡‰½…Éˆøñ‘¥Ø±…ÍÌô‰‘Ğµ…Éµ¡•…ˆøñ‘¥ØøñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½Üˆù-Qe]9?kQeA=]9%ğ½ÍÁ…¸øñ Èù]å­½ÉéåÍÑ…¹¥”¤Í­ÕÑ•é¹¿oÑåÃÍÜğ½ ÈøñÀ±…ÍÌô‰‘ĞµµÕÑ•ˆù	¥—óäÍ•é½¸ƒ
+Ü­½±•©­¤½Ñİ…ÉÑ”¤é…µ­¹§eÑ”¸QÉ…™¹¿o½‰•©µÕ©”İçé¹¥”É½éÍÑÉéå¹§eÑ”µ•é”¸ğ½Àøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹Ìµ¡…ÉĞµÁ¥”ˆ…É¥„µ¡¥‘‘•¸ô‰ÑÉÕ”ˆøğ½ÍÁ…¸øğ½‘¥Øøœì(€€€€€€€™½É•… €¡lœÅ±´œôøœÅ14œ°Á±¬œôøA1,œ°œÉ±´œôøœÉ14t…Ì€‘±•…Õ•-•äôø‘±•…Õ•1…‰•°¤Í•±˜èéÁÉ•‘¥Ñ¥½¹}±•…Õ•}‘…Í¡‰½…É ‘±•…Õ•1…‰•°°€‘ÁÉ•‘¥Ñ¥½¹MÑ…ÑÍl‘±•…Õ•-•åt¤ì(€€€€€€€•¡¼€œñÀ±…ÍÌô‰‘ĞµÁÉ•‘¥Ñ¥½¸µ™½½Ñ¹½Ñ”ˆù5¿ñ±¥İ”ÑåÁäÏÍÕ·è­½±•©•¬èµ•é”é”é¹…»½‘é¥»ƒ\±¥é‰„­½¹Ğé…É•©•ÍÑÉ½İ…¹å ÁÉé•é…µ­¹§e¥•´ÑåÁ½İ…¹¥„‘…¹•¨­½±•©­¤¸±„­½±•©•¬¹…‘…°½Ñİ…ÉÑå ±¥é‰„­½¹Ğ©•ÍĞ±¥é½¹„¹„Ñ•É…è¸ğ½Àøğ½Í•Ñ¥½¸øœì((€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÉ¥‘ĞµÉ¥´È‘ĞµÍ•Ñ¥½¸ˆøñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…ÉˆøñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½Üˆù-Qe]9QeA=]9%ğ½ÍÁ…¸øñ Èøœ€¸•Í}¡Ñµ° ‘½Á•¸€ü€‘½Á•¸´ùÑ¥Ñ±”€è€	É…¬½Ñİ…ÉÑ•¨­½±•©­¤œ¤€¸€œğ½ Èøœì(€€€€€€€¥˜€ ‘½Á•¸¤ì(€€€€€€€€€€€•¡¼€œñÀùQåÁ½İ…¹¥”é…µ­¹¥”Í§d€ñÍÑÉ½¹œøœ€¸•Í}¡Ñµ°¡Í•±˜èé‘…Ñ•}Á° ‘½Á•¸´ù±½Í•Í}…Ğ¤¤€¸€œğ½ÍÑÉ½¹œø¸ğ½Àøñ„±…ÍÌô‰‰ÕÑÑ½¸‘Ğµ‰ÕÑÑ½¸ˆ¡É•˜ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡ÀıÁ…”õ‘•­„µÑåÁ•ÈµÉ½Õ¹‘Ìœ¤¤€¸€œˆùi…Éë‘é…¨­½±•©¯ğ½„øœì(€€€€€€€ô•±Í”ì(€€€€€€€€€€€•¡¼€œñÀ±…ÍÌô‰‘ĞµµÕÑ•ˆù=ÑßÍÉè­½±•©¯dÜµ½‘Õ±”ƒŠy-½±•©­§Št¤ÕÍÑ…Ü‘½¯	…‘¹äÑ•Éµ¥¸é…µ­¹§e¥„­ÕÁ½»ÍÜ¸ğ½Àøñ„±…ÍÌô‰‰ÕÑÑ½¸‘Ğµ‰ÕÑÑ½¸ˆ¡É•˜ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡ÀıÁ…”õ‘•­„µÑåÁ•ÈµÉ½Õ¹‘Ìœ¤¤€¸€œˆù=ÑßÍÉè­½±•©¯dğ½„øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½Í•Ñ¥½¸øñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…ÉˆøñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½ÜˆùMQ8MeMQ5Tğ½ÍÁ…¸øñ Èù-½¹ÑÉ½±„ğ½ Èøñ‘¥Ø±…ÍÌô‰‘Ğµ¡•…±Ñ ˆøñ‘¥ØøñÍÁ…¸ù=ÍÑ…Ñ¹¥„Íå¹¡É½¹¥é…©„ğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘±…ÍÑl…Ğt€üü€©•Íéé”¹¥”İå­½¹…¹¼œ¤€¸€œğ½ÍÑÉ½¹œøğ½‘¥Øøñ‘¥ØøñÍÁ…¸ûåËÍ“	„ğ½ÍÁ…¸øñÍÑÉ½¹œùA1,ƒ
+ÜAi-½Íè€Å14ƒ
+ÜAi-½Íè€É14ğ½ÍÑÉ½¹œøğ½‘¥Øøñ‘¥ØøñÍÁ…¸ùQÉåˆÑåÁ½İ…¹¥„ğ½ÍÁ…¸øñÍÑÉ½¹œùiİå§eé„µ•éÔğ½ÍÑÉ½¹œøğ½‘¥Øøñ‘¥ØøñÍÁ…¸ù‘å©„­ÕÁ½¹Ôğ½ÍÁ…¸øñÍÑÉ½¹œù]çé½¹„Á¼é…Á¥Í¥”ğ½ÍÑÉ½¹œøğ½‘¥Øøğ½‘¥Øøğ½Í•Ñ¥½¸øğ½‘¥Øøœì(€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘ĞµÍ•Ñ¥½¸ˆøñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½ÜˆùQ=@€Ôğ½ÍÁ…¸øñ Èù1¥‘•Ééä­±…Íå™¥­…©¤ğ½ Èøœì(€€€€€€€Í•±˜èéÉ…¹­¥¹}Ñ…‰±”¡Q}M½É¥¹œèéÉ…¹­¥¹œ ‘Í•…Í½¸°Ô¤¤ì(€€€€€€€•¡¼€œğ½Í•Ñ¥½¸øœì(€€€€€€€Í•±˜èé•¹‘}Í¡•±° ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸É½Õ¹‘Ì ¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘Ì€ôQ}èéÍ•ÑÑ¥¹Ì ¤ì(€€€€€€€€‘±•…Õ”€ôÍ…¹¥Ñ¥é•}­•ä ‘}Ql±•…Õ”t€üü€…±°œ¤ì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘±•…Õ”±l…±°œ°Á±¬œ°œÅ±´œ°œÉ±´t±ÑÉÕ”¤¤€‘±•…Õ”ô…±°œì(€€€€€€€€‘É½ÕÀ€ô€‘±•…Õ”€ôôô€œÉ±´œ€üÍÑÉÑ½ÕÁÁ•È¡Í…¹¥Ñ¥é•}Ñ•áÑ}™¥•± ‘}QlÉ½ÕÀt€üü€œœ¤¤€è€œœì(€€€€€€€¥˜ ‘±•…Õ”ôôôœÉ±´œ˜˜‘É½ÕÀôôôœœ¤‘É½ÕÀõÍÑÉÑ½ÕÁÁ•È ¡ÍÑÉ¥¹œ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” ‰M1PÉ½ÕÁ}­•äI=4€ˆ¹Q}èéÑ…‰±” É½Õ¹‘Ìœ¤¸ˆ]!IÍ•…Í½¸ô•Ì9±•…Õ•}­•äôœÉ±´œ9É½ÕÁ}­•äğøœœ=IH	dÉ½ÕÁ}­•ä1%5%P€Äˆ°‘ÍlÍ•…Í½¸t¤¤¤ì(€€€€€€€€‘±•…Õ•MÅ°€ô€‘±•…Õ”€„ôô€…±°œ€ü€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9È¹±•…Õ•}­•äô•Ì€œ°€‘±•…Õ”¤€è€œœì(€€€€€€€€‘É½ÕÁMÅ°€ô€‘É½ÕÀ€„ôô€œœ€ü€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9È¹É½ÕÁ}­•äô•Ì€œ°€‘É½ÕÀ¤€è€œœì(€€€€€€€€‘‘ÑA…”õµ…à Ä°¡¥¹Ğ¤ ‘}Ql‘Ñ}Á…•tüüÄ¤¤ì‘Á•ÉA…”ôÈÔì(€€€€€€€€‘Ñ½Ñ…°ô¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” ‰M1P=U9P ¨¤I=4€ˆ¹Q}èéÑ…‰±” É½Õ¹‘Ìœ¤¸ˆÈ]!IÈ¹Í•…Í½¸ô•Ì€‘±•…Õ•MÅ°€‘É½ÕÁMÅ°ˆ°‘ÍlÍ•…Í½¸t¤¤ì(€€€€€€€€‘É½İÌ€ô€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€‰M1PÈ¸¨±=U9P¡´¹¥¤µ…Ñ¡•Ì°(€€€€€€€€€€€€5%8¡M]!8´¹ÍÑ…ÉÑ}Ñ¥µ•}­¹½İ¸ôÄQ!8´¹ÍÑ…ÉÑÍ}…Ğ9¤™¥ÉÍÑ}­¹½İ¹}µ…Ñ °(€€€€€€€€€€€€5`¡M]!8´¹ÍÑ…ÉÑ}Ñ¥µ•}­¹½İ¸ôÄQ!8´¹ÍÑ…ÉÑÍ}…Ğ9¤±…ÍÑ}­¹½İ¹}µ…Ñ °(€€€€€€€€€€€€€¡M1P=U9P ¨¤I=4€ˆ€¸Q}èéÑ…‰±” É½Õ¹‘}ÍÕ‰µ¥ÍÍ¥½¹Ìœ¤€¸€ˆÍÌ]!IÍÌ¹É½Õ¹‘}¥õÈ¹¥¤ÍÕ‰µ¥ÍÍ¥½¹Ì(€€€€€€€€€€€€I=4€ˆ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€ˆÈ1P)=%8€ˆ€¸Q}èéÑ…‰±” µ…Ñ¡•Ìœ¤€¸€ˆ´=8´¹É½Õ¹‘}¥õÈ¹¥(€€€€€€€€€€€€]!IÈ¹Í•…Í½¸ô•Ì€‘±•…Õ•MÅ°€‘É½ÕÁMÅ°I=U@	dÈ¹¥=IH	dÈ¹±•…Õ•}­•ä±È¹É½ÕÁ}­•ä±È¹É½Õ¹‘}¹¼1%5%P€•=MP€•ˆ°€‘ÍlÍ•…Í½¸t°‘Á•ÉA…”° ‘‘ÑA…”´Ä¤¨‘Á•ÉA…”(€€€€€€€€¤¤ì(€€€€€€€Í•±˜èéÍ¡•±° -½±•©­¤œ°Qå±­¼­½±•©­„½Ñİ…ÉÑ„ÁÉé•è…‘µ¥¹¥ÍÑÉ…Ñ½É„©•ÍĞ‘½ÍÓeÁ¹„‘¼¹½İå ÑåÃÍÜ¸œ¤ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÑ½½±‰…Èˆøœì(€€€€€€€Í•±˜èé±•…Õ•}Ñ…‰Ì ‘•­„µÑåÁ•ÈµÉ½Õ¹‘Ìœ°‘±•…Õ”¤ì(€€€€€€€•¡¼€œñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆ‘…Ñ„µ‘Ğµ½Á•¸ô‰‘ĞµÉ½Õ¹µµ½‘…°ˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹ÌµÁ±ÕÌµ…±ĞÈˆøğ½ÍÁ…¸ø½‘…¨­½±•©¯dğ½‰ÕÑÑ½¸øğ½‘¥Øøœì(€€€€€€€¥˜ ‘±•…Õ”ôôôœÉ±´œ¤Í•±˜èéÉ½ÕÁ}Ñ…‰Ì ‘•­„µÑåÁ•ÈµÉ½Õ¹‘Ìœ°‘É½ÕÀ¤ì(€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…ÉˆøñÑ…‰±”±…ÍÌô‰İ¥‘•™…Ğ‘ĞµÑ…‰±”ˆøñÑ¡•…øñÑÈøñÑ ù-½±•©­„ğ½Ñ øñÑ ùQ•Éµ¥¸µ•ëÍÜğ½Ñ øñÑ ù5•é”ğ½Ñ øñÑ ù-ÕÁ½¹äğ½Ñ øñÑ ùMÑ…ÑÕÌğ½Ñ øñÑ ùi…µ­¹§e¥”ÑåÁ½İ…¹¥„ğ½Ñ øñÑ ûåËÍ“	¼ğ½Ñ øñÑ ù­©”ğ½Ñ øğ½ÑÈøğ½Ñ¡•…øñÑ‰½‘äøœì(€€€€€€€™½É•… € ‘É½İÌ…Ì€‘È¤ì(€€€€€€€€€€€€‘É…¹”€ô€‘È´ù™¥ÉÍÑ}­¹½İ¹}µ…Ñ €üÍÕ‰ÍÑÈ¡Í•±˜èé‘…Ñ•}Á° ‘È´ù™¥ÉÍÑ}­¹½İ¹}µ…Ñ ¤°À°ÄÀ¤€¸€œƒŠL€œ€¸ÍÕ‰ÍÑÈ¡Í•±˜èé‘…Ñ•}Á° ‘È´ù±…ÍÑ}­¹½İ¹}µ…Ñ ¤°À°ÄÀ¤€è€ŸŠPœì(€€€€€€€€€€€€‘½Á•¹…Ñ„€ôl(€€€€€€€€€€€€€€€€¥œôø¡¥¹Ğ¤‘È´ù¥°(€€€€€€€€€€€€€€€€Ñ¥Ñ±”œôø‘È´ùÑ¥Ñ±”°(€€€€€€€€€€€€€€€€‘•™…Õ±Ñ}±½Í”œôùÍ•±˜èé¡Ñµ±}‘…Ñ•Ñ¥µ” ‘È´ù™¥ÉÍÑ}­¹½İ¹}µ…Ñ ¤°(€€€€€€€€€€€€€€€€™¥ÉÍÑ}µ…Ñ œôùÍ•±˜èé‘…Ñ•}Á° ‘È´ù™¥ÉÍÑ}­¹½İ¹}µ…Ñ ¤°(€€€€€€€€€€€tì(€€€€€€€€€€€€‘±•…Õ•1…‰•°€ôÍÑÉÑ½ÕÁÁ•È ¡ÍÑÉ¥¹œ¤‘È´ù±•…Õ•}­•ä¤€¸€ ‘È´ùÉ½ÕÁ}­•ä€ü€œƒ
+ÜÉÕÁ„€œ¸¡ÍÑÉ¥¹œ¤‘È´ùÉ½ÕÁ}­•ä€è€œœ¤ì(€€€€€€€€€€€•¡¼€œñÑÈøñÑøñÍµ…±°±…ÍÌô‰‘ĞµµÕÑ•ˆøœ¹•Í}¡Ñµ° ‘±•…Õ•1…‰•°¤¸œğ½Íµ…±°øñ‰ÈøñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘È´ùÑ¥Ñ±”¤€¸€œğ½ÍÑÉ½¹œøğ½ÑøñÑøœ€¸•Í}¡Ñµ° ‘É…¹”¤€¸€œğ½ÑøñÑøœ€¸€¡¥¹Ğ¤‘È´ùµ…Ñ¡•Ì€¸€œğ½ÑøñÑøœ€¸€¡¥¹Ğ¤‘È´ùÍÕ‰µ¥ÍÍ¥½¹Ì€¸€œğ½ÑøñÑøœ€¸Í•±˜èéÉ½Õ¹‘}‰…‘” ¡ÍÑÉ¥¹œ¤‘È´ùÍÑ…ÑÕÌ¤€¸€œğ½ÑøñÑøñÍÑÉ½¹œøœ€¸•Í}¡Ñµ°¡Í•±˜èé‘…Ñ•}Á° ‘È´ù±½Í•Í}…Ğ¤¤€¸€œğ½ÍÑÉ½¹œøğ½ÑøñÑøœ€¸Í•±˜èé‰…‘” ‘È´ùÍ½ÕÉ”€ôôô€µ…¹Õ…°œ€ü€Keé¹¥”œ€è€ÕÑ¼Ai-½Íèœ°€‘È´ùÍ½ÕÉ”€ôôô€µ…¹Õ…°œ€ü€½É…¹”œ€è€‰±Õ”œ¤€¸€œğ½ÑøñÑøœì(€€€€€€€€€€€¥˜€ ‘È´ùÍÑ…ÑÕÌ€ôôô€½Á•¸œ¤ì(€€€€€€€€€€€€€€€•¡¼€œñ™½É´µ•Ñ¡½ô‰Á½ÍĞˆ…Ñ¥½¸ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸µÁ½ÍĞ¹Á¡Àœ¤¤€¸€œˆÍÑå±”ô‰‘¥ÍÁ±…äé¥¹±¥¹”ˆøœì(€€€€€€€€€€€€€€€•¡¼€œñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰…Ñ¥½¸ˆÙ…±Õ”ô‰‘Ñ}±½Í•}É½Õ¹ˆøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰É½Õ¹‘}¥ˆÙ…±Õ”ôˆœ€¸€¡¥¹Ğ¤‘È´ù¥€¸€œˆøœì(€€€€€€€€€€€€€€€İÁ}¹½¹•}™¥•± ‘Ñ}±½Í•}É½Õ¹œ¤ì(€€€€€€€€€€€€€€€•¡¼€œñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸ˆ½¹±¥¬ô‰É•ÑÕÉ¸½¹™¥É´¡pi…µ­»ÑåÁ½İ…¹¥”Ñ•¨­½±•©­¤ıpœ¤ˆùi…µ­¹¥¨ğ½‰ÕÑÑ½¸øğ½™½É´øœì(€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€•¡¼€œñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‰ÕÑÑ½¸‘Ğµ½Á•¸µÉ½Õ¹ˆ‘…Ñ„µÉ½Õ¹ôˆœ€¸•Í}…ÑÑÈ¡İÁ}©Í½¹}•¹½‘” ‘½Á•¹…Ñ„¤¤€¸€œˆù=ÑßÍÉèÑåÁ½İ…¹¥”ğ½‰ÕÑÑ½¸øœì(€€€€€€€€€€€ô(€€€€€€€€€€€€‘µ…Ñ¡•ÍUÉ°€ô…‘‘}ÅÕ•Éå}…Éœ¡lÁ…”œôø‘•­„µÑåÁ•Èµµ…Ñ¡•Ìœ°±•…Õ”œôø‘È´ù±•…Õ•}­•ä°É½ÕÀœôø‘È´ùÉ½ÕÁ}­•ä°É½Õ¹‘}¥œôø¡¥¹Ğ¤‘È´ù¥‘t±…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€€€€€•¡¼€œ€ñ„±…ÍÌô‰‰ÕÑÑ½¸ˆ¡É•˜ôˆœ¹•Í}ÕÉ° ‘µ…Ñ¡•ÍUÉ°¤¸œˆùAÉé•©“è‘¼­½±•©­¤ğ½„øœì(€€€€€€€€€€€•¡¼€œğ½Ñøğ½ÑÈøœì(€€€€€€€ô(€€€€€€€¥˜€ „‘É½İÌ¤•¡¼€œñÑÈøñÑ½±ÍÁ…¸ôˆàˆ±…ÍÌô‰‘Ğµ•µÁÑäˆù	É…¬­½±•©•¬¸UÉÕ¡½´Íå¹¡É½¹¥é…«d‘…¹å Ai-½Íè¸ğ½Ñøğ½ÑÈøœì(€€€€€€€•¡¼€œğ½Ñ‰½‘äøğ½Ñ…‰±”øğ½Í•Ñ¥½¸øœì(€€€€€€€Í•±˜èéÁ…¥¹…Ñ¥½¸ ‘Ñ½Ñ…°°‘Á•ÉA…”°‘‘ÑA…”±lÁ…”œôø‘•­„µÑåÁ•ÈµÉ½Õ¹‘Ìœ°±•…Õ”œôø‘±•…Õ”°É½ÕÀœôø‘É½ÕÁt¤ì((€€€€€€€•¡¼€œñ‘¥…±½œ¥ô‰‘ĞµÉ½Õ¹µµ½‘…°ˆ±…ÍÌô‰‘Ğµµ½‘…°ˆøñ™½É´µ•Ñ¡½ô‰Á½ÍĞˆ…Ñ¥½¸ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸µÁ½ÍĞ¹Á¡Àœ¤¤€¸€œˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‘Ğµµ½‘…°µàˆ‘…Ñ„µ‘Ğµ±½Í”û\ğ½‰ÕÑÑ½¸øñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½Üˆù9=]-=1)-ğ½ÍÁ…¸øñ Èù½‘…¨­½±•©¯dËeé¹¥”ğ½ Èøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰…Ñ¥½¸ˆÙ…±Õ”ô‰‘Ñ}…‘‘}É½Õ¹ˆøœì(€€€€€€€İÁ}¹½¹•}™¥•± ‘Ñ}…‘‘}É½Õ¹œ¤ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ™½É´´Èˆøñ±…‰•°ù1¥„ñÍ•±•Ğ¹…µ”ô‰±•…Õ•}­•äˆøñ½ÁÑ¥½¸Ù…±Õ”ô‰Á±¬ˆùA1,ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ôˆÅ±´ˆÍ•±•Ñ•øÅ14ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ôˆÉ±´ˆøÉ14ğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½±…‰•°øñ±…‰•°ùÉÕÁ„€¡‘±„€É14¤ñ¥¹ÁÕĞ¹…µ”ô‰É½ÕÁ}­•äˆÁ±…•¡½±‘•Èô‰¹À¸°°±Õˆˆøğ½±…‰•°øğ½‘¥Øøñ±…‰•°ù9Õµ•È­½±•©­¤ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•Èˆ¹…µ”ô‰É½Õ¹‘}¹¼ˆµ¥¸ôˆÄˆµ…àôˆääˆÉ•ÅÕ¥É•øğ½±…‰•°øñ±…‰•°ù9…éİ„ñ¥¹ÁÕĞ¹…µ”ô‰Ñ¥Ñ±”ˆÁ±…•¡½±‘•Èô‰¹À¸€ÄÈ¸­½±•©­„ˆøğ½±…‰•°øñ‘¥Ø±…ÍÌô‰‘Ğµ¥¹±¥¹”µİ…É¹¥¹œˆù9½İ„­½±•©­„Á½İÍÑ…¹¥”©…­¼Íé­¥Œ¸=Ñİ½ÉéåÍè«½Í½‰¹¼Á¼ÕÍÑ…İ¥•¹¥ÔÑ•Éµ¥¹Ôé…µ­¹§e¥„ÑåÁ½İ…¹¥„¸ğ½‘¥Øøñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆùi…Á¥Íè­½±•©¯dğ½‰ÕÑÑ½¸øğ½™½É´øğ½‘¥…±½œøœì((€€€€€€€•¡¼€œñ‘¥…±½œ¥ô‰‘Ğµ½Á•¸µÉ½Õ¹µµ½‘…°ˆ±…ÍÌô‰‘Ğµµ½‘…°ˆøñ™½É´µ•Ñ¡½ô‰Á½ÍĞˆ…Ñ¥½¸ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸µÁ½ÍĞ¹Á¡Àœ¤¤€¸€œˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‘Ğµµ½‘…°µàˆ‘…Ñ„µ‘Ğµ±½Í”û\ğ½‰ÕÑÑ½¸øñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½Üˆù=Q]I%QeA=]9%ğ½ÍÁ…¸øñ È¥ô‰‘Ğµ½Á•¸µÉ½Õ¹µÑ¥Ñ±”ˆù=ÑßÍÉè­½±•©¯dğ½ Èøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰…Ñ¥½¸ˆÙ…±Õ”ô‰‘Ñ}½Á•¹}É½Õ¹ˆøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰É½Õ¹‘}¥ˆ¥ô‰‘Ğµ½Á•¸µÉ½Õ¹µ¥ˆøœì(€€€€€€€İÁ}¹½¹•}™¥•± ‘Ñ}½Á•¹}É½Õ¹œ¤ì(€€€€€€€•¡¼€œñ±…‰•°ùi…µ­¹§e¥”µ¿ñ±¥İ¿m¤ÑåÁ½İ…¹¥„ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ•Ñ¥µ”µ±½…°ˆ¹…µ”ô‰±½Í•Í}…Ğˆ¥ô‰‘Ğµ½Á•¸µÉ½Õ¹µ±½Í”ˆÉ•ÅÕ¥É•øğ½±…‰•°øñ‘¥Ø±…ÍÌô‰‘Ğµ¥¹±¥¹”µİ…É¹¥¹œˆùA¼é…Á¥Í…¹¥Ô­ÕÁ½¹Ô×ñåÑ­½İ¹¥¬¹¥”‹e‘é¥”·ÍŸ¼éµ¥•¹§¸Q•Éµ¥¸é…µ­¹§e¥„¹¥”µ¿ñ”‰çÃÏé¹¥•©Íéä¹§ğÍÑ…ÉĞÁ¥•ÉİÍé•¼µ•éÔé”é¹…»½‘é¥»¸ğ½‘¥Øøñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆù=ÑßÍÉèÑåÁ½İ…¹¥”ğ½‰ÕÑÑ½¸øğ½™½É´øğ½‘¥…±½œøœì(€€€€€€€•¡¼€œñÍÉ¥ÁĞù‘½Õµ•¹Ğ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ±™Õ¹Ñ¥½¸¡”¥íÙ…Èˆõ”¹Ñ…É•Ğ¹±½Í•ÍĞ ˆ¹‘Ğµ½Á•¸µÉ½Õ¹ˆ¤í¥˜ …ˆ¥É•ÑÕÉ¸íÙ…ÈõíôíÑÉåíõ)M=8¹Á…ÉÍ”¡ˆ¹‘…Ñ…Í•Ğ¹É½Õ¹‘ñğ‰íôˆ¤íõ…Ñ ¡|¥íÉ•ÑÕÉ¸íõ‘½Õµ•¹Ğ¹•Ñ±•µ•¹Ñ	å% ‰‘Ğµ½Á•¸µÉ½Õ¹µ¥ˆ¤¹Ù…±Õ”õ¹¥‘ñğˆˆí‘½Õµ•¹Ğ¹•Ñ±•µ•¹Ñ	å% ‰‘Ğµ½Á•¸µÉ½Õ¹µÑ¥Ñ±”ˆ¤¹Ñ•áÑ½¹Ñ•¹Ğô‰=ÑßÍÉèè€ˆ¬¡¹Ñ¥Ñ±•ñğ‰­½±•©¯dˆ¤í‘½Õµ•¹Ğ¹•Ñ±•µ•¹Ñ	å% ‰‘Ğµ½Á•¸µÉ½Õ¹µ±½Í”ˆ¤¹Ù…±Õ”õ¹‘•™…Õ±Ñ}±½Í•ñğˆˆí‘½Õµ•¹Ğ¹•Ñ±•µ•¹Ñ	å% ‰‘Ğµ½Á•¸µÉ½Õ¹µµ½‘…°ˆ¤¹Í¡½İ5½‘…° ¤íô¤ìğ½ÍÉ¥ÁĞøœì(€€€€€€€Í•±˜èé•¹‘}Í¡•±° ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸™••‘‰…¬ ¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘Ñ…‰±”€ôQ}èéÑ…‰±” ™••‘‰…¬œ¤ì(€€€€€€€€‘ÍÑ…ÑÕÌ€ôÍ…¹¥Ñ¥é•}­•ä ¡ÍÑÉ¥¹œ¤ ‘}QlÍÑ…ÑÕÌt€üü€…±°œ¤¤ì(€€€€€€€€‘…±±½İ•€ôl…±°œ°¹•Üœ°¥¹}ÁÉ½É•ÍÌœ°É•Í½±Ù•œ°…¹•±±•tì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘ÍÑ…ÑÕÌ°€‘…±±½İ•°ÑÉÕ”¤¤€‘ÍÑ…ÑÕÌ€ô€…±°œì(€€€€€€€€‘İ¡•É”€ô€‘ÍÑ…ÑÕÌ€ôôô€…±°œ€ü€œœ€è€‘İÁ‘ˆ´ùÁÉ•Á…É” œ]!I˜¹ÍÑ…ÑÕÌô•Ìœ°€‘ÍÑ…ÑÕÌ¤ì(€€€€€€€€‘Á…”€ôµ…à Ä°€¡¥¹Ğ¤ ‘}Ql‘Ñ}Á…•t€üü€Ä¤¤ì(€€€€€€€€‘Á•ÉA…”€ô€ÌÀì(€€€€€€€€‘Ñ½Ñ…°€ô€¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‰M1P=U9P ¨¤I=4€‘Ñ…‰±”˜‘İ¡•É”ˆ¤ì(€€€€€€€€‘É½İÌ€ô€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€‰M1P˜¸¨±Ô¹‘¥ÍÁ±…å}¹…µ”I=4€‘Ñ…‰±”˜1P)=%8ì‘İÁ‘ˆ´ùÕÍ•ÉÍôÔ=8Ô¹%õ˜¹ÕÍ•É}¥‘İ¡•É”=IH	d˜¹É•…Ñ•‘}…ĞM±˜¹¥M1%5%P€•=MP€•ˆ°(€€€€€€€€€€€€‘Á•ÉA…”°€ ‘Á…”€´€Ä¤€¨€‘Á•ÉA…”(€€€€€€€€¤¤ì(€€€€€€€€‘½Õ¹ÑÌ€ô…ÉÉ…å}™¥±±}­•åÌ¡l¹•Üœ°¥¹}ÁÉ½É•ÍÌœ°É•Í½±Ù•œ°…¹•±±•t°€À¤ì(€€€€€€€™½É•… € ¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‰M1PÍÑ…ÑÕÌ±=U9P ¨¤Ñ½Ñ…°I=4€‘Ñ…‰±”I=U@	dÍÑ…ÑÕÌˆ¤…Ì€‘É½Ü¤ì(€€€€€€€€€€€¥˜€¡¥ÍÍ•Ğ ‘½Õ¹ÑÍl‘É½Ü´ùÍÑ…ÑÕÍt¤¤€‘½Õ¹ÑÍl‘É½Ü´ùÍÑ…ÑÕÍt€ô€¡¥¹Ğ¤‘É½Ü´ùÑ½Ñ…°ì(€€€€€€€ô(€€€€€€€€‘±…‰•±Ì€ôl¹•Üœôø9½İ”œ°¥¹}ÁÉ½É•ÍÌœôø\ÑÉ…­¥”œ°É•Í½±Ù•œôøI½éİ§é…¹¼œ°…¹•±±•œôø¹Õ±½İ…¹¼tì(€€€€€€€€‘Ñ½¹•Ì€ôl¹•Üœôø½É…¹”œ°¥¹}ÁÉ½É•ÍÌœôø‰±Õ”œ°É•Í½±Ù•œôøÉ••¸œ°…¹•±±•œôø¹•ÕÑÉ…°tì((€€€€€€€Í•±˜èéÍ¡•±° ••‘‰…¬œ°€iŸ	½Íé•¹¥„ÁÉ½‰±•·ÍÜÁÉé•Ï	…¹”ÁÉé•èé…±½½İ…¹å ×ñåÑ­½İ¹¥¯ÍÜ¸œ¤ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ™••‘‰…¬µÍÕµµ…Éäˆøœì(€€€€€€€™½É•… € ‘±…‰•±Ì…Ì€‘­•äôø‘±…‰•°¤Í•±˜èéµ•ÑÉ¥Œ ‘±…‰•°°€‘½Õ¹ÑÍl‘­•åt°€‘­•ä€ôôô€¹•Üœ€ü€İ…É¹¥¹œœ€è€ ‘­•ä€ôôô€É•Í½±Ù•œ€ü€å•Ìµ…±Ğœ€è€™••‘‰…¬œ¤°€‘Ñ½¹•Íl‘­•åt€ôôô€¹•ÕÑÉ…°œ€ü€Ù¥½±•Ğœ€è€‘Ñ½¹•Íl‘­•åt¤ì(€€€€€€€•¡¼€œğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘ĞµÑ½½±‰…È‘Ğµ™••‘‰…¬µ™¥±Ñ•ÉÌˆøœì(€€€€€€€€‘…±±UÉ°€ô…‘‘}ÅÕ•Éå}…Éœ¡lÁ…”œôø‘•­„µÑåÁ•Èµ™••‘‰…¬œ°ÍÑ…ÑÕÌœôø…±°t°…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€•¡¼€œñ„±…ÍÌô‰‰ÕÑÑ½¸€œ€¸€ ‘ÍÑ…ÑÕÌ€ôôô€…±°œ€ü€‰ÕÑÑ½¸µÁÉ¥µ…Éäœ€è€œœ¤€¸€œˆ¡É•˜ôˆœ€¸•Í}ÕÉ° ‘…±±UÉ°¤€¸€œˆù]ÍéåÍÑ­¥”ğ½„øœì(€€€€€€€™½É•… € ‘±…‰•±Ì…Ì€‘­•äôø‘±…‰•°¤ì(€€€€€€€€€€€€‘ÕÉ°€ô…‘‘}ÅÕ•Éå}…Éœ¡lÁ…”œôø‘•­„µÑåÁ•Èµ™••‘‰…¬œ°ÍÑ…ÑÕÌœôø‘­•åt°…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€€€€€•¡¼€œñ„±…ÍÌô‰‰ÕÑÑ½¸€œ€¸€ ‘ÍÑ…ÑÕÌ€ôôô€‘­•ä€ü€‰ÕÑÑ½¸µÁÉ¥µ…Éäœ€è€œœ¤€¸€œˆ¡É•˜ôˆœ€¸•Í}ÕÉ° ‘ÕÉ°¤€¸€œˆøœ€¸•Í}¡Ñµ° ‘±…‰•°¤€¸€œ€ œ€¸€‘½Õ¹ÑÍl‘­•åt€¸€œ¤ğ½„øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½‘¥ØøñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘Ğµ™••‘‰…¬µ±¥ÍĞˆøœì(€€€€€€€¥˜€ „‘É½İÌ¤•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ•µÁÑäˆù	É…¬éŸ	½Íé—Üİå‰É…¹å´ÍÑ…ÑÕÍ¥”¸ğ½‘¥Øøœì(€€€€€€€™½É•… € ‘É½İÌ…Ì€‘É½Ü¤ì(€€€€€€€€€€€•¡¼€œñ…ÉÑ¥±”±…ÍÌô‰‘Ğµ™••‘‰…¬µ¥Ñ•´ˆøñ¡•…‘•Èøñ‘¥ØøñÍÑÉ½¹œøŒœ€¸€¡¥¹Ğ¤‘É½Ü´ù¥€¸€œƒ
+Ü€œ€¸•Í}¡Ñµ° ‘É½Ü´ù‘¥ÍÁ±…å}¹…µ”€üè€WñåÑ­½İ¹¥¬€Œœ€¸€¡¥¹Ğ¤‘É½Ü´ùÕÍ•É}¥¤€¸€œğ½ÍÑÉ½¹œøñ„¡É•˜ô‰µ…¥±Ñ¼èœ€¸•Í}…ÑÑÈ ‘É½Ü´ù•µ…¥°¤€¸€œˆøœ€¸•Í}¡Ñµ° ‘É½Ü´ù•µ…¥°¤€¸€œğ½„øğ½‘¥Øøñ‘¥Øøœ€¸Í•±˜èé‰…‘” ‘±…‰•±Íl‘É½Ü´ùÍÑ…ÑÕÍt€üü€9½İ”œ°€‘Ñ½¹•Íl‘É½Ü´ùÍÑ…ÑÕÍt€üü€¹•ÕÑÉ…°œ¤€¸€œñÑ¥µ”øœ€¸•Í}¡Ñµ°¡Í•±˜èé‘…Ñ•}Á° ‘É½Ü´ùÉ•…Ñ•‘}…Ğ¤¤€¸€œğ½Ñ¥µ”øğ½‘¥Øøğ½¡•…‘•Èøœì(€€€€€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ™••‘‰…¬µµ•ÍÍ…”ˆøœ€¸¹°É‰È¡•Í}¡Ñµ° ‘É½Ü´ùµ•ÍÍ…”¤¤€¸€œğ½‘¥Øøœì(€€€€€€€€€€€¥˜€ ‘É½Ü´ùÁ…•}ÕÉ°¤•¡¼€œñ„±…ÍÌô‰‘Ğµ™••‘‰…¬µÍ½ÕÉ”ˆ¡É•˜ôˆœ€¸•Í}ÕÉ° ‘É½Ü´ùÁ…•}ÕÉ°¤€¸€œˆÑ…É•Ğô‰}‰±…¹¬ˆÉ•°ô‰¹½½Á•¹•È¹½É•™•ÉÉ•ÈˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹Ìµ…‘µ¥¸µ±¥¹­Ìˆøğ½ÍÁ…¸øœ€¸•Í}¡Ñµ° ‘É½Ü´ùÁ…•}ÕÉ°¤€¸€œğ½„øœì(€€€€€€€€€€€•¡¼€œñ™½½Ñ•Èøñ™½É´µ•Ñ¡½ô‰Á½ÍĞˆ…Ñ¥½¸ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸µÁ½ÍĞ¹Á¡Àœ¤¤€¸€œˆøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰…Ñ¥½¸ˆÙ…±Õ”ô‰‘Ñ}ÕÁ‘…Ñ•}™••‘‰…¬ˆøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰™••‘‰…­}¥ˆÙ…±Õ”ôˆœ€¸€¡¥¹Ğ¤‘É½Ü´ù¥€¸€œˆøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰É•ÑÕÉ¹}ÍÑ…ÑÕÌˆÙ…±Õ”ôˆœ€¸•Í}…ÑÑÈ ‘ÍÑ…ÑÕÌ¤€¸€œˆøœì(€€€€€€€€€€€İÁ}¹½¹•}™¥•± ‘Ñ}ÕÁ‘…Ñ•}™••‘‰…­|œ€¸€¡¥¹Ğ¤‘É½Ü´ù¥¤ì(€€€€€€€€€€€•¡¼€œñ±…‰•°ùMÑ…ÑÕÌéŸ	½Íé•¹¥„€ñÍ•±•Ğ¹…µ”ô‰ÍÑ…ÑÕÌˆøœì(€€€€€€€€€€€™½É•… € ‘±…‰•±Ì…Ì€‘­•äôø‘±…‰•°¤•¡¼€œñ½ÁÑ¥½¸Ù…±Õ”ôˆœ€¸•Í}…ÑÑÈ ‘­•ä¤€¸€œˆ€œ€¸Í•±•Ñ• ‘É½Ü´ùÍÑ…ÑÕÌ°€‘­•ä°™…±Í”¤€¸€œøœ€¸•Í}¡Ñµ° ‘±…‰•°¤€¸€œğ½½ÁÑ¥½¸øœì(€€€€€€€€€€€•¡¼€œğ½Í•±•Ğøğ½±…‰•°øñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éäˆùi…Á¥ÍèÍÑ…ÑÕÌğ½‰ÕÑÑ½¸øğ½™½É´øğ½™½½Ñ•Èøğ½…ÉÑ¥±”øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½Í•Ñ¥½¸øœì(€€€€€€€¥˜€ ‘Ñ½Ñ…°€ø€‘Á•ÉA…”¤ì(€€€€€€€€€€€€‘‰…Í”€ô…‘‘}ÅÕ•Éå}…Éœ¡lÁ…”œôø‘•­„µÑåÁ•Èµ™••‘‰…¬œ°ÍÑ…ÑÕÌœôø‘ÍÑ…ÑÕÌ°‘Ñ}Á…•œôøœ”Œ”t°…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰Ñ…‰±•¹…Øˆøñ‘¥Ø±…ÍÌô‰Ñ…‰±•¹…ØµÁ…•Ìˆøœ€¸İÁ}­Í•Í}Á½ÍĞ¡Á…¥¹…Ñ•}±¥¹­Ì¡l‰…Í”œôø‘‰…Í”°™½Éµ…Ğœôøœœ°ÕÉÉ•¹Ğœôø‘Á…”°Ñ½Ñ…°œôø¡¥¹Ğ¥•¥° ‘Ñ½Ñ…°¼‘Á•ÉA…”¥t¤¤€¸€œğ½‘¥Øøğ½‘¥Øøœì(€€€€€€€ô(€€€€€€€Í•±˜èé•¹‘}Í¡•±° ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸µ…Ñ¡•Ì ¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘Ì€ôQ}èéÍ•ÑÑ¥¹Ì ¤ì(€€€€€€€€‘±•…Õ”€ôÍ…¹¥Ñ¥é•}­•ä ‘}Ql±•…Õ”t€üü€…±°œ¤ì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘±•…Õ”±l…±°œ°Á±¬œ°œÅ±´œ°œÉ±´t±ÑÉÕ”¤¤€‘±•…Õ”ô…±°œì(€€€€€€€€‘É½ÕÀ€ô€‘±•…Õ”€ôôô€œÉ±´œ€üÍÑÉÑ½ÕÁÁ•È¡Í…¹¥Ñ¥é•}Ñ•áÑ}™¥•± ‘}QlÉ½ÕÀt€üü€œœ¤¤€è€œœì(€€€€€€€¥˜ ‘±•…Õ”ôôôœÉ±´œ˜˜‘É½ÕÀôôôœœ¤‘É½ÕÀõÍÑÉÑ½ÕÁÁ•È ¡ÍÑÉ¥¹œ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” ‰M1PÉ½ÕÁ}­•äI=4€ˆ¹Q}èéÑ…‰±” É½Õ¹‘Ìœ¤¸ˆ]!IÍ•…Í½¸ô•Ì9±•…Õ•}­•äôœÉ±´œ9É½ÕÁ}­•äğøœœ=IH	dÉ½ÕÁ}­•ä1%5%P€Äˆ°‘ÍlÍ•…Í½¸t¤¤¤ì(€€€€€€€€‘É½Õ¹‘%€ô€¡¥¹Ğ¤ ‘}QlÉ½Õ¹‘}¥t€üü€À¤ì(€€€€€€€€‘±•…Õ•MÅ°€ô€‘±•…Õ”€„ôô€…±°œ€ü€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9±•…Õ•}­•äô•Ì€œ°€‘±•…Õ”¤€è€œœì(€€€€€€€€‘É½ÕÁMÅ°€ô€‘É½ÕÀ€„ôô€œœ€ü€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9É½ÕÁ}­•äô•Ì€œ°€‘É½ÕÀ¤€è€œœì(€€€€€€€€‘É½Õ¹‘Ì€ô€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” M1P€¨I=4€œ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€ˆ]!IÍ•…Í½¸ô•Ì€‘±•…Õ•MÅ°€‘É½ÕÁMÅ°=IH	d±•…Õ•}­•ä±É½ÕÁ}­•ä±É½Õ¹‘}¹¼ˆ°€‘ÍlÍ•…Í½¸t¤¤ì(€€€€€€€€‘É½Õ¹‘%‘Ì€ô…ÉÉ…å}µ…À ¥¹ÑÙ…°œ±İÁ}±¥ÍÑ}Á±Õ¬ ‘É½Õ¹‘Ì°¥œ¤¤ì(€€€€€€€¥˜€ ‘É½Õ¹‘%€˜˜€…¥¹}…ÉÉ…ä ‘É½Õ¹‘%°‘É½Õ¹‘%‘Ì±ÑÉÕ”¤¤€‘É½Õ¹‘%ôÀì(€€€€€€€¥˜€ „‘É½Õ¹‘%€˜˜€‘É½Õ¹‘Ì¤€‘É½Õ¹‘%€ô€¡¥¹Ğ¤‘É½Õ¹‘ÍlÁt´ù¥ì(€€€€€€€€‘ÕÉÉ•¹ÑI½Õ¹€ô€‘É½Õ¹‘%€ü€‘İÁ‘ˆ´ù•Ñ}É½Ü ‘İÁ‘ˆ´ùÁÉ•Á…É” M1P€¨I=4€œ¹Q}èéÑ…‰±” É½Õ¹‘Ìœ¤¸œ]!I¥ô•œ°‘É½Õ¹‘%¤¤€è¹Õ±°ì(€€€€€€€€‘‘ÑA…”€ôµ…à Ä°¡¥¹Ğ¤ ‘}Ql‘Ñ}Á…•t€üü€Ä¤¤ì(€€€€€€€€‘Á•ÉA…”€ô€ÈÔì(€€€€€€€€‘Ñ½Ñ…°€ô€‘É½Õ¹‘%€ü€¡¥¹Ğ¤‘İÁ‘ˆ´ù•Ñ}Ù…È ‘İÁ‘ˆ´ùÁÉ•Á…É” M1P=U9P ¨¤I=4€œ¹Q}èéÑ…‰±” µ…Ñ¡•Ìœ¤¸œ]!IÉ½Õ¹‘}¥ô•œ°‘É½Õ¹‘%¤¤€è€Àì(€€€€€€€€‘É½İÌ€ô€‘É½Õ¹‘%€ü€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€M1P´¸¨± ¹¹…µ”¡½µ•}¹…µ”±„¹¹…µ”…İ…å}¹…µ”I=4€œ€¸Q}èéÑ…‰±” µ…Ñ¡•Ìœ¤€¸€œ´)=%8€œ€¸Q}èéÑ…‰±” Ñ•…µÌœ¤€¸€œ =8 ¹¥õ´¹¡½µ•}Ñ•…µ}¥)=%8€œ€¸Q}èéÑ…‰±” Ñ•…µÌœ¤€¸€œ„=8„¹¥õ´¹…İ…å}Ñ•…µ}¥]!I´¹É½Õ¹‘}¥ô•=IH	d´¹ÍÑ…ÉÑÍ}…Ğ±´¹¥1%5%P€•=MP€•œ°€‘É½Õ¹‘%°‘Á•ÉA…”° ‘‘ÑA…”´Ä¤¨‘Á•ÉA…”(€€€€€€€€¤¤€èmtì(€€€€€€€Í•±˜èéÍ¡•±° 5•é”œ°]å¹¥¬µ•éÔÏ	×ñäİçé¹¥”‘¼É½é±¥é•¹¥„İÍ­…é…¹•¼éİå§eéä¸œ¤ì(€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘ĞµÑ½½±‰…ÈˆøœìÍ•±˜èé±•…Õ•}Ñ…‰Ì ‘•­„µÑåÁ•Èµµ…Ñ¡•Ìœ°‘±•…Õ”¤ì•¡¼€œñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆ‘…Ñ„µ‘Ğµ½Á•¸ô‰‘Ğµ…‘µµ…Ñ ˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹ÌµÁ±ÕÌµ…±ĞÈˆøğ½ÍÁ…¸ø½‘…¨µ•èğ½‰ÕÑÑ½¸øğ½‘¥Øøœì(€€€€€€€¥˜ ‘±•…Õ”ôôôœÉ±´œ¤Í•±˜èéÉ½ÕÁ}Ñ…‰Ì ‘•­„µÑåÁ•Èµµ…Ñ¡•Ìœ°‘É½ÕÀ¤ì(€€€€€€€¥˜€ ‘É½Õ¹‘Ì¤ì(€€€€€€€€€€€•¡¼€œñ¹…Ø±…ÍÌô‰‘ĞµÉ½Õ¹µÑ…‰Ìˆ…É¥„µ±…‰•°ô‰]å‹ÍÈ­½±•©­¤ˆøœì(€€€€€€€€€€€™½É•… € ‘É½Õ¹‘Ì…Ì€‘È¤ì(€€€€€€€€€€€€€€€€‘±…‰•°€ô€ ‘È´ùÉ½ÕÁ}­•ä€ü€ÉÕÁ„€œ¹ÍÑÉÑ½ÕÁÁ•È ¡ÍÑÉ¥¹œ¤‘È´ùÉ½ÕÁ}­•ä¤¸œƒ
+Ü€œ€è€œœ¤¸‘È´ùÑ¥Ñ±”ì(€€€€€€€€€€€€€€€€‘ÕÉ°õ…‘‘}ÅÕ•Éå}…Éœ¡lÁ…”œôø‘•­„µÑåÁ•Èµµ…Ñ¡•Ìœ°±•…Õ”œôø‘±•…Õ”°É½ÕÀœôø‘É½ÕÀ°É½Õ¹‘}¥œôø¡¥¹Ğ¤‘È´ù¥‘t±…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€€€€€€€€€•¡¼€œñ„±…ÍÌô‰‘ĞµÉ½Õ¹µÑ…ˆ€œ¸ ‘É½Õ¹‘%ôôô¡¥¹Ğ¤‘È´ù¥ü¥Ìµ…Ñ¥Ù”œèœœ¤¸œˆ¡É•˜ôˆœ¹•Í}ÕÉ° ‘ÕÉ°¤¸œˆøœ¹•Í}¡Ñµ° ‘±…‰•°¤¸œğ½„øœì(€€€€€€€€€€€ô(€€€€€€€€€€€•¡¼€œğ½¹…Øøœì(€€€€€€€ô(€€€€€€€¥˜€ ‘ÕÉÉ•¹ÑI½Õ¹¤•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ±¥ÍĞµ½¹Ñ•áĞˆøñÍÑÉ½¹œøœ¹•Í}¡Ñµ°¡ÍÑÉÑ½ÕÁÁ•È ¡ÍÑÉ¥¹œ¤‘ÕÉÉ•¹ÑI½Õ¹´ù±•…Õ•}­•ä¤¸ ‘ÕÉÉ•¹ÑI½Õ¹´ùÉ½ÕÁ}­•äüœƒ
+ÜÉÕÁ„€œ¹ÍÑÉÑ½ÕÁÁ•È ¡ÍÑÉ¥¹œ¤‘ÕÉÉ•¹ÑI½Õ¹´ùÉ½ÕÁ}­•ä¤èœœ¤¤¸œğ½ÍÑÉ½¹œøñÍÁ…¸øœ¹•Í}¡Ñµ° ‘ÕÉÉ•¹ÑI½Õ¹´ùÑ¥Ñ±”¤¸œƒ
+Ü€œ¸¡¥¹Ğ¤‘Ñ½Ñ…°¸œµ•ëÍÜğ½ÍÁ…¸øğ½‘¥Øøœì(€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…ÉˆøñÑ…‰±”±…ÍÌô‰İ¥‘•™…Ğ‘ĞµÑ…‰±”ˆøñÑ¡•…øñÑÈøñÑ ù5•èğ½Ñ øñÑ ùMÑ…ÉĞğ½Ñ øñÑ ù]å¹¥¬ğ½Ñ øñÑ ùMÑ…ÑÕÌğ½Ñ øñÑ ùMå¹¡É½¹¥é…©„ğ½Ñ øñÑ øğ½Ñ øğ½ÑÈøğ½Ñ¡•…øñÑ‰½‘äøœì(€€€€€€€™½É•… € ‘É½İÌ…Ì€‘´¤ì(€€€€€€€€€€€€‘Í½É”€ô€‘´´ùÍ½É•}¡½µ”€ôôô¹Õ±°€ü€ŸŠPœ€è€¡¥¹Ğ¤‘´´ùÍ½É•}¡½µ”€¸€œ€è€œ€¸€¡¥¹Ğ¤‘´´ùÍ½É•}…İ…äì(€€€€€€€€€€€€‘‘…Ñ„€ôl¥œôø¡¥¹Ğ¤‘´´ù¥°¡½µ”œôø‘´´ù¡½µ•}¹…µ”°…İ…äœôø‘´´ù…İ…å}¹…µ”°ÍÑ…ÉÑÍ}…ĞœôùÍ•±˜èé¡Ñµ±}‘…Ñ•Ñ¥µ” ‘´´ùÍÑ…ÉÑÍ}…Ğ¤°¡½µ•}Í½É”œôø‘´´ùÍ½É•}¡½µ”°…İ…å}Í½É”œôø‘´´ùÍ½É•}…İ…ä°µ…¹Õ…±}±½¬œôø¡¥¹Ğ¤‘´´ùµ…¹Õ…±}±½­tì(€€€€€€€€€€€•¡¼€œñÑÈøñÑøñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘´´ù¡½µ•}¹…µ”¤€¸€œğ½ÍÑÉ½¹œøñÍÁ…¸±…ÍÌô‰‘ĞµÙ•ÉÍÕÌˆùÙÌğ½ÍÁ…¸øñÍÑÉ½¹œøœ€¸•Í}¡Ñµ° ‘´´ù…İ…å}¹…µ”¤€¸€œğ½ÍÑÉ½¹œøğ½ÑøñÑøœ€¸•Í}¡Ñµ°¡Í•±˜èé‘…Ñ•}Á° ‘´´ùÍÑ…ÉÑÍ}…Ğ¤¤€¸€œğ½ÑøñÑøñÍÁ…¸±…ÍÌô‰‘ĞµÍ½É”ˆøœ€¸•Í}¡Ñµ° ‘Í½É”¤€¸€œğ½ÍÁ…¸øğ½ÑøñÑøœ€¸Í•±˜èé‰…‘” ‘´´ùÍÑ…ÑÕÌ€ôôô€™¥¹¥Í¡•œ€ü€i…­¿é½¹äœèi…Á±…¹½İ…¹äœ°‘´´ùÍÑ…ÑÕÌ€ôôô€™¥¹¥Í¡•œ€ü€É••¸œè¹•ÕÑÉ…°œ¤€¸€œğ½ÑøñÑøœ€¸€ ¡¥¹Ğ¤‘´´ùµ…¹Õ…±}±½¬€üÍ•±˜èé‰…‘” Keé¹äƒ
+Ü¡É½¹¥½¹äœ°½É…¹”œ¤€èÍ•±˜èé‰…‘” ÕÑ¼Ai-½Íèœ°‰±Õ”œ¤¤€¸€œğ½ÑøñÑøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‰ÕÑÑ½¸‘Ğµ•‘¥Ğµµ…Ñ ˆ‘…Ñ„µµ…Ñ ôˆœ€¸•Í}…ÑÑÈ¡İÁ}©Í½¹}•¹½‘” ‘‘…Ñ„¤¤€¸€œˆù‘åÑÕ¨ğ½‰ÕÑÑ½¸øğ½Ñøğ½ÑÈøœì(€€€€€€€ô(€€€€€€€¥˜€ „‘É½İÌ¤•¡¼€œñÑÈøñÑ½±ÍÁ…¸ôˆØˆ±…ÍÌô‰‘Ğµ•µÁÑäˆù	É…¬µ•ëÍÜÜÑ•¨­½±•©”¸ğ½Ñøğ½ÑÈøœì(€€€€€€€•¡¼€œğ½Ñ‰½‘äøğ½Ñ…‰±”øğ½Í•Ñ¥½¸øœì(€€€€€€€Í•±˜èéÁ…¥¹…Ñ¥½¸ ‘Ñ½Ñ…°°‘Á•ÉA…”°‘‘ÑA…”±lÁ…”œôø‘•­„µÑåÁ•Èµµ…Ñ¡•Ìœ°±•…Õ”œôø‘±•…Õ”°É½ÕÀœôø‘É½ÕÀ°É½Õ¹‘}¥œôø‘É½Õ¹‘%‘t¤ì(€€€€€€€Í•±˜èéµ…Ñ¡}µ½‘…° ‘Ğµµ…Ñ µµ½‘…°œ±™…±Í”°‘É½Õ¹‘%¤ì(€€€€€€€Í•±˜èéµ…Ñ¡}µ½‘…° ‘Ğµ…‘µµ…Ñ œ±ÑÉÕ”°‘É½Õ¹‘%¤ì(€€€€€€€Í•±˜èé•¹‘}Í¡•±° ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸…ÉÑÕÉ}‘…Í¡‰½…É ¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘Í•…Í½¸€ô€¡ÍÑÉ¥¹œ¤¡Q}èéÍ•ÑÑ¥¹Ì ¥lÍ•…Í½¸t€üü€œœ¤ì(€€€€€€€€‘É½Õ¹‘Ì€ô€¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‘İÁ‘ˆ´ùÁÉ•Á…É” (€€€€€€€€€€€€‰M1PÈ¸¨±=U9P¡´¹¥¤µ…Ñ¡}½Õ¹Ğ°(€€€€€€€€€€€€€€€€€€€MU4¡M]!8´¹Í½É•}¡½µ”%L9=P9U109´¹Í½É•}…İ…ä%L9=P9U10Q!8€Ä1M€À9¤É•Í½±Ù•‘}½Õ¹Ğ°(€€€€€€€€€€€€€€€€€€€5%8¡´¹ÍÑ…ÉÑÍ}…Ğ¤™¥ÉÍÑ}µ…Ñ (€€€€€€€€€€€€I=4€ˆ€¸Q}èéÑ…‰±” É½Õ¹‘Ìœ¤€¸€ˆÈ(€€€€€€€€€€€€1P)=%8€ˆ€¸Q}èéÑ…‰±” µ…Ñ¡•Ìœ¤€¸€ˆ´=8´¹É½Õ¹‘}¥õÈ¹¥(€€€€€€€€€€€€]!IÈ¹Í•…Í½¸ô•Ì9È¹±•…Õ•}­•äôœÅ±´œ(€€€€€€€€€€€€I=U@	dÈ¹¥=IH	dÈ¹É½Õ¹‘}¹¼Mˆ°(€€€€€€€€€€€€‘Í•…Í½¸(€€€€€€€€¤¤ì(€€€€€€€€‘ÕÍ•ÉÌ€ô€¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ (€€€€€€€€€€€€‰M1P%MQ%9PÔ¹%±Ô¹ÕÍ•É}±½¥¸±Ô¹‘¥ÍÁ±…å}¹…µ”°(€€€€€€€€€€€€€¡M1PÕ´¹µ•Ñ…}Ù…±Õ”I=4ì‘İÁ‘ˆ´ùÕÍ•Éµ•Ñ…ôÕ´]!IÕ´¹ÕÍ•É}¥õÔ¹%9Õ´¹µ•Ñ…}­•äô‘Ñ}É…¹­¥¹}¹…µ”œ1%5%P€Ä¤É…¹­¥¹}¹…µ”°(€€€€€€€€€€€€€¡M1PÕ´¹µ•Ñ…}Ù…±Õ”I=4ì‘İÁ‘ˆ´ùÕÍ•Éµ•Ñ…ôÕ´]!IÕ´¹ÕÍ•É}¥õÔ¹%9Õ´¹µ•Ñ…}­•äô‘Ñ}ÑåÁ•É}•áÁ•ÉĞœ1%5%P€Ä¤¥Í}•áÁ•ÉĞ(€€€€€€€€€€€€I=4ì‘İÁ‘ˆ´ùÕÍ•ÉÍôÔ(€€€€€€€€€€€€)=%8€ˆ€¸Q}èéÑ…‰±” ÁÉ•‘¥Ñ¥½¹Ìœ¤€¸€ˆÀ=8À¹ÕÍ•É}¥õÔ¹%(€€€€€€€€€€€€=IH	dÔ¹‘¥ÍÁ±…å}¹…µ”±Ô¹ÕÍ•É}±½¥¸ˆ(€€€€€€€€¤ì(€€€€€€€€‘ÕÍ•É%‘Ì€ô…ÉÉ…å}µ…À ¥¹ÑÙ…°œ±İÁ}±¥ÍÑ}Á±Õ¬ ‘ÕÍ•ÉÌ°%œ¤¤ì(€€€€€€€€‘ÕÍ•É%€ôµ…à À°¡¥¹Ğ¤ ‘}Ql…ÉÑÕÉ}ÕÍ•Èt€üü€À¤¤ì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘ÕÍ•É%°‘ÕÍ•É%‘Ì±ÑÉÕ”¤¤ì(€€€€€€€€€€€€‘ÕÍ•É%€ô€Àì(€€€€€€€€€€€™½É•… € ‘ÕÍ•ÉÌ…Ì€‘ÕÍ•È¤ì(€€€€€€€€€€€€€€€€‘¹…µ”€ôÑÉ¥´ ¡ÍÑÉ¥¹œ¤ ‘ÕÍ•È´ùÉ…¹­¥¹}¹…µ”€üè€‘ÕÍ•È´ù‘¥ÍÁ±…å}¹…µ”€üè€‘ÕÍ•È´ùÕÍ•É}±½¥¸¤¤ì(€€€€€€€€€€€€€€€¥˜€¡ÍÑÉ¥Á½Ì ‘¹…µ”°…ÉÑÕÈœ¤€„ôô™…±Í”¤ì€‘ÕÍ•É%ô¡¥¹Ğ¤‘ÕÍ•È´ù%ì‰É•…¬ìô(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€ „‘ÕÍ•É%¤™½É•… € ‘ÕÍ•ÉÌ…Ì€‘ÕÍ•È¤¥˜€ …•µÁÑä ‘ÕÍ•È´ù¥Í}•áÁ•ÉĞ¤¤ì€‘ÕÍ•É%ô¡¥¹Ğ¤‘ÕÍ•È´ù%ì‰É•…¬ìô(€€€€€€€€€€€¥˜€ „‘ÕÍ•É%€˜˜€‘ÕÍ•ÉÌ¤€‘ÕÍ•É%ô¡¥¹Ğ¤‘ÕÍ•ÉÍlÁt´ù%ì(€€€€€€€ô(€€€€€€€€‘É½Õ¹‘%‘Ì€ô…ÉÉ…å}µ…À ¥¹ÑÙ…°œ±İÁ}±¥ÍÑ}Á±Õ¬ ‘É½Õ¹‘Ì°¥œ¤¤ì(€€€€€€€€‘±•™Ñ%€ôµ…à À°¡¥¹Ğ¤ ‘}Ql±•™Ñ}É½Õ¹t€üü€À¤¤ì(€€€€€€€€‘É¥¡Ñ%€ôµ…à À°¡¥¹Ğ¤ ‘}QlÉ¥¡Ñ}É½Õ¹t€üü€À¤¤ì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘±•™Ñ%°‘É½Õ¹‘%‘Ì±ÑÉÕ”¤¤ì(€€€€€€€€€€€€‘±•™Ñ%€ô€Àì(€€€€€€€€€€€™½É•… € ‘É½Õ¹‘Ì…Ì€‘É½Õ¹¤ì(€€€€€€€€€€€€€€€¥˜€ ¡¥¹Ğ¤‘É½Õ¹´ùµ…Ñ¡}½Õ¹Ğ€ø€À€˜˜€¡¥¹Ğ¤‘É½Õ¹´ùÉ•Í½±Ù•‘}½Õ¹Ğ€øô€¡¥¹Ğ¤‘É½Õ¹´ùµ…Ñ¡}½Õ¹Ğ¤ì€‘±•™Ñ%ô¡¥¹Ğ¤‘É½Õ¹´ù¥ì‰É•…¬ìô(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€ „‘±•™Ñ%¤€‘±•™Ñ%ô¡¥¹Ğ¤ ‘É½Õ¹‘%‘ÍlÁt€üü€À¤ì(€€€€€€€ô(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘É¥¡Ñ%°‘É½Õ¹‘%‘Ì±ÑÉÕ”¤¤ì(€€€€€€€€€€€€‘É¥¡Ñ%€ô€Àì(€€€€€€€€€€€€‘±•™Ñ9¼€ô€Àì(€€€€€€€€€€€™½É•… € ‘É½Õ¹‘Ì…Ì€‘É½Õ¹¤¥˜€ ¡¥¹Ğ¤‘É½Õ¹´ù¥€ôôô€‘±•™Ñ%¤ì€‘±•™Ñ9¼ô¡¥¹Ğ¤‘É½Õ¹´ùÉ½Õ¹‘}¹¼ì‰É•…¬ìô(€€€€€€€€€€€€‘¹•áÑI½Õ¹‘Ì€ô…ÉÉ…å}Ù…±Õ•Ì¡…ÉÉ…å}™¥±Ñ•È ‘É½Õ¹‘Ì±ÍÑ…Ñ¥Œ™¸¡½‰©•Ğ€‘É½Õ¹¤è‰½½°ôø¡¥¹Ğ¤‘É½Õ¹´ùÉ½Õ¹‘}¹¼€ø€‘±•™Ñ9¼¤¤ì(€€€€€€€€€€€ÕÍ½ÉĞ ‘¹•áÑI½Õ¹‘Ì±ÍÑ…Ñ¥Œ™¸¡½‰©•Ğ€‘„±½‰©•Ğ€‘ˆ¤è¥¹Ğôø¡¥¹Ğ¤‘„´ùÉ½Õ¹‘}¹¼€ğôø€¡¥¹Ğ¤‘ˆ´ùÉ½Õ¹‘}¹¼¤ì(€€€€€€€€€€€¥˜€ ‘¹•áÑI½Õ¹‘Ì¤€‘É¥¡Ñ%ô¡¥¹Ğ¤‘¹•áÑI½Õ¹‘ÍlÁt´ù¥ì(€€€€€€€€€€€¥˜€ „‘É¥¡Ñ%¤™½É•… €¡…ÉÉ…å}É•Ù•ÉÍ” ‘É½Õ¹‘Ì¤…Ì€‘É½Õ¹¤ì(€€€€€€€€€€€€€€€¥˜€ ¡¥¹Ğ¤‘É½Õ¹´ùÉ•Í½±Ù•‘}½Õ¹Ğ€ğ€¡¥¹Ğ¤‘É½Õ¹´ùµ…Ñ¡}½Õ¹Ğ¤ì€‘É¥¡Ñ%ô¡¥¹Ğ¤‘É½Õ¹´ù¥ì‰É•…¬ìô(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€ „‘É¥¡Ñ%¤€‘É¥¡Ñ%ô‘±•™Ñ%ì(€€€€€€€ô(€€€€€€€€‘É½Õ¹‘1½½­ÕÀ€ômtì(€€€€€€€™½É•… € ‘É½Õ¹‘Ì…Ì€‘É½Õ¹¤€‘É½Õ¹‘1½½­ÕÁl¡¥¹Ğ¤‘É½Õ¹´ù¥‘tô‘É½Õ¹ì(€€€€€€€€‘‰½¹ÕÍ5…À€ô±…ÍÍ}•á¥ÍÑÌ Q}	½¹ÕÌœ¤€üQ}	½¹ÕÌèéµ…À ¤€èmtì(€€€€€€€€‘…ÉÑÕÉ9…µ”€ô€ÉÑÕÈœì(€€€€€€€™½É•… € ‘ÕÍ•ÉÌ…Ì€‘ÕÍ•È¤¥˜€ ¡¥¹Ğ¤‘ÕÍ•È´ù%€ôôô€‘ÕÍ•É%¤ì€‘…ÉÑÕÉ9…µ”õÑÉ¥´ ¡ÍÑÉ¥¹œ¤ ‘ÕÍ•È´ùÉ…¹­¥¹}¹…µ”€üè€‘ÕÍ•È´ù‘¥ÍÁ±…å}¹…µ”€üè€‘ÕÍ•È´ùÕÍ•É}±½¥¸¤¤ì‰É•…¬ìô((€€€€€€€Í•±˜èéÍ¡•±° -½±•©­„èÉÑÕÉ•´œ°A…¹•°É½‰½éä‘¼Á½‘ÍÕµ½İ…¹¥„¤ÁÉéå½Ñ½İ…¹¥„­½±•©¹•¼½‘¥¹­„¸œ¤ì(€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘Ğµ…ÉÑÕÈµ½¹ÑÉ½±Ìˆøñ™½É´µ•Ñ¡½ô‰•Ğˆ…Ñ¥½¸ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤€¸€œˆøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰Á…”ˆÙ…±Õ”ô‰‘•­„µÑåÁ•Èµ…ÉÑÕÈˆøñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµ½¹ÑÉ½±ÌµÉ¥ˆøñ±…‰•°ù-½¹Ñ¼ÉÑÕÉ„ñÍ•±•Ğ¹…µ”ô‰…ÉÑÕÉ}ÕÍ•Èˆøœì(€€€€€€€™½É•… € ‘ÕÍ•ÉÌ…Ì€‘ÕÍ•È¤ì(€€€€€€€€€€€€‘¹…µ”õÑÉ¥´ ¡ÍÑÉ¥¹œ¤ ‘ÕÍ•È´ùÉ…¹­¥¹}¹…µ”€üè€‘ÕÍ•È´ù‘¥ÍÁ±…å}¹…µ”€üè€‘ÕÍ•È´ùÕÍ•É}±½¥¸¤¤ì(€€€€€€€€€€€•¡¼€œñ½ÁÑ¥½¸Ù…±Õ”ôˆœ€¸€¡¥¹Ğ¤‘ÕÍ•È´ù%€¸€œˆ€œ€¸Í•±•Ñ• ‘ÕÍ•É%°¡¥¹Ğ¤‘ÕÍ•È´ù%±™…±Í”¤€¸€œøœ€¸•Í}¡Ñµ° ‘¹…µ”€¸€ …•µÁÑä ‘ÕÍ•È´ù¥Í}•áÁ•ÉĞ¤üœƒ
+Ü­ÍÁ•ÉĞœèœœ¤¤€¸€œğ½½ÁÑ¥½¸øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½Í•±•Ğøğ½±…‰•°øñ±…‰•°ù1•İ„­½±Õµ¹„ñÍ•±•Ğ¹…µ”ô‰±•™Ñ}É½Õ¹ˆøœì(€€€€€€€™½É•… € ‘É½Õ¹‘Ì…Ì€‘É½Õ¹¤•¡¼€œñ½ÁÑ¥½¸Ù…±Õ”ôˆœ€¸€¡¥¹Ğ¤‘É½Õ¹´ù¥€¸€œˆ€œ€¸Í•±•Ñ• ‘±•™Ñ%°¡¥¹Ğ¤‘É½Õ¹´ù¥±™…±Í”¤€¸€œøœ€¸•Í}¡Ñµ° ¡¥¹Ğ¤‘É½Õ¹´ùÉ½Õ¹‘}¹¼€¸€œ¸­½±•©­„ƒ
+Ü€œ€¸€¡¥¹Ğ¤‘É½Õ¹´ùµ…Ñ¡}½Õ¹Ğ€¸€œµ•ëÍÜœ¤€¸€œğ½½ÁÑ¥½¸øœì(€€€€€€€•¡¼€œğ½Í•±•Ğøğ½±…‰•°øñ±…‰•°ùAÉ…İ„­½±Õµ¹„ñÍ•±•Ğ¹…µ”ô‰É¥¡Ñ}É½Õ¹ˆøœì(€€€€€€€™½É•… € ‘É½Õ¹‘Ì…Ì€‘É½Õ¹¤•¡¼€œñ½ÁÑ¥½¸Ù…±Õ”ôˆœ€¸€¡¥¹Ğ¤‘É½Õ¹´ù¥€¸€œˆ€œ€¸Í•±•Ñ• ‘É¥¡Ñ%°¡¥¹Ğ¤‘É½Õ¹´ù¥±™…±Í”¤€¸€œøœ€¸•Í}¡Ñµ° ¡¥¹Ğ¤‘É½Õ¹´ùÉ½Õ¹‘}¹¼€¸€œ¸­½±•©­„ƒ
+Ü€œ€¸€¡¥¹Ğ¤‘É½Õ¹´ùµ…Ñ¡}½Õ¹Ğ€¸€œµ•ëÍÜœ¤€¸€œğ½½ÁÑ¥½¸øœì(€€€€€€€•¡¼€œğ½Í•±•Ğøğ½±…‰•°øñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆøñÍÁ…¸±…ÍÌô‰‘…Í¡¥½¹Ì‘…Í¡¥½¹ÌµÕÁ‘…Ñ”ˆøğ½ÍÁ…¸ùA½­‡ğé•ÍÑ…İ¥•¹¥”ğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´øğ½Í•Ñ¥½¸øœì(€€€€€€€¥˜€ „‘ÕÍ•ÉÌ¤ì(€€€€€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘ĞµÍ•Ñ¥½¸ˆøñÀ±…ÍÌô‰‘Ğµ•µÁÑäˆù9¥”µ„©•Íéé”×ñåÑ­½İ¹¥¯ÍÜèé…Á¥Í…¹åµ¤ÑåÁ…µ¤¸A¼½‘‘…¹¥ÔÑåÃÍÜ­½¹Ñ¼‹e‘é¥”µ¿ñ¹„İå‰É‡ÜÑå´Á…¹•±Ô¸ğ½Àøğ½Í•Ñ¥½¸øœì(€€€€€€€ô•±Í•¥˜€ „‘É½Õ¹‘Ì¤ì(€€€€€€€€€€€•¡¼€œñÍ•Ñ¥½¸±…ÍÌô‰‘Ğµ…É‘ĞµÍ•Ñ¥½¸ˆøñÀ±…ÍÌô‰‘Ğµ•µÁÑäˆù	É…¬­½±•©•¬€Å14Ü‰¥—óå´Í•é½¹¥”¸ğ½Àøğ½Í•Ñ¥½¸øœì(€€€€€€€ô•±Í”ì(€€€€€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ…ÉÑÕÈµ½±Õµ¹Ì‘ĞµÍ•Ñ¥½¸ˆøœì(€€€€€€€€€€€¥˜€¡¥ÍÍ•Ğ ‘É½Õ¹‘1½½­ÕÁl‘±•™Ñ%‘t¤¤Í•±˜èé…ÉÑÕÉ}É½Õ¹‘}Á…¹•° ‘É½Õ¹‘1½½­ÕÁl‘±•™Ñ%‘t°‘ÕÍ•É%°‘‰½¹ÕÍ5…À°±•™Ğœ°‘…ÉÑÕÉ9…µ”¤ì(€€€€€€€€€€€¥˜€¡¥ÍÍ•Ğ ‘É½Õ¹‘1½½­ÕÁl‘É¥¡Ñ%‘t¤¤Í•±˜èé…ÉÑÕÉ}É½Õ¹‘}Á…¹•° ‘É½Õ¹‘1½½­ÕÁl‘É¥¡Ñ%‘t°‘ÕÍ•É%°‘‰½¹ÕÍ5…À°É¥¡Ğœ°‘…ÉÑÕÉ9…µ”¤ì(€€€€€€€€€€€•¡¼€œğ½‘¥Øøœì(€€€€€€€ô(€€€€€€€Í•±˜èé•¹‘}Í¡•±° ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸µ…Ñ¡}µ½‘…°¡ÍÑÉ¥¹œ€‘¥°‰½½°€‘…‘°¥¹Ğ€‘É½Õ¹‘%¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘Ñ•…µÌ€ô€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ M1P¥±¹…µ”I=4€œ€¸Q}èéÑ…‰±” Ñ•…µÌœ¤€¸€œ=IH	d¹…µ”œ¤ì(€€€€€€€•¡¼€œñ‘¥…±½œ¥ôˆœ€¸•Í}…ÑÑÈ ‘¥¤€¸€œˆ±…ÍÌô‰‘Ğµµ½‘…°ˆøñ™½É´µ•Ñ¡½ô‰Á½ÍĞˆ…Ñ¥½¸ôˆœ€¸•Í}ÕÉ°¡…‘µ¥¹}ÕÉ° …‘µ¥¸µÁ½ÍĞ¹Á¡Àœ¤¤€¸€œˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‘Ğµµ½‘…°µàˆ‘…Ñ„µ‘Ğµ±½Í”û\ğ½‰ÕÑÑ½¸øñÍÁ…¸±…ÍÌô‰‘Ğµ•å•‰É½Üˆøœ€¸€ ‘…‘ü9=]d5hœèe)5iTœ¤€¸€œğ½ÍÁ…¸øñ Èøœ€¸€ ‘…‘ü½‘…¨µ•èËeé¹¥”œèA½ÁÉ…Ü‘…¹”µ•éÔœ¤€¸€œğ½ Èøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰…Ñ¥½¸ˆÙ…±Õ”ôˆœ€¸€ ‘…‘ü‘Ñ}…‘‘}µ…Ñ œè‘Ñ}Í…Ù•}µ…Ñ œ¤€¸€œˆøœì(€€€€€€€İÁ}¹½¹•}™¥•± ‘…‘ü‘Ñ}…‘‘}µ…Ñ œè‘Ñ}Í…Ù•}µ…Ñ œ¤ì(€€€€€€€¥˜€ „‘…‘¤•¡¼€œñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰µ…Ñ¡}¥ˆ‘…Ñ„µ™¥•±ô‰¥ˆøœì(€€€€€€€•¡¼€œñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰É½Õ¹‘}¥ˆÙ…±Õ”ôˆœ€¸€‘É½Õ¹‘%€¸€œˆøœì(€€€€€€€¥˜€ ‘…‘¤ì(€€€€€€€€€€€•¡¼€œñ‘¥Ø±…ÍÌô‰‘Ğµ™½É´´Èˆøñ±…‰•°ù½ÍÁ½‘…ÉèñÍ•±•Ğ¹…µ”ô‰¡½µ•}Ñ•…µ}¥ˆøœì™½É•…  ‘Ñ•…µÌ…Ì€‘Ğ¤•¡¼€œñ½ÁÑ¥½¸Ù…±Õ”ôˆœ€¸€¡¥¹Ğ¤‘Ğ´ù¥€¸€œˆøœ€¸•Í}¡Ñµ° ‘Ğ´ù¹…µ”¤€¸€œğ½½ÁÑ¥½¸øœì•¡¼€œğ½Í•±•Ğøğ½±…‰•°øñ±…‰•°ù¿oñÍ•±•Ğ¹…µ”ô‰…İ…å}Ñ•…µ}¥ˆøœì™½É•…  ‘Ñ•…µÌ…Ì€‘Ğ¤•¡¼€œñ½ÁÑ¥½¸Ù…±Õ”ôˆœ€¸€¡¥¹Ğ¤‘Ğ´ù¥€¸€œˆøœ€¸•Í}¡Ñµ° ‘Ğ´ù¹…µ”¤€¸€œğ½½ÁÑ¥½¸øœì•¡¼€œğ½Í•±•Ğøğ½±…‰•°øğ½‘¥Øøœì(€€€€€€€ô(€€€€€€€•¡¼€œñ±…‰•°ù…Ñ„¤½‘é¥¹„ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ•Ñ¥µ”µ±½…°ˆ¹…µ”ô‰ÍÑ…ÉÑÍ}…Ğˆ‘…Ñ„µ™¥•±ô‰ÍÑ…ÉÑÍ}…ĞˆÉ•ÅÕ¥É•øğ½±…‰•°øñ‘¥Ø±…ÍÌô‰‘Ğµ™½É´´Èˆøñ±…‰•°ù]å¹¥¬½ÍÁ½‘…Ééäñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•Èˆ¹…µ”ô‰Í½É•}¡½µ”ˆ‘…Ñ„µ™¥•±ô‰¡½µ•}Í½É”ˆµ¥¸ôˆÀˆµ…àôˆÈÔÀˆøğ½±…‰•°øñ±…‰•°ù]å¹¥¬¿m¤ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•Èˆ¹…µ”ô‰Í½É•}…İ…äˆ‘…Ñ„µ™¥•±ô‰…İ…å}Í½É”ˆµ¥¸ôˆÀˆµ…àôˆÈÔÀˆøğ½±…‰•°øğ½‘¥Øøœì(€€€€€€€¥˜€ „‘…‘¤•¡¼€œñ±…‰•°±…ÍÌô‰‘Ğµ¡•¬ˆøñ¥¹ÁÕĞÑåÁ”ô‰¡•­‰½àˆ¹…µ”ô‰µ…¹Õ…±}±½¬ˆÙ…±Õ”ôˆÄˆ‘…Ñ„µ™¥•±ô‰µ…¹Õ…±}±½¬ˆøñÍÁ…¸øñÍÑÉ½¹œù¡É¿ÁÉé•Íå¹¡É½¹¥é…«‘…¹å Ai-½Íèğ½ÍÑÉ½¹œøñÍµ…±°ùÕÑ½µ…Ñåé¹ä¥µÁ½ÉĞ¹¥”¹…‘Á¥Íé”Ëeé¹¥”Á½ÁÉ…İ¥½¹•¼Ñ•Éµ¥¹Ô…¹¤İå¹¥­Ô¸ğ½Íµ…±°øğ½ÍÁ…¸øğ½±…‰•°øœì(€€€€€€€•¡¼€œñ‰ÕÑÑ½¸±…ÍÌô‰‰ÕÑÑ½¸‰ÕÑÑ½¸µÁÉ¥µ…Éä‘Ğµ‰ÕÑÑ½¸ˆùi…Á¥Íèµ•èğ½‰ÕÑÑ½¸øğ½™½É´øğ½‘¥…±½œøœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸±•…Õ•}Ñ…‰Ì¡ÍÑÉ¥¹œ€‘Á…”°ÍÑÉ¥¹œ€‘…Ñ¥Ù”¤èÙ½¥ì(€€€€€€€•¡¼€œñ¹…Ø±…ÍÌô‰‘Ğµ±•…Õ”µÑ…‰Ìˆ…É¥„µ±…‰•°ô‰]å‹ÍÈ±¥¤ˆøœì(€€€€€€€™½É•… €¡l…±°œôø]ÍéåÍÑ­¥”œ°Á±¬œôøA1,œ°œÅ±´œôøœÅ14œ°œÉ±´œôøœÉ14t…Ì€‘­•äôø‘±…‰•°¤ì(€€€€€€€€€€€€‘ÕÉ°õ…‘‘}ÅÕ•Éå}…Éœ¡lÁ…”œôø‘Á…”°±•…Õ”œôø‘­•åt±…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€€€€€•¡¼€œñ„±…ÍÌô‰‘Ğµ±•…Õ”µÑ…ˆ€œ¸ ‘…Ñ¥Ù”ôôô‘­•äü¥Ìµ…Ñ¥Ù”œèœœ¤¸œˆ¡É•˜ôˆœ¹•Í}ÕÉ° ‘ÕÉ°¤¸œˆøœ¹•Í}¡Ñµ° ‘±…‰•°¤¸œğ½„øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½¹…Øøœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸É½ÕÁ}Ñ…‰Ì¡ÍÑÉ¥¹œ€‘Á…”°ÍÑÉ¥¹œ€‘…Ñ¥Ù”¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘Í•…Í½¸ô¡ÍÑÉ¥¹œ¤¡Q}èéÍ•ÑÑ¥¹Ì ¥lÍ•…Í½¸tüüœœ¤ì(€€€€€€€€‘…Ñ¥Ù”õÍÑÉÑ½ÕÁÁ•È¡ÑÉ¥´ ‘…Ñ¥Ù”¤¤ì(€€€€€€€€‘É½ÕÁÌõ…ÉÉ…å}Ù…±Õ•Ì¡…ÉÉ…å}Õ¹¥ÅÕ”¡…ÉÉ…å}™¥±Ñ•È¡…ÉÉ…å}µ…À¡ÍÑ…Ñ¥Œ™¸ ‘É½ÕÀ¤ôùÍÑÉÑ½ÕÁÁ•È¡ÑÉ¥´ ¡ÍÑÉ¥¹œ¤‘É½ÕÀ¤¤°¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}½° ‘İÁ‘ˆ´ùÁÉ•Á…É” ‰M1P%MQ%9PÉ½ÕÁ}­•äI=4€ˆ¹Q}èéÑ…‰±” É½Õ¹‘Ìœ¤¸ˆ]!IÍ•…Í½¸ô•Ì9±•…Õ•}­•äôœÉ±´œ9É½ÕÁ}­•äğøœœ=IH	dÉ½ÕÁ}­•äˆ°‘Í•…Í½¸¤¤¤¤¤¤ì(€€€€€€€•¡¼€œñ¹…Ø±…ÍÌô‰‘ĞµÉ½ÕÀµÑ…‰Ìˆ…É¥„µ±…‰•°ô‰]å‹ÍÈÉÕÁä€É14ˆøœì(€€€€€€€™½É•… € ‘É½ÕÁÌ…Ì€‘­•ä¤ì(€€€€€€€€€€€€‘±…‰•°ôÉÕÁ„€œ¸‘­•äì(€€€€€€€€€€€€‘ÕÉ°õ…‘‘}ÅÕ•Éå}…Éœ¡lÁ…”œôø‘Á…”°±•…Õ”œôøœÉ±´œ°É½ÕÀœôø‘­•åt±…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€€€€€•¡¼€œñ„±…ÍÌô‰‘ĞµÉ½ÕÀµÑ…ˆ€œ¸ ‘…Ñ¥Ù”ôôô‘­•äü¥Ìµ…Ñ¥Ù”œèœœ¤¸œˆ¡É•˜ôˆœ¹•Í}ÕÉ° ‘ÕÉ°¤¸œˆøœ¹•Í}¡Ñµ° ‘±…‰•°¤¸œğ½„øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½¹…Øøœì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸Á…¥¹…Ñ¥½¸¡¥¹Ğ€‘Ñ½Ñ…°°¥¹Ğ€‘Á•ÉA…”°¥¹Ğ€‘ÕÉÉ•¹Ğ°…ÉÉ…ä€‘…ÉÌ¤èÙ½¥ì(€€€€€€€€‘Á…•Ìô¡¥¹Ğ¥•¥° ‘Ñ½Ñ…°¼‘Á•ÉA…”¤ì(€€€€€€€¥˜€ ‘Á…•ÌğÈ¤É•ÑÕÉ¸ì(€€€€€€€•¡¼€œñ¹…Ø±…ÍÌô‰‘ĞµÁ…¥¹…Ñ¥½¸ˆ…É¥„µ±…‰•°ô‰MÑÉ½¹¥½İ…¹¥”ˆøœì(€€€€€€€™½È€ ‘Á…”ôÄì‘Á…”ğô‘Á…•Ìì‘Á…”¬¬¤ì(€€€€€€€€€€€€‘ÕÉ°õ…‘‘}ÅÕ•Éå}…Éœ¡…ÉÉ…å}µ•É” ‘…ÉÌ±l‘Ñ}Á…•œôø‘Á…•t¤±…‘µ¥¹}ÕÉ° …‘µ¥¸¹Á¡Àœ¤¤ì(€€€€€€€€€€€•¡¼€œñ„±…ÍÌôˆœ¸ ‘Á…”ôôô‘ÕÉÉ•¹Ğü¥Ìµ…Ñ¥Ù”œèœœ¤¸œˆ¡É•˜ôˆœ¹•Í}ÕÉ° ‘ÕÉ°¤¸œˆøœ¸¡¥¹Ğ¤‘Á…”¸œğ½„øœì(€€€€€€€ô(€€€€€€€•¡¼€œğ½¹…Øøœì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™Õ¹Ñ¥½¸ÁÉ•‘¥Ñ¥½¹Ì ¤èÙ½¥ì(€€€€€€€±½‰…°€‘İÁ‘ˆì(€€€€€€€€‘ÑåÁ”€ôÍ…¹¥Ñ¥é•}­•ä ¡ÍÑÉ¥¹œ¤ ‘}QlÁÉ•‘¥Ñ¥½¹}ÑåÁ”t€üü€…±°œ¤¤ì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘ÑåÁ”°l…±°œ°µ…Ñ œ°ÁÉ”Äœ°ÁÉ”Èt°ÑÉÕ”¤¤€‘ÑåÁ”€ô€…±°œì(€€€€€€€€‘ÍÑ…ÑÕÍ¥±Ñ•È€ôÍ…¹¥Ñ¥é•}­•ä ¡ÍÑÉ¥¹œ¤ ‘}QlÁÉ•‘¥Ñ¥½¹}ÍÑ…ÑÕÌt€üü€…±°œ¤¤ì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘ÍÑ…ÑÕÍ¥±Ñ•È°l…±°œ°Á•¹‘¥¹œœ°İ¥¹¹•Èœ°µ¥ÍÌt°ÑÉÕ”¤¤€‘ÍÑ…ÑÕÍ¥±Ñ•È€ô€…±°œì(€€€€€€€€‘Í•…Í½¸€ôÍ…¹¥Ñ¥é•}Ñ•áÑ}™¥•±¡İÁ}Õ¹Í±…Í  ¡ÍÑÉ¥¹œ¤ ‘}QlÍ•…Í½¸t€üü€…±°œ¤¤¤ì(€€€€€€€€‘±•…Õ”€ôÍ…¹¥Ñ¥é•}­•ä ¡ÍÑÉ¥¹œ¤ ‘}Ql±•…Õ”t€üü€…±°œ¤¤ì(€€€€€€€¥˜€ …¥¹}…ÉÉ…ä ‘±•…Õ”°l…±°œ°œÅ±´œ°Á±¬œ°œÉ±´t°ÑÉÕ”¤¤€‘±•…Õ”€ô€…±°œì(€€€€€€€€‘É½ÕÀ€ô€‘±•…Õ”€ôôô€œÉ±´œ€üÍÑÉÑ½ÕÁÁ•È¡Í…¹¥Ñ¥é•}Ñ•áÑ}™¥•±¡İÁ}Õ¹Í±…Í  ¡ÍÑÉ¥¹œ¤ ‘}QlÉ½ÕÀt€üü€œœ¤¤¤¤€è€œœì(€€€€€€€€‘É½Õ¹‘%€ôµ…à À°€¡¥¹Ğ¤ ‘}QlÉ½Õ¹‘}¥t€üü€À¤¤ì(€€€€€€€¥˜€¡¥¹}…ÉÉ…ä ‘ÑåÁ”°lÁÉ”Äœ°ÁÉ”Èt°ÑÉÕ”¤¤€‘É½Õ¹‘%€ô€Àì(€€€€€€€€‘Í•…É €ôÑÉ¥´¡Í…¹¥Ñ¥é•}Ñ•áÑ}™¥•±¡İÁ}Õ¹Í±…Í  ¡ÍÑÉ¥¹œ¤ ‘}QlÌt€üü€œœ¤¤¤¤ì(€€€€€€€€‘‘ÑA…”€ôµ…à Ä°€¡¥¹Ğ¤ ‘}Ql‘Ñ}Á…•t€üü€Ä¤¤ì(€€€€€€€€‘Á•ÉA…”€ô€ĞÀì((€€€€€€€€‘É½Õ¹‘ÍQ…‰±”€ôQ}èéÑ…‰±” É½Õ¹‘Ìœ¤ì(€€€€€€€€‘µ…Ñ¡•ÍQ…‰±”€ôQ}èéÑ…‰±” µ…Ñ¡•Ìœ¤ì(€€€€€€€€‘ÁÉ•‘¥Ñ¥½¹ÍQ…‰±”€ôQ}èéÑ…‰±” ÁÉ•‘¥Ñ¥½¹Ìœ¤ì(€€€€€€€€‘ÁÉ•Í•…Í½¹Q…‰±”€ôQ}èéÑ…‰±” ÁÉ•Í•…Í½¹}ÁÉ•‘¥Ñ¥½¹Ìœ¤ì(€€€€€€€€‘Ñ•…µÍQ…‰±”€ôQ}èéÑ…‰±” Ñ•…µÌœ¤ì((€€€€€€€€‘Í•…Í½¹Ì€ô…ÉÉ…å}Ù…±Õ•Ì¡…ÉÉ…å}Õ¹¥ÅÕ”¡…ÉÉ…å}™¥±Ñ•È¡…ÉÉ…å}µ…À ÍÑÉÙ…°œ°€¡…ÉÉ…ä¤‘İÁ‘ˆ´ù•Ñ}½° (€€€€€€€€€€€€‰M1PÍ•…Í½¸I=4€‘É½Õ¹‘ÍQ…‰±”]!IÍ•…Í½¸ğøœœU9%=8M1PÍ•…Í½¸I=4€‘ÁÉ•Í•…Í½¹Q…‰±”]!IÍ•…Í½¸ğøœœ=IH	dÍ•…Í½¸Mˆ(€€€€€€€€¤¤¤¤¤ì(€€€€€€€¥˜€ ‘Í•…Í½¸€„ôô€…±°œ€˜˜€…¥¹}…ÉÉ…ä ‘Í•…Í½¸°€‘Í•…Í½¹Ì°ÑÉÕ”¤¤€‘Í•…Í½¸€ô€…±°œì((€€€€€€€€‘É½Õ¹‘¥±Ñ•È€ô€œœì(€€€€€€€¥˜€ ‘Í•…Í½¸€„ôô€…±°œ¤€‘É½Õ¹‘¥±Ñ•È€¸ô€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9Í•…Í½¸ô•Ìœ°€‘Í•…Í½¸¤ì(€€€€€€€¥˜€ ‘±•…Õ”€„ôô€…±°œ¤€‘É½Õ¹‘¥±Ñ•È€¸ô€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9±•…Õ•}­•äô•Ìœ°€‘±•…Õ”¤ì(€€€€€€€¥˜€ ‘É½ÕÀ€„ôô€œœ¤€‘É½Õ¹‘¥±Ñ•È€¸ô€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9UAAH¡É½ÕÁ}­•ä¤ô•Ìœ°€‘É½ÕÀ¤ì(€€€€€€€€‘É½Õ¹‘Ì€ô€‘İÁ‘ˆ´ù•Ñ}É•ÍÕ±ÑÌ ‰M1P¥±Ñ¥Ñ±”±Í•…Í½¸±±•…Õ•}­•ä±É½ÕÁ}­•ä±É½Õ¹‘}¹¼I=4€‘É½Õ¹‘ÍQ…‰±”]!I€ÄôÄ€‘É½Õ¹‘¥±Ñ•È=IH	dÍ•…Í½¸M±±•…Õ•}­•ä±É½ÕÁ}­•ä±É½Õ¹‘}¹¼±¥ˆ¤ì(€€€€€€€€‘Ù…±¥‘I½Õ¹‘%‘Ì€ô…ÉÉ…å}µ…À ¥¹ÑÙ…°œ°İÁ}±¥ÍÑ}Á±Õ¬ ¡…ÉÉ…ä¤‘É½Õ¹‘Ì°€¥œ¤¤ì(€€€€€€€¥˜€ ‘É½Õ¹‘%€˜˜€…¥¹}…ÉÉ…ä ‘É½Õ¹‘%°€‘Ù…±¥‘I½Õ¹‘%‘Ì°ÑÉÕ”¤¤€‘É½Õ¹‘%€ô€Àì((€€€€€€€€‘É•Õ±…É]¡•É”€ô€œ]!IÀ¹Í•±•Ñ•‘}Ñ•…µ}¥%L9=P9U10œì(€€€€€€€€‘ÁÉ•]¡•É”€ô€œ]!I€ÄôÄœì(€€€€€€€¥˜€ ‘Í•…Í½¸€„ôô€…±°œ¤ì(€€€€€€€€€€€€‘É•Õ±…É]¡•É”€¸ô€‘İÁ‘ˆ´ùÁÉ•Á…É” œ9È¹Í•…Í½¸ô•Ìœ°€‘Í•…Í½¸¤ì(€€€€€€€€€€€€‘ÁÉ•]¡•É”€¸ô€‘İÁ‘ˆ´ùÁÉ•Á¶×O-¢G§²ÚîÆ­y×—7F¶–R¶öÆV¦¶“Âö÷F–öãâs²f÷&V6‚‚†'&’’G&÷VæG22G&÷VæB’²FÆ&VÃ×7G'F÷WW"‚‡7G&–ær’G&÷VæBÓæÆVwVUö¶W’’â‚G&÷VæBÓæw&÷Wö¶W“òr+rw'Wrç7G'F÷WW"‚‡7G&–ær’G&÷VæBÓæw&÷Wö¶W’“¢rr’âr+rrâG&÷VæBÓçF—FÆRâr+rrâG&÷VæBÓç6V6öã²V6†òsÆ÷F–öâfÇVSÒ"râ†–çB’G&÷VæBÓæ–Bâr"rç6VÆV7FVB‚G&÷VæD–BÂ†–çB’G&÷VæBÓæ–BÆfÇ6R’âsâræW65ö‡FÖÂ‚FÆ&VÂ’âsÂö÷F–öãâs²ÒV6†òsÂ÷6VÆV7CãÂöÆ&VÃâs°¢V6†òsÆÆ&VÃåw—7§V¶£Æ–çWBG—SÒ'6V&6‚"æÖSÒ'2"fÇVSÒ"ræW65öGG"‚G6V&6‚’âr"Æ6V†öÆFW#Ò%\[Ç—F¶÷væ–²ÂRÖÖ–ÂÂG'\[Ç–æÂ7FGW>(
+b#ãÂöÆ&VÃãÂöF—cãÆF—b6Æ73Ò&GB×&VF–7F–öâÖf–ÇFW"Ö7F–öç2#ãÆ'WGFöâ6Æ73Ò&'WGFöâ'WGFöâ×&–Ö'’#äf–ÇG'V¢’w—7§V¶£Âö'WGFöããÆ6Æ73Ò&'WGFöâ"‡&VcÒ"ræW65÷W&Â†FÖ–å÷W&Â‚vFÖ–âç‡÷vSÖFV6¶×G—W"×&VF–7F–öç2r’’âr#åw–7§œY¼Hrf–ÇG'“ÂöãÂöF—cãÂöf÷&Óâs° ¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&BGB×&VF–7F–öç2×F&ÆR#ãÆF—b6Æ73Ò&GB×F&ÆR×67&öÆÂ#ãÇF&ÆR6Æ73Ò'v–FVfBGB×F&ÆR#ãÇF†VCãÇG#ãÇFƒå&öG¦£Â÷FƒãÇFƒå\[Ç—F¶÷væ–³Â÷FƒãÇFƒäÆ–vÂ÷FƒãÇFƒä¶öÆV¦¶òÖV7£Â÷FƒãÇFƒäöFFç’G—Â÷FƒãÇFƒå7FGW3Â÷FƒãÇFƒåVæ·G“Â÷FƒãÇFƒå¦—6æóÂ÷FƒãÂ÷G#ãÂ÷F†VCãÇF&öG“âs°¢f÷&V6‚‚†'&’’G&÷w22G&÷r’°¢GV–CÒ†–çB’G&÷rÓçW6W%ö–C°¢FF—7Æ”æÖSÖ6Æ75öW†—7G2‚tEEõW6W%õ6WGF–æw2r“ôEEõW6W%õ6WGF–æw3£§&æ¶–æuöæÖR‚GV–BÂ‡7G&–ær’G&÷rÓæF—7Æ•öæÖR“¢‡7G&–ær’G&÷rÓæF—7Æ•öæÖS°¢F—5&SÖ–åö'&’‚‡7G&–ær’G&÷rÓç&VF–7F–öå÷G—RÅ²w&SrÂw&S"uÒÇG'VR“°¢GG—TÆ&VÃÒF—5&Sò‚‡7G&–ær’G&÷rÓç&VF–7F–öå÷G—SÓÓÒw&Ssòu$RÒf–æÅ&æ¶–ærs¢u$RÒÆ”ôdbr“¢tÔT5¢s°¢FÆVwVTÆ&VÃ×7G'F÷WW"‚‡7G&–ær’G&÷rÓæÆVwVUö¶W’’â‚G&÷rÓæw&÷Wö¶W“òr+rrâG&÷rÓæw&÷Wö¶W“¢rr’âr+rrâG&÷rÓç6V6öã°¢F6öçFW‡CÒF—5&SòGG—TÆ&VÃ¢‚‡7G&–ær’G&÷rÓç&÷VæE÷F—FÆRâr+rrâ‡7G&–ær’G&÷rÓæ6öçFW‡EöÆ&VÂ“°¢G6VÆV7F–öãÒF—5&S÷6VÆc£§&W6V6öå÷6VÆV7F–öåöÆ&VÂ‚‡7G&–ær’G&÷rÓç&VF–7F–öå÷G—RÂ‡7G&–ær’G&÷rÓç6VÆV7F–öåöFFÂGFVÔæÖW2“¢‡7G&–ær’‚G&÷rÓç6VÆV7F–öåöFFó¢~(	Br“°¢–b‚F—5&R’G7FGW3×6VÆc£¦&FvR‚tö7¦V·V¦Ræ&÷¦Æ–7¦Væ–RrÂv÷&ævRr“°¢VÇ6V–b‚G&÷rÓç66÷&Uö†öÖRÓÓÒçVÆÂÇÂG&÷rÓç66÷&Uöv’ÓÓÒçVÆÂ’G7FGW3×6VÆc£¦&FvR‚tö7¦V·V¦RrÂvæWWG&Âr“°¢VÇ6V–b‚G&÷rÓç66÷&–æuö6öFRÓÓÒwv–ææW"r’G7FGW3×6VÆc£¦&FvR‚uG&f–öç’rÂvw&VVâr“°¢VÇ6RG7FGW3×6VÆc£¦&FvR‚tæ–WG&f–öç’rÂw&VBr“°¢V6†òsÇG#ãÇFCârç6VÆc£¦&FvR‚GG—TÆ&VÂÂF—5&Sòv÷&ævRs¢v&ÇVRr’âsÂ÷FCãÇFCãÇ7G&öæsâræW65ö‡FÖÂ‚FF—7Æ”æÖR’âsÂ÷7G&öæsãÇ6ÖÆÂ6Æ73Ò&GBÖ×WFVB#âræW65ö‡FÖÂ‚‡7G&–ær’G&÷rÓçW6W%öVÖ–Â’âsÂ÷6ÖÆÃãÂ÷FCãÇFCâræW65ö‡FÖÂ‚FÆVwVTÆ&VÂ’âsÂ÷FCãÇFCâræW65ö‡FÖÂ‚F6öçFW‡B’âsÂ÷FCãÇFB6Æ73Ò&GB×&VF–7F–öâ×6VÆV7F–öâ#âræW65ö‡FÖÂ‚G6VÆV7F–öâ’âsÂ÷FCãÇFCârâG7FGW2âsÂ÷FCãÇFCãÇ7G&öæsâræW65ö‡FÖÂ‚‡7G&–ær’†fÆöB’G&÷rÓçö–çG2’âsÂ÷7G&öæsãÂ÷FCãÇFCâræW65ö‡FÖÂ‡6VÆc£¦FFU÷Â‚‡7G&–ær’G&÷rÓç7V&Ö—GFVEöB’’âsÂ÷FCãÂ÷G#âs°¢Ğ¢–b‚G&÷w2’V6†òsÇG#ãÇFB6öÇ7ãÒ#‚"6Æ73Ò&GBÖV×G’#ä'&²¦—6ç–6‚G—;7r7\X&æ–¬HV7–6‚w–'&æR·'—FW&–ãÂ÷FCãÂ÷G#âs°¢V6†òsÂ÷F&öG“ãÂ÷F&ÆSãÂöF—cãÂ÷6V7F–öãâs° ¢Gv–æF–öä&w3Õ²wvRsÓâvFV6¶×G—W"×&VF–7F–öç2rÂw&VF–7F–öå÷G—RsÓâGG—RÂw&VF–7F–öå÷7FGW2sÓâG7FGW4f–ÇFW"Âw6V6öâsÓâG6V6öâÂvÆVwVRsÓâFÆVwVRÂvw&÷WsÓâFw&÷WÂw&÷VæEö–BsÓâG&÷VæD–BÂw2sÓâG6V&6…Ó°¢–b‚GF÷FÂâGW%vR’°¢F&6SÖFE÷VW'•ö&r†'&•öÖW&vR‚Gv–æF–öä&w2Å²vGE÷vVBsÓârR2RuÒ’ÆFÖ–å÷W&Â‚vFÖ–âç‡r’“°¢V6†òsÆæb6Æ73Ò&GB×v–æF–öâ"&–ÖÆ&VÃÒ%7G&öæ–6÷væ–R#ârçwö·6W5÷÷7B‡v–æFUöÆ–æ·2…²v&6RsÓâF&6RÂvf÷&ÖBsÓârrÂv7W'&VçBsÓâFGEvRÂwF÷FÂsÓâGvW2ÂvÖ–E÷6—¦RsÓã"ÂvVæE÷6—¦RsÓãÂw&We÷FW‡BsÓâ~(irÂvæW‡E÷FW‡BsÓâ~(i"uÒ’’âsÂöæcâs°¢Ğ¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâ&W6V6öå÷6VÆV7F–öåöÆ&VÂ‡7G&–ærGG—RÂ7G&–ærF§6öâÂ'&’GFVÔæÖW2“¢7G&–ær°¢FFFÖ§6öåöFV6öFR‚F§6öâÇG'VR“°¢–b‚—5ö'&’‚FFF’ÇÂFFF’&WGW&â~(	Bs°¢–b‚GG—RÓÓÒw&Sr’°¢F—FV×3ÕµÓ°¢f÷&V6‚‚FFF2GFVÔ–CÓâF'&6¶WB’F—FV×5µÒÒ‚GFVÔæÖW5²†–çB’GFVÔ–EÒóòtG'\[Ç–æ2râ†–çB’GFVÔ–B’âs¢râF'&6¶WC°¢&WGW&â–×ÆöFR‚s²rÂF—FV×2“°¢Ğ¢F—FV×3ÕµÓ°¢f÷&V6‚‚FFF2GFVÔ–B’F—FV×5µÓÒGFVÔæÖW5²†–çB’GFVÔ–EÒóòtG'\[Ç–æ2râ†–çB’GFVÔ–C°¢&WGW&â–×ÆöFR‚rÂrÂF—FV×2“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ&æ¶–ær‚“¢fö–B°¢G2ÒEEôD#£§6WGF–æw2‚“°¢6VÆc£§6†VÆÂ‚u&æ¶–ærrÂt¶Æ7–f–¶6¦6W¦öçRrâG5²w6V6öâuÒ“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#âs²6VÆc£§&æ¶–æu÷F&ÆR„EEõ66÷&–æs£§&æ¶–ær‚G5²w6V6öâuÒÃS’“²V6†òsÂ÷6V7F–öãâs°¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâ&æ¶–æu÷F&ÆR†'&’G&÷w2“¢fö–B°¢V6†òsÇF&ÆR6Æ73Ò'v–FVfBGB×F&ÆR#ãÇF†VCãÇG#ãÇFƒâ3Â÷FƒãÇFƒå\[Ç—F¶÷væ–³Â÷FƒãÇFƒåVæ·G“Â÷FƒãÇFƒåG&f–Væ–Â÷FƒãÇFƒåG—“Â÷FƒãÇFƒåW&fV¶7–¦æR¶öÆV¦¶“Â÷FƒãÂ÷G#ãÂ÷F†VCãÇF&öG“âs°¢f÷&V6‚‚G&÷w22G"’°¢V6†òsÇG"6Æ73Ò"râ‚V×G’‚G%²v—5öW‡W'BuÒ“òvGBÖW‡W'B×&÷rs¢rr’âr#ãÇFCãÇ7â6Æ73Ò&GB×&æ²GB×&æ²ÒrâÖ–âƒ2Â†–çB’G%²w&æ²uÒ’âr#ârâ†–çB’G%²w&æ²uÒâsÂ÷7ããÂ÷FCãÇFCãÇ7G&öæsârâW65ö‡FÖÂ‚G%²vF—7Æ•öæÖRuÒ’âsÂ÷7G&öæsârâ‚V×G’‚G%²v—5öW‡W'BuÒ“òrÇ7â6Æ73Ò&GBÖW‡W'BÖ&FvR#äTµ5U%BÂ÷7ãâs¢rr’âsÂ÷FCãÇFCãÇ7G&öæsârâW65ö‡FÖÂ‚‡7G&–ær’†–çB’G%²wö–çG2uÒ’âsÂ÷7G&öæsãÂ÷FCãÇFCârâ†–çB’G%²wv–ææW%ö†—G2uÒâsÂ÷FCãÇFCârâ†–çB’G%²w&VF–7F–öç2uÒâsÂ÷FCãÇFCârâ†–çB’G%²wW&fV7E÷&÷VæG2uÒâsÂ÷FCãÂ÷G#âs°¢Ğ¢–b‚G&÷w2’V6†òsÇG#ãÇFB6öÇ7ãÒ#b"6Æ73Ò&GBÖV×G’#å&æ¶–ær¦W7B¦W7¦7¦RW7G’ãÂ÷FCãÂ÷G#âs°¢V6†òsÂ÷F&öG“ãÂ÷F&ÆSâs°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâW6W'2‚“¢fö–B°¢vÆö&ÂGwF#°¢G2ÒEEôD#£§6WGF–æw2‚“°¢G6V6öå7ÂÒGwF"Óç&W&R‚rW2rÂG5²w6V6öâuÒ“°¢FGEvSÖÖ‚ƒÂ†–çB’‚EôtUE²vGE÷vVBuÓóó’“²GW%vSÓ#S°¢GF÷FÃÒ†–çB’GwF"ÓævWE÷f"‚%4TÄT5B4õTåB‚¢’e$ôÒ²GwF"ÓçW6W'7Ò"“°¢GW6W'2ÒGwF"ÓævWE÷&W7VÇG2€¢%4TÄT5BRä”BÇRæF—7Æ•öæÖRÇRçW6W%öVÖ–ÂÀ¢…4TÄT5B4õTåB‚¢’e$ôÒ"âEEôD#£§F&ÆR‚w&÷VæE÷7V&Ö—76–öç2r’â"72¤ô”â"âEEôD#£§F&ÆR‚w&÷VæG2r’â"'"ôâ'"æ–C×72ç&÷VæEö–Bt„U$R72çW6W%ö–C×Rä”BäB'"ç6V6öãÒG6V6öå7Â’7V&Ö—76–öç2À¢…4TÄT5B4õTåB‚¢’e$ôÒ"âEEôD#£§F&ÆR‚w&VF–7F–öç2r’â"¤ô”â"âEEôD#£§F&ÆR‚vÖF6†W2r’â"ÖÒôâÖÒæ–C×æÖF6…ö–B¤ô”â"âEEôD#£§F&ÆR‚w&÷VæG2r’â"'#"ôâ'#"æ–CÖÖÒç&÷VæEö–Bt„U$RçW6W%ö–C×Rä”BäB'#"ç6V6öãÒG6V6öå7ÂäBç6VÆV7FVE÷FVÕö–B•2äõBåTÄÂ’&VF–7F–öç2À¢…4TÄT5B4ôÄU44R…5TÒ‡çö–çG2’Ã’e$ôÒ"âEEôD#£§F&ÆR‚w&VF–7F–öç2r’â"¤ô”â"âEEôD#£§F&ÆR‚vÖF6†W2r’â"ÖÒôâÖÒæ–C×æÖF6…ö–B¤ô”â"âEEôD#£§F&ÆR‚w&÷VæG2r’â"'#"ôâ'#"æ–CÖÖÒç&÷VæEö–Bt„U$RçW6W%ö–C×Rä”BäB'#"ç6V6öãÒG6V6öå7ÂäBç6VÆV7FVE÷FVÕö–B•2äõBåTÄÂ’ö–çG2À¢…4TÄT5B4õTåB‚¢’e$ôÒ"âEEôD#£§F&ÆR‚w&VF–7F–öç2r’â"¤ô”â"âEEôD#£§F&ÆR‚vÖF6†W2r’â"ÖÒôâÖÒæ–C×æÖF6…ö–B¤ô”â"âEEôD#£§F&ÆR‚w&÷VæG2r’â"'#"ôâ'#"æ–CÖÖÒç&÷VæEö–Bt„U$RçW6W%ö–C×Rä”BäB'#"ç6V6öãÒG6V6öå7ÂäBç66÷&–æuö6öFSÒwv–ææW"r’v–ææW%ö†—G0¢e$ôÒ²GwF"ÓçW6W'7ÒP¢õ$DU"%’ö–çG2DU42ÇRæF—7Æ•öæÖRÄ”Ô•B"â†–çB’GW%vRâ"ôde4UB"â†–çB’‚‚FGEvRÓ’¢GW%vR¢“°¢6VÆc£§6†VÆÂ‚u\[Ç—F¶÷væ–7’rÂuw7§—7F¶–R¦&V¦W7G&÷væR¶öçF’,I–7¦æR¶÷&V·G’Væ·L;7rr“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇF&ÆR6Æ73Ò'v–FVfBGB×F&ÆR#ãÇF†VCãÇG#ãÇFƒå\[Ç—F¶÷væ–³Â÷FƒãÇFƒä·Wöç“Â÷FƒãÇFƒåG—“Â÷FƒãÇFƒåG&f–Væ–Â÷FƒãÇFƒåVæ·G“Â÷FƒãÇFƒäV·7W'CÂ÷FƒãÇFƒä¶÷&V·FÂ÷FƒãÂ÷G#ãÂ÷F†VCãÇF&öG“âs°¢f÷&V6‚‚GW6W'22GR’°¢FW‡W'BÒEEõW6W%õ6WGF–æw3£¦—5öW‡W'B‚†–çB’GRÓä”B“°¢V6†òsÇG"6Æ73Ò"râ‚FW‡W'CòvGBÖW‡W'B×&÷rs¢rr’âr#ãÇFCãÆF—b6Æ73Ò&GB×W6W"#ârâvWEöfF"‚†–çB’GRÓä”BÃ3B’âsÇ7ããÇ7G&öæsârâW65ö‡FÖÂ‚GRÓæF—7Æ•öæÖR’â‚FW‡W'CòrÇ7â6Æ73Ò&GBÖW‡W'BÖ&FvR#äTµ5U%BÂ÷7ãâs¢rr’âsÂ÷7G&öæsãÇ6ÖÆÂ6Æ73Ò&GBÖ×WFVB#ârâW65ö‡FÖÂ‚GRÓçW6W%öVÖ–Â’âsÂ÷6ÖÆÃãÂ÷7ããÂöF—cãÂ÷FCãÇFCârâ†–çB’GRÓç7V&Ö—76–öç2âsÂ÷FCãÇFCârâ†–çB’GRÓç&VF–7F–öç2âsÂ÷FCãÇFCârâ†–çB’GRÓçv–ææW%ö†—G2âsÂ÷FCãÇFCãÇ7G&öæsârâ†–çB’GRÓçö–çG2âsÂ÷7G&öæsãÂ÷FCãÇFCãÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"râW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GE÷FövvÆUöW‡W'B#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ'W6W%ö–B"fÇVSÒ"râ†–çB’GRÓä”Bâr#âs²wöæöæ6Uöf–VÆB‚vGE÷FövvÆUöW‡W'Br“²V6†òsÆ'WGFöâ6Æ73Ò&'WGFöârâ‚FW‡W'CòvGB×VæÖ&²ÖW‡W'Bs¢vGBÖÖ&²ÖW‡W'Br’âr#ârâ‚FW‡W'CòtöG¦æ7¢¦¶òV·7W'Bs¢t÷¦æ7¢¦¶òV·7W'Br’âsÂö'WGFöããÂöf÷&ÓãÂ÷FCãÇFCãÆf÷&Ò6Æ73Ò&GBÖ–æÆ–æRÖf÷&Ò"ÖWF†öCÒ'÷7B"7F–öãÒ"râW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GEöF§W7E÷ö–çG2#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ'W6W%ö–B"fÇVSÒ"râ†–çB’GRÓä”Bâr#âs²wöæöæ6Uöf–VÆB‚vGEöF§W7E÷ö–çG2r“²V6†òsÆ–çWBG—SÒ&çVÖ&W""7FWÒ#"æÖSÒ'ö–çG2"Æ6V†öÆFW#Ò,+·B"&WV—&VCãÆ–çWBæÖSÒ'&V6öâ"Æ6V†öÆFW#Ò%÷|;6B"&WV—&VCãÆ'WGFöâ6Æ73Ò&'WGFöâ#äFöF£Âö'WGFöããÂöf÷&ÓãÂ÷FCãÂ÷G#âs°¢Ğ¢–b‚GW6W'2’V6†òsÇG#ãÇFB6öÇ7ãÒ#r"6Æ73Ò&GBÖV×G’#ä'&²¦&V¦W7G&÷vç–6‚\[Ç—F¶÷væ–¼;7rãÂ÷FCãÂ÷G#âs°¢V6†òsÂ÷F&öG“ãÂ÷F&ÆSãÂ÷6V7F–öãâs°¢6VÆc£§v–æF–öâ‚GF÷FÂÂGW%vRÂFGEvRÅ²wvRsÓâvFV6¶×G—W"×W6W'2uÒ“°¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâæ÷F–f–6F–öç2‚“¢fö–B°¢vÆö&ÂGwF#°¢GF&ÆSÔEEôD#£§F&ÆR‚væ÷F–f–6F–öç2r“²GvSÖÖ‚ƒÂ†–çB’‚EôtUE²vGE÷vVBuÓóó’“²GW%vSÓC°¢GF÷FÃÒ†–çB’GwF"ÓævWE÷f"‚%4TÄT5B4õTåB‚¢’e$ôÒGF&ÆR"“°¢G&÷w3ÒGwF"ÓævWE÷&W7VÇG2‚GwF"Óç&W&R‚%4TÄT5Bââ¢ÇRæF—7Æ•öæÖRÇRçW6W%öVÖ–Âe$ôÒGF&ÆRâÄTeB¤ô”â²GwF"ÓçW6W'7ÒRôâRä”CÖâçW6W%ö–Bõ$DU"%’âæ7&VFVEöBDU42Æâæ–BDU42Ä”Ô•BVBôde4UBVB"ÂGW%vRÂ‚GvRÓ’¢GW%vR’“°¢6VÆc£§6†VÆÂ‚u÷v–FöÖ–Væ–rÂt†—7F÷&–w—<X&ç–6‚’æ–WVFç–6‚'§—öÖæ–\XBvV"W6‚õt††—7F÷&–¦v–W&F¼[ÆRFvæRv–FöÖüY¶6’RÖÖ–Â’âXHV7¦æ–S¢ræçVÖ&W%öf÷&ÖEö“†â‚GF÷FÂ’ârâr“°¢6VÆc£¦æ÷F–f–6F–öå÷FV×ÆFW5öf÷&Ò‚“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇF&ÆR6Æ73Ò'v–FVfBGB×F&ÆR#ãÇF†VCãÇG#ãÇFƒäFFÂ÷FƒãÇFƒå\[Ç—F¶÷væ–³Â÷FƒãÇFƒä¶æX#Â÷FƒãÇFƒå¦F'¦Væ–SÂ÷FƒãÇFƒåv–FöÖüY¼HsÂ÷FƒãÇFƒå7FGW3Â÷FƒãÇFƒäöG÷v–VL[¢F÷7Fv7“Â÷FƒãÂ÷G#ãÂ÷F†VCãÇF&öG“âs°¢f÷&V6‚‚†'&’’G&÷w22G&÷r’V6†òsÇG#ãÇFCâræW65ö‡FÖÂ‡6VÆc£¦FFU÷Â‚‡7G&–ær’G&÷rÓæ7&VFVEöB’’âsÂ÷FCãÇFCãÇ7G&öæsâræW65ö‡FÖÂ‚‡7G&–ær’‚G&÷rÓæF—7Æ•öæÖSó¢u\[Ç—F¶÷væ–²2râG&÷rÓçW6W%ö–B’’âsÂ÷7G&öæsãÇ6ÖÆÂ6Æ73Ò&GBÖ×WFVB#âræW65ö‡FÖÂ‚‡7G&–ær’G&÷rÓçW6W%öVÖ–Â’âsÂ÷6ÖÆÃãÂ÷FCãÇFCârç6VÆc£¦&FvR‡7G'F÷WW"‚‡7G&–ær’G&÷rÓæ6†ææVÂ’Âv&ÇVRr’âsÂ÷FCãÇFCâræW65ö‡FÖÂ‚‡7G&–ær’G&÷rÓæWfVçE÷G—R’âsÂ÷FCãÇFCãÇ7G&öæsâræW65ö‡FÖÂ‚‡7G&–ær’G&÷rÓçF—FÆR’âsÂ÷7G&öæsãÇ6ÖÆÂ6Æ73Ò&GBÖ×WFVB#âræW65ö‡FÖÂ‚‡7G&–ær’G&÷rÓæÖW76vR’âsÂ÷6ÖÆÃãÂ÷FCãÇFCârç6VÆc£¦&FvR‚‡7G&–ær’G&÷rÓç7FGW2ÂG&÷rÓç7FGW3ÓÓÒw6VçBsòvw&VVâs¢‚G&÷rÓç7FGW3ÓÓÒvf–ÆVBsòw&VBs¢v÷&ævRr’’âsÂ÷FCãÇFCãÆ6öFR7G–ÆSÒ'v†—FR×76S§&R×w&·v÷&BÖ'&V³¦'&V²×v÷&B#âræW65ö‡FÖÂ‚‡7G&–ær’G&÷rÓç&÷f–FW%÷&W7öç6R’âsÂö6öFSãÂ÷FCãÂ÷G#âs°¢–b‚G&÷w2’V6†òsÇG#ãÇFB6öÇ7ãÒ#r"6Æ73Ò&GBÖV×G’#ä†—7F÷&–÷v–FöÖ–\XB¦W7B¦W7¦7¦RW7FãÂ÷FCãÂ÷G#âs°¢V6†òsÂ÷F&öG“ãÂ÷F&ÆSãÂ÷6V7F–öãâs°¢6VÆc£§v–æF–öâ‚GF÷FÂÂGW%vRÂGvRÅ²wvRsÓâvFV6¶×G—W"Öæ÷F–f–6F–öç2uÒ“·6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ7FG2‚“¢fö–B°¢vÆö&ÂGwF#°¢G2ÒEEôD#£§6WGF–æw2‚“°¢GF÷FÂÒ†–çB’GwF"ÓævWE÷f"‚GwF"Óç&W&R‚u4TÄT5B4õTåB‚¢’e$ôÒrâEEôD#£§F&ÆR‚w&÷VæE÷7V&Ö—76–öç2r’âr2¤ô”ârâEEôD#£§F&ÆR‚w&÷VæG2r’âr"ôâ"æ–C×2ç&÷VæEö–Bt„U$R"ç6V6öãÒW2rÂG5²w6V6öâuÒ’“°¢GÆ–W'2Ò†–çB’GwF"ÓævWE÷f"‚GwF"Óç&W&R‚u4TÄT5B4õTåB„D•5D”ä5B2çW6W%ö–B’e$ôÒrâEEôD#£§F&ÆR‚w&÷VæE÷7V&Ö—76–öç2r’âr2¤ô”ârâEEôD#£§F&ÆR‚w&÷VæG2r’âr"ôâ"æ–C×2ç&÷VæEö–Bt„U$R"ç6V6öãÒW2rÂG5²w6V6öâuÒ’“°¢F†—G2Ò†–çB’GwF"ÓævWE÷f"‚GwF"Óç&W&R‚%4TÄT5B4õTåB‚¢’e$ôÒ"âEEôD#£§F&ÆR‚w&VF–7F–öç2r’â"¤ô”â"âEEôD#£§F&ÆR‚vÖF6†W2r’â"ÒôâÒæ–C×æÖF6…ö–B¤ô”â"âEEôD#£§F&ÆR‚w&÷VæG2r’â""ôâ"æ–CÖÒç&÷VæEö–Bt„U$R"ç6V6öãÒW2äBç66÷&–æuö6öFSÒwv–ææW"r"ÂG5²w6V6öâuÒ’“°¢6VÆc£§6†VÆÂ‚u7FG—7G–¶’rÂt·G—væüY¼HrV7¦W7Fæ–¼;7rr6W¦öæ–RrâG5²w6V6öâuÒ“°¢V6†òsÆF—b6Æ73Ò&GBÖw&–BGBÖw&–BÓ2#âs²6VÆc£¦ÖWG&–2‚t·Wöç’rÂGF÷FÂÂvf÷&×2rÂv&ÇVRr“²6VÆc£¦ÖWG&–2‚tw&7¦RrÂGÆ–W'2Âvw&÷W2rÂvw&VVâr“²6VÆc£¦ÖWG&–2‚uG&f–öæRÖV7¦RrÂF†—G2Âw–W2ÖÇBrÂv÷&ævRr“²V6†òsÂöF—câs°¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ7–æ2‚“¢fö–B°¢G2ÒEEôD#£§6WGF–æw2‚“°¢FÆ7BÒvWEö÷F–öâ‚vGEöÆ7E÷7–æ2r“°¢6VÆc£§6†VÆÂ‚u7–æ6‡&öæ—¦6¦Fç–6‚¤¶÷7¢rÂuFW&Ö–æ'¦RÂw–æ–¶’’G'\[Ç–ç’¢Ä²ÂÄÒ÷&¢w'W(	4B$ÄÒr“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#äôd”4¤ÄäR[•,94LXÂ÷7ããÆƒ#åÄ²’&÷¦w'—v¶’¤¶÷7£Âöƒ#ãÆF—b6Æ73Ò&GBÖ†VÇF‚#ãÆF—cãÇ7ãåÄ³Â÷7ããÇ7G&öæsâræW65ö‡FÖÂ‚G5²w6÷W&6U÷Æµ÷W&ÂuÒ’âsÂ÷7G&öæsãÂöF—cãÆF—cãÇ7ããÆ–vÜIœ[Æ7§—¦ãÂ÷7ããÇ7G&öæsâræW65ö‡FÖÂ‚G5²w6÷W&6UóÆÕ÷W&ÂuÒ’âsÂ÷7G&öæsãÂöF—cãÆF—cãÇ7ãã"Æ–vÜIœ[Æ7§—¦ãÂ÷7ããÇ7G&öæsâræW65ö‡FÖÂ‚G5²w6÷W&6Uó&ÆÕ÷W&ÂuÒ’âsÂ÷7G&öæsãÂöF—cãÆF—cãÇ7ãä7¬I—7F÷FÆ—vüY¼HsÂ÷7ããÇ7G&öæsä6òrâ†–çB’‚G5²w7–æ5ö–çFW'fÅöÖ–çWFW2uÓóóc’ârÖ–çWCÂ÷7G&öæsãÂöF—cãÂöF—cãÆF—b6Æ73Ò&GB×7–æ2×7FFR#ãÇ7â6Æ73Ò&GBÖF÷Brâ‚V×G’‚G5²w7–æ5öVæ&ÆVBuÒ“òv—2Ööâs¢rr’âr#ãÂ÷7ããÆF—cãÇ7G&öæsârâ‚V×G’‚G5²w7–æ5öVæ&ÆVBuÒ“òu7–æ6‡&öæ—¦6¦WFöÖG–7¦æ·G—væs¢u7–æ6‡&öæ—¦6¦WFöÖG–7¦æwœX,HV7¦öær’âsÂ÷7G&öæsãÇ6ÖÆÃä÷7FFæ–ó¢râW65ö‡FÖÂ‚FÆ7E²vBuÒóòvæ–vG’r’âsÂ÷6ÖÆÃãÂöF—cãÂöF—cãÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"râW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GE÷7–æ5öæ÷r#âs²wöæöæ6Uöf–VÆB‚vGE÷7–æ5öæ÷rr“²V6†òsÆ'WGFöâ6Æ73Ò&'WGFöâ'WGFöâ×&–Ö'’GBÖ'WGFöâ#ãÇ7â6Æ73Ò&F6†–6öç2F6†–6öç2×WFFR#ãÂ÷7ãâ7–æ6‡&öæ—§V¢w7§—7F¶–RÆ–v“Âö'WGFöããÂöf÷&ÓãÂ÷6V7F–öãâs°¢–b‚V×G’‚FÆ7E²w&W7VÇBuÒ’’V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&BGB×6V7F–öâ#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#äõ5DDä’”Õõ%CÂ÷7ããÆƒ#åöG7VÖ÷væ–SÂöƒ#ãÇ&R7G–ÆSÒ'v†—FR×76S§&R×w&#ârâW65ö‡FÖÂ‡wö§6öåöVæ6öFR‚FÆ7E²w&W7VÇBuÒÄ¥4ôåõ$UEE•õ$”åGÄ¥4ôåõTäU44TEõTä”4ôDR’’âsÂ÷&SãÂ÷6V7F–öãâs°¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâÆöw2‚“¢fö–B°¢vÆö&ÂGwF#°¢FGEvSÖÖ‚ƒÂ†–çB’‚EôtUE²vGE÷vVBuÓóó’“²GW%vSÓ3²GF÷FÃÒ†–çB’GwF"ÓævWE÷f"‚u4TÄT5B4õTåB‚¢’e$ôÒräEEôD#£§F&ÆR‚vÆöw2r’“°¢G&÷w2ÒGwF"ÓævWE÷&W7VÇG2‚u4TÄT5BÂâ¢ÇRæF—7Æ•öæÖRe$ôÒrâEEôD#£§F&ÆR‚vÆöw2r’ârÂÄTeB¤ô”ârâGwF"ÓçW6W'2ârRôâRä”CÖÂçW6W%ö–Bõ$DU"%’Âæ–BDU42Ä”Ô•Brâ†–çB’GW%vRârôde4UBrâ†–çB’‚‚FGEvRÓ’¢GW%vR’“°¢6VÆc£§6†VÆÂ‚t†—7F÷&–rÂtÆör÷W&6¦’Â7–æ6‡&öæ—¦6¦’’¦Ö–âr“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇF&ÆR6Æ73Ò'v–FVfBGB×F&ÆR#ãÇF†VCãÇG#ãÇFƒä7¦3Â÷FƒãÇFƒå¦F'¦Væ–SÂ÷FƒãÇFƒä÷—3Â÷FƒãÇFƒå\[Ç—F¶÷væ–³Â÷FƒãÂ÷G#ãÂ÷F†VCãÇF&öG“âs°¢f÷&V6‚‚G&÷w22G"’V6†òsÇG#ãÇFCârâW65ö‡FÖÂ‡6VÆc£¦FFU÷Â‚G"Óæ7&VFVEöB’’âsÂ÷FCãÇFCârâ6VÆc£¦&FvR‚G"ÓæWfVçBÂG"ÓæÆWfVÃÓÓÒvW'&÷"sòw&VBs¢‚G"ÓæÆWfVÃÓÓÒvæ÷F–6Rsòv÷&ævRs¢væWWG&Âr’’âsÂ÷FCãÇFCârâW65ö‡FÖÂ‚G"ÓæÖW76vR’âsÂ÷FCãÇFCârâW65ö‡FÖÂ‚G"ÓæF—7Æ•öæÖRó¢u7—7FVÒr’âsÂ÷FCãÂ÷G#âs°¢–b‚G&÷w2’V6†òsÇG#ãÇFB6öÇ7ãÒ#B"6Æ73Ò&GBÖV×G’#ä†—7F÷&–¦W7BW7FãÂ÷FCãÂ÷G#âs°¢V6†òsÂ÷F&öG“ãÂ÷F&ÆSãÂ÷6V7F–öãâs°¢6VÆc£§v–æF–öâ‚GF÷FÂÂGW%vRÂFGEvRÅ²wvRsÓâvFV6¶×G—W"ÖÆöw2uÒ“°¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ6WGF–æw2‚“¢fö–B°¢G2ÒEEôD#£§6WGF–æw2‚“°¢6VÆc£§6†VÆÂ‚uW7Fv–Væ–rÂu&÷¦w'—v¶’ÂVæ·F6¦ÂÆöv÷væ–R’w–vÌHVBr“°¢V6†òsÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"râW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr"6Æ73Ò&GB×6WGF–æw2#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GE÷6fU÷6WGF–æw2#âs°¢wöæöæ6Uöf–VÆB‚vGE÷6fU÷6WGF–æw2r“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#åE%”"4U%t•5SÂ÷7ããÆƒ#äF÷7LI—æüY¼HrG—V¤¶÷7¦çÃÂöƒ#ãÆF—b6Æ73Ò&GBÖÖöFRÖ÷F–öç2#âs°¢f÷&V6‚…²w&öGV7F–öâsÓâu&öGV¶7–¦ç’rÂwFW7BsÓâuFW7F÷w’rÂv'&V²sÓâu'¦W'vuÒ2GfÇVSÓâFÆ&VÂ’V6†òsÆÆ&VÂ6Æ73Ò&GBÖÖöFRÖ6&B#ãÆ–çWBG—SÒ'&F–ò"æÖSÒ'6—FUöÖöFR"fÇVSÒ"ræW65öGG"‚GfÇVR’âr"ræ6†V6¶VB‚‚G5²w6—FUöÖöFRuÓóòwFW7Br’ÂGfÇVRÆfÇ6R’âsãÇ7ããÇ7G&öæsâræW65ö‡FÖÂ‚FÆ&VÂ’âsÂ÷7G&öæsãÇ6ÖÆÃâræW65ö‡FÖÂ‚GfÇVSÓÓÒw&öGV7F–öâsòu\X&æRG¦–X&æ–R6W'v—7Râs¢‚GfÇVSÓÓÒwFW7Bsò|[¼;<X'G’¶ö×Væ–¶BòvW'6¦’FW7F÷vV¢âs¢tV·&â7F'F÷w“²wÖFÖ–â÷¦÷7F¦RF÷7LI—ç’âr’’âsÂ÷6ÖÆÃãÂ÷7ããÂöÆ&VÃâs°¢V6†òsÂöF—cãÂ÷6V7F–öãâs°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#å$õ¤u%•t´“Â÷7ããÆƒ#äÆ–v’’6W¦öãÂöƒ#ãÆF—b6Æ73Ò&GBÖf÷&ÒÓ"#ãÆÆ&VÃå6W¦öãÆ–çWBæÖSÒ'6V6öâ"fÇVSÒ"râW65öGG"‚G5²w6V6öâuÒ’âr#ãÂöÆ&VÃãÂöF—cãÆF—b6Æ73Ò&GBÖf÷&ÒÓ2#âs°¢f÷&V6‚…²wÆ²sÓâtõ$ÄTâ&6¶WBÆ–vrÂsÆÒsÓâsÆ–vÜIœ[Æ7§—¦ârÂs&ÆÒsÓâs"Æ–vÜIœ[Æ7§—¦âuÒ2F¶W“ÓâFÆ&VÂ’V6†òsÆF—b6Æ73Ò&GBÖÆVwVR×6WGF–ær#ãÆÆ&VÂ6Æ73Ò&GBÖ6†V6²#ãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ&ÆVwVW5µÒ"fÇVSÒ"ræW65öGG"‚F¶W’’âr"ræ6†V6¶VB‚V×G’‚‚G5²vÆVwVW2uÓóõµÒ•²F¶W•Ò’ÇG'VRÆfÇ6R’âsãÇ7ããÇ7G&öæsâræW65ö‡FÖÂ‡7G'F÷WW"‚F¶W’’’âsÂ÷7G&öæsãÇ6ÖÆÃä·G—værG—÷væ—R’&æ¶–æv6ƒÂ÷6ÖÆÃãÂ÷7ããÂöÆ&VÃãÆÆ&VÃäæ§vÆ–v“Æ–çWBæÖSÒ&ÆVwVUöæÖW5²ræW65öGG"‚F¶W’’âuÒ"fÇVSÒ"ræW65öGG"‚‚G5²vÆVwVUöæÖW2uÓóõµÒ•²F¶W•ÓóòFÆ&VÂ’âr#ãÂöÆ&VÃãÂöF—câs°¢V6†òsÂöF—cãÆF—b6Æ73Ò&GBÖf÷&ÒÓ2#ãÆÆ&VÃäG&W2FW&Ö–æ'¦Ä³Æ–çWBG—SÒ'W&Â"æÖSÒ'6÷W&6U÷Æµ÷W&Â"fÇVSÒ"râW65öGG"‚G5²w6÷W&6U÷Æµ÷W&ÂuÒ’âr#ãÂöÆ&VÃãÆÆ&VÃäG&W2FW&Ö–æ'¦ÄÓÆ–çWBG—SÒ'W&Â"æÖSÒ'6÷W&6UóÆÕ÷W&Â"fÇVSÒ"râW65öGG"‚G5²w6÷W&6UóÆÕ÷W&ÂuÒ’âr#ãÂöÆ&VÃãÆÆ&VÃäG&W2FW&Ö–æ'¦$ÄÓÆ–çWBG—SÒ'W&Â"æÖSÒ'6÷W&6Uó&ÆÕ÷W&Â"fÇVSÒ"râW65öGG"‚G5²w6÷W&6Uó&ÆÕ÷W&ÂuÒ’âr#ãÂöÆ&VÃãÂöF—cãÆF—b6Æ73Ò&GBÖf÷&ÒÓ"#ãÆÆ&VÂ6Æ73Ò&GBÖ6†V6²#ãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ'7–æ5öVæ&ÆVB"fÇVSÒ#"râ6†V6¶VB‚V×G’‚G5²w7–æ5öVæ&ÆVBuÒ’ÇG'VRÆfÇ6R’âsãÇ7ããÇ7G&öæsäWFöÖG–7¦æ7–æ6‡&öæ—¦6¦Fç–6‚¤¶÷7£Â÷7G&öæsãÇ6ÖÆÃåö&–W&¢FW&Ö–æ'¦RÂw–æ–¶’ÂG'\[Ç–ç’’F÷7LI—æRÆöv÷G—’ãÂ÷6ÖÆÃãÂ÷7ããÂöÆ&VÃãÆÆ&VÃå7–æ6‡&öæ—§V¢6ò–ÆRÖ–çWCÆ–çWBG—SÒ&çVÖ&W""Ö–ãÒ#R"ÖƒÒ#CC"7FWÒ#R"æÖSÒ'7–æ5ö–çFW'fÅöÖ–çWFW2"fÇVSÒ"ræW65öGG"‚†–çB’‚G5²w7–æ5ö–çFW'fÅöÖ–çWFW2uÓóóc’’âr#ãÂöÆ&VÃãÂöF—cãÆF—b6Æ73Ò&GB×6WGF–æw2Ö7F–öâ#ãÆ'WGFöâG—SÒ'7V&Ö—B"æÖSÒ'7–æ5÷&W7VÇG5öæ÷r"fÇVSÒ#"6Æ73Ò&'WGFöâ'WGFöâ×&–Ö'’GBÖ'WGFöâ#ãÇ7â6Æ73Ò&F6†–6öç2F6†–6öç2×WFFR#ãÂ÷7ãâ7–æ6‡&öæ—§V¢w–æ–¶’FW&£Âö'WGFöããÇ6Æ73Ò&GBÖ×WFVB#å¦—7¦R÷wœ[Ç7¦RW7Fv–Væ–’æG–6†Ö–7Bö&–W'¦R·GVÆæRFW&Ö–æ'¦R÷&¢w–æ–¶’Ä²ÂÄÒ’$ÄÒãÂ÷ãÂöF—cãÂ÷6V7F–öãâs°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#åTäµD4¤Â÷7ããÆƒ#å¦6G’G—W&Âöƒ#ãÆF—b6Æ73Ò&GBÖf÷&ÒÓ2#ãÆÆ&VÃåVæ·G’¦÷&væVvò§w–6œI—¦<I“Æ–çWBG—SÒ&çVÖ&W""æÖSÒ'ö–çG5÷v–ææW""7FWÒ#"fÇVSÒ"râW65öGG"‚G5²wö–çG5÷v–ææW"uÒ’âr#ãÂöÆ&VÃãÆÆ&VÃä&öçW2¦W&fV¶7–¦ìHR¶öÆV¦¼I“Æ–çWBG—SÒ&çVÖ&W""æÖSÒ'W&fV7E÷&÷VæEö&öçW2"7FWÒ#"fÇVSÒ"râW65öGG"‚G5²wW&fV7E÷&÷VæEö&öçW2uÒ’âr#ãÂöÆ&VÃãÆÆ&VÃäFöFF¶÷vRVæ·G’¦ÖV7¢$ôåU3Æ–çWBG—SÒ&çVÖ&W""Ö–ãÒ#"7FWÒ#"æÖSÒ&&öçW5÷ö–çG2"fÇVSÒ"ræW65öGG"†6Æ75öW†—7G2‚tEEô&öçW2r“ôEEô&öçW3£§ö–çG2‚“£’âr#ãÂöÆ&VÃãÂöF—cãÆƒ3åG—÷væ–7V6¦ÆæR$SÂöƒ3ãÆF—b6Æ73Ò&GBÖf÷&ÒÓ"#ãÆÆ&VÃå$RÒf–æÅ&æ¶–ær(	BVæ·G’¦¶[ÆLHRG&f–öìHRG'\[Ç–ìI“Æ–çWBG—SÒ&çVÖ&W""Ö–ãÒ#"7FWÒ#"æÖSÒ'&Sö†—E÷ö–çG2"fÇVSÒ"ræW65öGG"‚†fÆöB’‚G5²w&Sö†—E÷ö–çG2uÓóó’’âr#ãÂöÆ&VÃãÆÆ&VÃå$RÒf–æÅ&æ¶–ær(	B&öçW2¦W&fV¶7–¦ç’¶ö×ÆWCÆ–çWBG—SÒ&çVÖ&W""Ö–ãÒ#"7FWÒ#"æÖSÒ'&S÷W&fV7Eö&öçW2"fÇVSÒ"ræW65öGG"‚†fÆöB’‚G5²w&S÷W&fV7Eö&öçW2uÓóó’’âr#ãÂöÆ&VÃãÆÆ&VÃå$RÒÆ”ôdb(	BVæ·G’¦¶[ÆLHRG&f–öìHRG'\[Ç–ìI“Æ–çWBG—SÒ&çVÖ&W""Ö–ãÒ#"7FWÒ#"æÖSÒ'&S%ö†—E÷ö–çG2"fÇVSÒ"ræW65öGG"‚†fÆöB’‚G5²w&S%ö†—E÷ö–çG2uÓóó’’âr#ãÂöÆ&VÃãÆÆ&VÃå$RÒÆ”ôdb(	B&öçW2¦W&fV¶7–¦ç’¶ö×ÆWCÆ–çWBG—SÒ&çVÖ&W""Ö–ãÒ#"7FWÒ#"æÖSÒ'&S%÷W&fV7Eö&öçW2"fÇVSÒ"ræW65öGG"‚†fÆöB’‚G5²w&S%÷W&fV7Eö&öçW2uÓóó’’âr#ãÂöÆ&VÃãÂöF—cãÇ6Æ73Ò&GBÖ×WFVB#åVæ·F6¦$R¦÷7Fæ–R\[Ç—FöF7¦2&÷¦Æ–7¦Væ–¶üXF6÷vV¢F&VÆ’’6¼X&GRÆ’Ööfbâ¦Ö–æv'FüY¶6’æ–RW7Wv¦—6ç–6‚&övæ÷¢ãÂ÷ãÇ6Æ73Ò&GBÖ×WFVB#å\[Ç—F¶÷væ–²w–&–W&wœX,HV7¦æ–R§w–6œI—¦<I’âFö¼X&Fç’w–æ–²æ–R¦W7BG—÷vç’âr¶[ÆFV¢¶öÆV¦6RÖü[Ææw6¶¦HrÖ·7–ÖÆæ–R¦VFVâÖV7¢$ôåU2ãÂ÷ãÂ÷6V7F–öãâs°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#äôDÄ”5¤ä”SÂ÷7ããÆƒ#äÆ–7¦æ–¶’7F'GRÆ–r’ÖV7¬;7sÂöƒ#ãÆÆ&VÂ6Æ73Ò&GBÖ6†V6²#ãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ'6†÷uö6÷VçFF÷vç2"fÇVSÒ#"râ6†V6¶VB‚V×G’‚G5²w6†÷uö6÷VçFF÷vç2uÒ’ÇG'VRÆfÇ6R’âsãÇ7ããÇ7G&öæsåö¶§V¢öFÆ–7¦æ–R\[Ç—F¶÷væ–¶öÓÂ÷7G&öæsãÇ6ÖÆÃåwœY·v–WFÆG'§’Æ–7¦æ–¶’7F'GRÆ–ræ7G&öæ–R|X,;7væV¢’rÆ–¶6¦’÷&¢7¦2÷¦÷7FX'’Fò&÷§ö7¬I–6–¶[ÆFVvòÖV7§Rr¦¼X&F6R(	åG—V®(	ÒãÂ÷6ÖÆÃãÂ÷7ããÂöÆ&VÃãÂ÷6V7F–öãâs°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#å$T´ÄÕ“Â÷7ããÆƒ#å7–×VÆ6¦6Æ÷L;7r&V¶ÆÖ÷w–6ƒÂöƒ#ãÆÆ&VÂ6Æ73Ò&GBÖ6†V6²#ãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ&E÷6Æ÷E÷&Wf–Wr"fÇVSÒ#"ræ6†V6¶VB‚V×G’‚G5²vE÷6Æ÷E÷&Wf–WruÒ’ÇG'VRÆfÇ6R’âsãÇ7ããÇ7G&öæsåö¶§V¢FW7F÷vRÖ–V§66&V¶ÆÖ÷vSÂ÷7G&öæsãÇ6ÖÆÃåw–Ö–"'§–v÷F÷w—væV¢w&f–¶“¢ƒ’c(	B#3c9r#Sƒ²3’3"(	B3#R9r#‚âÖ¶–WG’<HR6¶Æ÷væRFò'¦V7§—v—7FVvòÖ–V§66r–çFW&fV§6–Râ§w–¶Æ’\[Ç—F¶÷væ–7’v–G¬HRwœX,HV7¦æ–R·G—væR¶×æ–RãÂ÷6ÖÆÃãÂ÷7ããÂöÆ&VÃãÇ6Æ73Ò&GBÖ×WFVB#ãÆ‡&VcÒ"ræW65÷W&Â†FÖ–å÷W&Â‚vFÖ–âç‡÷vSÖFV6¶×G—W"ÖG2r’’âr#å'¦V¦L[¢Fò¦'¬HVG¦æ–¶×æ–Ö’(i#ÂöãÂ÷ãÂ÷6V7F–öãâs°¢F”¶W•&VG’ÒFVf–æVB‚tEEôtTÔ”ä•ô•ô´U’r’bbG&–Ò‚‡7G&–ær”EEôtTÔ”ä•ô•ô´U’’ÓÒrs°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#ä%EU"“Â÷7ããÆƒ#ä¶üX&ò&GVæ¶÷vR'GW&Âöƒ#ãÆF—b6Æ73Ò&GB×7–æ2×7FFR#ãÇ7â6Æ73Ò&GBÖF÷Brâ‚F”¶W•&VG“òv—2Ööâs¢rr’âr#ãÂ÷7ããÆF—cãÇ7G&öæsârâ‚F”¶W•&VG“òt¶ÇV7¢vVÖ–æ’¦W7B6¶öæf–wW&÷vç’s¢t'&²¶ÇV7¦EEôtTÔ”ä•ô•ô´U’r’âsÂ÷7G&öæsãÇ6ÖÆÃä¶ÇV7¢¦W7BöF7§—G—vç’&W§–V7¦æ–R¢Æ–·RwÖ6öæf–rç‡’æ–R¦W7B¦—7—vç’r&¦–RãÂ÷6ÖÆÃãÂöF—cãÂöF—cãÆÆ&VÂ6Æ73Ò&GBÖ6†V6²#ãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ&'GW%ö•öVæ&ÆVB"fÇVSÒ#"ræ6†V6¶VB‚V×G’‚G5²v'GW%ö•öVæ&ÆVBuÒ’ÇG'VRÆfÇ6R’âsãÇ7ããÇ7G&öæså|X,HV7¢¶üX&ò&GVæ¶÷vR'GW&Â÷7G&öæsãÇ6ÖÆÃä¶[ÆG’\[Ç—F¶÷væ–²Öü[ÆRw–'&Hr¦VFVâÖV7¢r¶öÆV¦6R’¦FHr'GW&÷v’—Fæ–F÷G–7¬HV6RFVvò7÷F¶æ–ãÂ÷6ÖÆÃãÂ÷7ããÂöÆ&VÃãÆF—b6Æ73Ò&GBÖ–æÆ–æR×v&æ–ær#årG'–&–RFW7F÷w–Ò—Fæ–æ–RÖ¬HRÆ–Ö—GRÂæ–R'§——7V¬HR¶üX&FòÖV7§R’æ–R<HRG'vÆR¦—7—væRâG'–"&öGV¶7–¦ç’7F÷7V¦RÆ–Ö—B÷&¢&Æö¶LI’¦VFæVvòÖV7§Ræ¶öÆV¦¼I’ãÂöF—cãÆF—b6Æ73Ò&GBÖf÷&ÒÓ"#ãÆÆ&VÃäÖöFVÂvVÖ–æ“Æ–çWBæÖSÒ&'GW%ö•öÖöFVÂ"fÇVSÒ"ræW65öGG"‚‡7G&–ær’‚G5²v'GW%ö•öÖöFVÂuÓóòvvVÖ–æ’Ó"ãRÖfÆ6‚ÖÆ—FRr’’âr"Ö†ÆVæwFƒÒ##ãÂöÆ&VÃãÆÆ&VÃäÆ–7¦&—FXBò\[Ç–6—R¶üX&Æ–çWBG—SÒ&çVÖ&W""æÖSÒ&'GW%ö•÷VW7F–öç2"Ö–ãÒ#"ÖƒÒ#R"fÇVSÒ"ræW65öGG"‚†–çB’‚G5²v'GW%ö•÷VW7F–öç2uÓóó2’’âr#ãÂöÆ&VÃãÂöF—cãÆÆ&VÃä–ç7G'V¶6¦÷6ö&÷vüY¶6’’öG÷v–VG¦“ÇFW‡F&VæÖSÒ&'GW%ö•ö–ç7G'V7F–öâ"&÷w3Ò#‚"Ö†ÆVæwFƒÒ#C#âræW65÷FW‡F&V‚‡7G&–ær’‚G5²v'GW%ö•ö–ç7G'V7F–öâuÓóôEEôD#£¦FVfVÇEö'GW%ö•ö–ç7G'V7F–öâ‚’’’âsÂ÷FW‡F&VãÂöÆ&VÃãÇ6Æ73Ò&GBÖ×WFVB#ä–ç7G'V¶6¬I’Öü[ÆW7¢F÷vöÆæ–R¦Ö–Væ–Hrâ·GVÆ—¦6¦RwG–7¦¶’æ–RæG—7¬HRG&\Y¶6’¦—6æV¢r&¦–RFç–6‚ãÂ÷ãÂ÷6V7F–öãâs°¢6VÆc£§&÷f–FW%öf–VÆG2‚tvöövÆRrÅµ²vvöövÆUö6Æ–VçEö–BrÂt6Æ–VçB”BrÂwFW‡BuÒÅ²vvöövÆUö6Æ–VçE÷6V7&WBrÂt6Æ–VçB6V7&WBrÂw77v÷&BuÕÒÄEEôôWFƒ£¦6ÆÆ&6µ÷W&Â‚vvöövÆRr’ÂG2“°¢6VÆc£§&÷f–FW%öf–VÆG2‚tf6V&öö²rÅµ²vf6V&ööµöö–BrÂt”BrÂwFW‡BuÒÅ²vf6V&ööµö÷6V7&WBrÂt6V7&WBrÂw77v÷&BuÕÒÄEEôôWFƒ£¦6ÆÆ&6µ÷W&Â‚vf6V&öö²r’ÂG2“°¢G&—f7”–BÒ6Æ75öW†—7G2‚tEEôÆVvÂr’òEEôÆVvÃ£§&—f7•÷vUö–B‚’¢°¢F6öçF7D–BÒ6Æ75öW†—7G2‚tEEôÆVvÂr’òEEôÆVvÃ£¦6öçF7E÷vUö–B‚’¢°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#å5E$ôå’’´ôåDµCÂ÷7ããÆƒ#åöÆ—G–¶'—vFæüY¶6’’f÷&×VÆ'¢¶öçF·F÷w“Âöƒ#ãÆF—b6Æ73Ò&GBÖf÷&ÒÓ"#ãÆÆ&VÃäG&W2öF&–W&¬HV7’v–FöÖüY¶6“Æ–çWBG—SÒ&VÖ–Â"æÖSÒ&6öçF7EöVÖ–Â"fÇVSÒ"ræW65öGG"‚G5²v6öçF7EöVÖ–ÂuÒóòvWEö÷F–öâ‚vFÖ–åöVÖ–Âr’’âr"&WV—&VCãÂöÆ&VÃãÆF—b6Æ73Ò&GB×vRÖ7F–öç2#ãÇ7G&öæsåG&\Y¶6’V&Æ–7¦ç–6‚7G&öãÂ÷7G&öæsãÇ6Æ73Ò&GBÖ×WFVB#å7G&öç’<HR§w–¼X'–Ö’7G&öæÖ’v÷&E&W76â·GVÆ—¦6¦RwG–7¦¶’æ–RæG—7V¬HR¦—6ç–6‚G&\Y¶6’ãÂ÷ãÇârâ‚G&—f7”–BòsÆ6Æ73Ò&'WGFöâ"‡&VcÒ"ræW65÷W&Â†vWEöVF—E÷÷7EöÆ–æ²‚G&—f7”–B’’âr#äVG—GV¢öÆ—G–¼I’'—vFæüY¶6“Âöâr¢rr’â‚F6öçF7D–BòsÆ6Æ73Ò&'WGFöâ"‡&VcÒ"ræW65÷W&Â†vWEöVF—E÷÷7EöÆ–æ²‚F6öçF7D–B’’âr#äVG—GV¢7G&öìI’¶öçF·CÂöâr¢rr’âsÂ÷ãÂöF—cãÂöF—cãÂ÷6V7F–öãâs°¢FÆVwVT6öÆ÷'2Òw÷'6Uö&w2‚†'&’’‚G5²vÆVwVUö6öÆ÷'2uÒóòµÒ’Â²sÆÒsÓâr3STTd"rÂwÆ²sÓâr4d#TC"rÂs&ÆÒsÓâr3Dcdc”BuÒ“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#åu”tÌHDCÂ÷7ããÆƒ#ä¶öÆ÷'’–çFW&fV§7SÂöƒ#ãÆF—b6Æ73Ò&GBÖf÷&ÒÓ2#ãÆÆ&VÃäæ–V&–W6¶“Æ–çWBG—SÒ&6öÆ÷""æÖSÒ&'&æE÷&–Ö'’"fÇVSÒ"râW65öGG"‚G5²v'&æE÷&–Ö'’uÒ’âr#ãÂöÆ&VÃãÆÆ&VÃä¶6VçCÆ–çWBG—SÒ&6öÆ÷""æÖSÒ&'&æEö66VçB"fÇVSÒ"râW65öGG"‚G5²v'&æEö66VçBuÒ’âr#ãÂöÆ&VÃãÆÆ&VÃåLX&óÆ–çWBG—SÒ&6öÆ÷""æÖSÒ&'&æE÷7W&f6R"fÇVSÒ"râW65öGG"‚G5²v'&æE÷7W&f6RuÒ’âr#ãÂöÆ&VÃãÂöF—cãÆƒ3ä¶öÆ÷'’Æ–sÂöƒ3ãÇ6Æ73Ò&GBÖ×WFVB#åFR¶öÆ÷'’÷¦æ7¦¬HRÆ–v’röFÆ–7¦æ—R÷&¢'§’¶öÆV¦¶6‚r¦¼X&F6R(	äÖö¦RG—(	ÒãÂ÷ãÆF—b6Æ73Ò&GBÖf÷&ÒÓ2#ãÆÆ&VÃãÄÓÆ–çWBG—SÒ&6öÆ÷""æÖSÒ&ÆVwVUö6öÆ÷'5³ÆÕÒ"fÇVSÒ"râW65öGG"‚FÆVwVT6öÆ÷'5²sÆÒuÒ’âr#ãÂöÆ&VÃãÆÆ&VÃåÄ³Æ–çWBG—SÒ&6öÆ÷""æÖSÒ&ÆVwVUö6öÆ÷'5·ÆµÒ"fÇVSÒ"râW65öGG"‚FÆVwVT6öÆ÷'5²wÆ²uÒ’âr#ãÂöÆ&VÃãÆÆ&VÃã$ÄÓÆ–çWBG—SÒ&6öÆ÷""æÖSÒ&ÆVwVUö6öÆ÷'5³&ÆÕÒ"fÇVSÒ"râW65öGG"‚FÆVwVT6öÆ÷'5²s&ÆÒuÒ’âr#ãÂöÆ&VÃãÂöF—cãÂ÷6V7F–öãâs°¢V6†òsÆF—b6Æ73Ò&GB×6fV&"#ãÆF—cãÇ7G&öæsäFV6¶G—W"râW65ö‡FÖÂ„EEõdU%4”ôâ’âsÂ÷7G&öæsãÇ7ãå¦Ö–ç’W7Fv–\XBö&÷vœHW§V¬HRöB&§RãÂ÷7ããÂöF—cãÆ'WGFöâ6Æ73Ò&'WGFöâ'WGFöâ×&–Ö'’GBÖ'WGFöâ#å¦—7¢W7Fv–Væ–Âö'WGFöããÂöF—cãÂöf÷&Óâs°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&BGB×fW&–f–6F–öâÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#ä$U¥”T5¤\X55EtòE•õtä”Â÷7ããÆƒ#åvW'–f–·V¢G—÷væ–Âöƒ#ãÇå7&vL[¢¦—6æRG—’’w–·'–¢FRÂ·L;7&R¦÷7FX'’öFFæRr6‡v–Æ’&÷§ö7¬I–6–ÖV7§RÇV";<[¦æ–V¢â6Öò7&vG¦Væ–Ræ–7¦Vvòæ–RW7Wvæ’æ–R¦Ö–Væ–Væ·L;7rãÂ÷ãÇãÆ6Æ73Ò&'WGFöâ'WGFöâ×&–Ö'’GBÖ'WGFöâ"‡&VcÒ"ræW65÷W&Â†FE÷VW'•ö&r…²wvRsÓâvFV6¶×G—W"×6WGF–æw2rÂwfW&–g•÷&VF–7F–öç2sÓãÒÆFÖ–å÷W&Â‚vFÖ–âç‡r’’’âr#ãÇ7â6Æ73Ò&F6†–6öç2F6†–6öç2×6V&6‚#ãÂ÷7ãâvW'–f–·V¢G—÷væ–ÂöãÂ÷ãÂ÷6V7F–öãâs°¢GW6…&VG“Ö6Æ75öW†—7G2‚tEEôæ÷F–f–6F–öç2r’bdEEôæ÷F–f–6F–öç3£§W6…÷&VG’‚“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#åõt”DôÔ”Tä”Â÷7ããÆƒ#åvV"W6‚òtÂöƒ#ãÆF—b6Æ73Ò&GB×7–æ2×7FFR#ãÇ7â6Æ73Ò&GBÖF÷Brâ‚GW6…&VG“òv—2Ööâs¢rr’âr#ãÂ÷7ããÆF—cãÇ7G&öæsârâ‚GW6…&VG“òtöæU6–væÂvV"W6‚¦W7B6¶öæf–wW&÷vç’s¢uvV"W6‚ö7¦V·V¦Ræ¶öæf–wW&6¬I’öæU6–væÂr’âsÂ÷7G&öæsãÇ6ÖÆÃå'§—öÖæ–Væ–RÖÖ–Â<HRwœX,HV7¦öæRâFÆW6‚FöF¢rwÖ6öæf–rç‡7FX&REEôôäU4”täÅôô”B’EEôôäU4”täÅõ$U5Eô•ô´U’ãÂ÷6ÖÆÃãÂöF—cãÂöF—cãÇ6Æ73Ò&GBÖ×WFVB#åvV"W6‚¶[ÆG’\[Ç—F¶÷væ–²|X,HV7¦6ÖöG¦–VÆæ–Rr(	äÖö–Ò¶öæ6–^(	Òâ·GVÆ—¦6¦æ–RæG—7V¦RG–6‚W7Fv–\XBãÂ÷ãÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"ræW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr"6Æ73Ò&GB×6V7F–öâ#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GE÷FW7Eöæ÷F–f–6F–öç2#âs°¢wöæöæ6Uöf–VÆB‚vGE÷FW7Eöæ÷F–f–6F–öç2r“°¢V6†òsÆÆ&VÃãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ&6öæf—&Õö'&öF67B"fÇVSÒ#"&WV—&VCâ÷Gv–W&G¦Òw—<X&æ–RFW7GRFòw7§—7F¶–6‚\[Ç—F¶÷væ–¼;7r¢|X,HV7¦öç–ÒvV"W6‚ãÂöÆ&VÃãÇãÆ'WGFöâG—SÒ'7V&Ö—B"6Æ73Ò&'WGFöâGBÖ'WGFöâ#ãÇ7â6Æ73Ò&F6†–6öç2F6†–6öç2Ö&VÆÂ#ãÂ÷7ãâwœY¶Æ–¢FW7BW6‚Fòw7§—7F¶–6ƒÂö'WGFöããÂ÷ãÇ6Æ73Ò&GBÖ×WFVB#åFW7BwœY¶ÆRwœX,HV7¦æ–RW6‚Fòw7§—7F¶–6‚¶öçB¢|X,HV7¦öç–Ö’÷v–FöÖ–Væ–Ö’ÂF¼[ÆRFÖ–æ—7G&F÷,;7râw—7œX&¶r'F–6‚'¦W¢uÔ7&öâ&÷§ö7¦æ–R6œI’æ§v7¦\Y¶æ–V¢¦R6V·VæB’¦Æ\[Ç’öBW'V6†Ö–æ–¦FXBæ7G&öæ–Râ\[Ç—vç’¦W7B7¦&Æöâ(	å,I–7¦ç’FW7B÷v–FöÖ–\XN(	Ò¢÷¦æ7¦Væ–VÒDU5BrG—GVÆRâw–æ–¶’¦æ¦G¦–W7¢r†—7F÷&–“²'§–¬I–6–Rw—7œX&¶’æ–R÷Gv–W&G¦wœY·v–WFÆVæ–&æW&ãÂ÷ãÂöf÷&ÓãÂ÷6V7F–öãâs°¢6VÆc£¦æ÷F–f–6F–öå÷FV×ÆFW5öf÷&Ò‚“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&BGBÖFævW"×¦öæR#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#ää%¬I„E¤”DU5DõtSÂ÷7ããÆƒ#åw–7§œY¼HrFæRG—W&Âöƒ#ãÇåW7Wvw7§—7F¶–RG—’ÂVæ·G’Âw–æ–¶’ÂÖV7¦RÂ¶öÆV¦¶’’G'\[Ç–ç’Âæ7LI—æ–Röæ÷væ–R7–æ6‡&öæ—§V¦RÄ²ÂÄÒ÷&¢$ÄÒâ¶öçFv÷&E&W72Â&V¶Æ×’ÂfVVF&6²ÂW7Fv–Væ–'GW&Â’’÷¦÷7FX&¶öæf–wW&6¦÷¦÷7F¬HR&W¢¦Ö–âãÂ÷ãÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"ræW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr"öç7V&Ö—CÒ'&WGW&â6öæf—&Ò…ÂuW7VìH\Hr&W§÷w&÷Fæ–RFæRG—W'6¶–R’7÷'F÷vRÂæ7LI—æ–Rö'&HrÆ–v’öBæ÷võÂr’#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GE÷&W6WE÷G—W%öFF#âs°¢wöæöæ6Uöf–VÆB‚vGE÷&W6WE÷G—W%öFFr“°¢V6†òsÆÆ&VÃåw—7¢Ç7G&öæsåu”5¥œY¬HcÂ÷7G&öæsâÂ'’÷Gv–W&G¦œHsÆ–çWBæÖSÒ&6öæf—&ÖF–öâ"WFö6ö×ÆWFSÒ&öfb"&WV—&VCãÂöÆ&VÃãÇãÆ'WGFöâ6Æ73Ò&'WGFöâGBÖFævW"Ö'WGFöâ#ãÇ7â6Æ73Ò&F6†–6öç2F6†–6öç2×G&6‚#ãÂ÷7ãâw–7§œY¼HrFæR’§7–æ6‡&öæ—§V¢Æ–v“Âö'WGFöããÂ÷ãÂöf÷&ÓãÂ÷6V7F–öãâs°¢–b‚V×G’‚EôtUE²wfW&–g•÷&VF–7F–öç2uÒ’’6VÆc£¦ÆFU÷&VF–7F–öç5öÖöFÂ‚“°¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâÆFU÷&VF–7F–öç2‚“¢'&’°¢vÆö&ÂGwF#°¢&WGW&â†'&’’GwF"ÓævWE÷&W7VÇG2€¢%4TÄT5Bæ–B&VF–7F–öåö–BÇçW6W%ö–BÇæÖF6…ö–BÇç6VÆV7FVE÷FVÕö–BÇçö–çG2Çç66÷&–æuö6öFRÇç7V&Ö—GFVEöBÀ¢Òç7F'G5öBÆÒç&÷VæEö–BÆ‚ææÖR†öÖUöæÖRÆææÖRv•öæÖRÇ"çF—FÆR&÷VæE÷F—FÆRÇ"æÆVwVUö¶W’Ç"æw&÷Wö¶W’À¢RæF—7Æ•öæÖRÀ¢…4TÄT5BVÒæÖWF÷fÇVRe$ôÒ²GwF"ÓçW6W&ÖWFÒVÒt„U$RVÒçW6W%ö–C×çW6W%ö–BäBVÒæÖWFö¶W“ÒvGE÷&æ¶–æuöæÖRrÄ”Ô•B’&æ¶–æuöæÖP¢e$ôÒ"âEEôD#£§F&ÆR‚w&VF–7F–öç2r’â" ¢¤ô”â"âEEôD#£§F&ÆR‚vÖF6†W2r’â"ÒôâÒæ–C×æÖF6…ö–@¢¤ô”â"âEEôD#£§F&ÆR‚w&÷VæG2r’â""ôâ"æ–CÖÒç&÷VæEö–@¢¤ô”â"âEEôD#£§F&ÆR‚wFV×2r’â"‚ôâ‚æ–CÖÒæ†öÖU÷FVÕö–@¢¤ô”â"âEEôD#£§F&ÆR‚wFV×2r’â"ôâæ–CÖÒæv•÷FVÕö–@¢¤ô”â²GwF"ÓçW6W'7ÒRôâRä”C×çW6W%ö–@¢t„U$RÒç7F'E÷F–ÖUö¶æ÷vãÓäBÒç7F'G5öB•2äõBåTÄÂäBç7V&Ö—GFVEöCãÖÒç7F'G5ö@¢õ$DU"%’ç7V&Ö—GFVEöBDU42Çæ–BDU42"À¢%$•ô¢“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâÆFU÷&VF–7F–öç5öÖöFÂ‚“¢fö–B°¢G&÷w2Ò6VÆc£¦ÆFU÷&VF–7F–öç2‚“°¢V6†òsÆF–Æör–CÒ&GBÖÆFR×&VF–7F–öç2ÖÖöFÂ"6Æ73Ò&GBÖÖöFÂGB×fW&–f–6F–öâÖÖöFÂ#ãÆF—b6Æ73Ò&GBÖÖöFÂÖ6&B#ãÆF—b6Æ73Ò&GBÖÖöFÂÖ†VB#ãÆF—cãÇ7â6Æ73Ò&GBÖW–V'&÷r#åu”ä”²tU%”d”´4¤“Â÷7ããÆƒ#åG—’öFFæRò&÷§ö7¬I–6—RÖV7§SÂöƒ#ãÂöF—cãÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò&'WGFöâ"FFÖGBÖ6Æ÷6Så¦Ö¶æ–£Âö'WGFöããÂöF—câs°¢–b‚G&÷w2’°¢V6†òsÆF—b6Æ73Ò&GB×fW&–f–6F–öâÖö²#ãÇ7â6Æ73Ò&F6†–6öç2F6†–6öç2×–W2ÖÇB#ãÂ÷7ããÆF—cãÇ7G&öæsäæ–R¦æÆW¦–öæòæ'W7¦\XCÂ÷7G&öæsãÇåw7§—7F¶–R¦—6æRG—’¦÷7FX'’öFFæR'¦VB&÷§ö7¬I–6–VÒöG÷v–VFæ–6‚ÖV7¬;7rãÂ÷ãÂöF—cãÂöF—câs°¢ÒVÇ6R°¢V6†òsÇ6Æ73Ò&GBÖ–æÆ–æR×v&æ–ær#å¦æÆW¦–öæòræW65ö‡FÖÂ‚‡7G&–ær–6÷VçB‚G&÷w2’’ârrâ†6÷VçB‚G&÷w2“ÓÓÓòwG—w–Öv¬HV7’s¢wG—’w–Öv¬HV6Rr’âr7&vG¦Væ–âçVÆ÷væ–RW7WvG—’¦VvòVæ·G“²FV¢÷W&6¦’æ–RÖü[Ææ6öfìH\HrãÂ÷ãÆF—b6Æ73Ò&GB×fW&–f–6F–öâÖÆ—7B#âs°¢f÷&V6‚‚G&÷w22G&÷r’°¢FæÖRÒG&–Ò‚‡7G&–ær’‚G&÷u²w&æ¶–æuöæÖRuÒó¢G&÷u²vF—7Æ•öæÖRuÒ’“°¢FÆVwVRÒ7G'F÷WW"‚‡7G&–ær’G&÷u²vÆVwVUö¶W’uÒ’â‚‡7G&–ær’G&÷u²vw&÷Wö¶W’uÒÓÒrròr+rw'Wrç7G'F÷WW"‚‡7G&–ær’G&÷u²vw&÷Wö¶W’uÒ’¢rr“°¢V6†òsÆ'F–6ÆR6Æ73Ò&GB×fW&–f–6F–öâ×&÷r#ãÆF—cãÇ7G&öæsâræW65ö‡FÖÂ‚FæÖR’âsÂ÷7G&öæsãÇ7ãâræW65ö‡FÖÂ‚FÆVwVRâr+rrâG&÷u²w&÷VæE÷F—FÆRuÒ’âsÂ÷7ããÆ#âræW65ö‡FÖÂ‚G&÷u²v†öÖUöæÖRuÒâr(	2râG&÷u²vv•öæÖRuÒ’âsÂö#ãÂöF—cãÆFÃãÆF—cãÆGCå7F'BÖV7§SÂöGCãÆFCâræW65ö‡FÖÂ‡6VÆc£¦FFU÷Â‚G&÷u²w7F'G5öBuÒ’’âsÂöFCãÂöF—cãÆF—cãÆGCäöFFæòG—ÂöGCãÆFCâræW65ö‡FÖÂ‡6VÆc£¦FFU÷Â‚G&÷u²w7V&Ö—GFVEöBuÒ’’âsÂöFCãÂöF—cãÆF—cãÆGCå'§—¦ææRVæ·G“ÂöGCãÆFCâræW65ö‡FÖÂ‚‡7G&–ær’†fÆöB’G&÷u²wö–çG2uÒ’âsÂöFCãÂöF—cãÂöFÃãÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"ræW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr"öç7V&Ö—CÒ'&WGW&â6öæf—&Ò…ÂtçVÆ÷vHrFVâG—’öF¬H\Hrw7§—7F¶–Rw–æ–¶¬HV6R¢æ–VvòVæ·G“õÂr’#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GEö6æ6VÅöÆFU÷&VF–7F–öâ#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ'&VF–7F–öåö–B"fÇVSÒ"ræW65öGG"‚‡7G&–ær’†–çB’G&÷u²w&VF–7F–öåö–BuÒ’âr#âs°¢wöæöæ6Uöf–VÆB‚vGEö6æ6VÅöÆFU÷&VF–7F–öåòrâ†–çB’G&÷u²w&VF–7F–öåö–BuÒ“°¢V6†òsÆ'WGFöâ6Æ73Ò&'WGFöâGBÖFævW"Ö'WGFöâ#äåTÅT¢E•õtä”SÂö'WGFöããÂöf÷&ÓãÂö'F–6ÆSâs°¢Ğ¢V6†òsÂöF—câs°¢Ğ¢V6†òsÂöF—cãÂöF–ÆösãÇ67&—CæFö7VÖVçBæFDWfVçDÆ—7FVæW"‚$DôÔ6öçFVçDÆöFVB"ÆgVæ7F–öâ‚—·f"CÖFö7VÖVçBævWDVÆVÖVçD'”–B‚&GBÖÆFR×&VF–7F–öç2ÖÖöFÂ"“¶–b†BbgG—VöbBç6†÷tÖöFÃÓÓÒ&gVæ7F–öâ"–Bç6†÷tÖöFÂ‚“·Ò“³Â÷67&—Câs°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ6æ6VÅöÆFU÷&VF–7F–öâ‚“¢fö–B°¢–b‚7W'&VçE÷W6W%ö6â‚vÖævUö÷F–öç2r’’wöF–R‚t'&²W&væ–\XBâr“°¢G&VF–7F–öä–BÒÖ‚ƒÂ†–çB’‚Eõõ5E²w&VF–7F–öåö–BuÒóò’“°¢6†V6µöFÖ–å÷&VfW&W"‚vGEö6æ6VÅöÆFU÷&VF–7F–öåòrâG&VF–7F–öä–B“°¢vÆö&ÂGwF#°¢G&÷rÒGwF"ÓævWE÷&÷r‚GwF"Óç&W&R€¢%4TÄT5Bâ¢ÆÒç7F'G5öBÆÒç7F'E÷F–ÖUö¶æ÷vâÆÒç&÷VæEö–Be$ôÒ"âEEôD#£§F&ÆR‚w&VF–7F–öç2r’â"¤ô”â"âEEôD#£§F&ÆR‚vÖF6†W2r’â"ÒôâÒæ–C×æÖF6…ö–Bt„U$Ræ–CÒVB"À¢G&VF–7F–öä–@¢’Â%$•ô“°¢–b‚G&÷rÇÂ†–çB’G&÷u²w7F'E÷F–ÖUö¶æ÷vâuÒÇÂV×G’‚G&÷u²w7F'G5öBuÒ’ÇÂ‡7G&–ær’G&÷u²w7V&Ö—GFVEöBuÒÂ‡7G&–ær’G&÷u²w7F'G5öBuÒ’°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂtæ–R¦æÆW¦–öæòæ'W7¦Væ–FòçVÆ÷væ–ârÂvW'&÷"rÅ²wfW&–g•÷&VF–7F–öç2sÓãÒ“°¢Ğ¢FFVÆWFVBÒGwF"ÓæFVÆWFR„EEôD#£§F&ÆR‚w&VF–7F–öç2r’Å²v–BsÓâG&VF–7F–öä–EÒÅ²rVBuÒ“°¢–b‚FFVÆWFVB’6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂtæ–RVFX&ò6œI’çVÆ÷vHrG—RârÂvW'&÷"rÅ²wfW&–g•÷&VF–7F–öç2sÓãÒ“°¢G&VÖ–æ–ærÒ†–çB’GwF"ÓævWE÷f"‚GwF"Óç&W&R€¢%4TÄT5B4õTåB‚¢’e$ôÒ"âEEôD#£§F&ÆR‚w&VF–7F–öç2r’â"¤ô”â"âEEôD#£§F&ÆR‚vÖF6†W2r’â"ÒôâÒæ–C×æÖF6…ö–Bt„U$RçW6W%ö–CÒVBäBÒç&÷VæEö–CÒVB"À¢†–çB’G&÷u²wW6W%ö–BuÒÂ†–çB’G&÷u²w&÷VæEö–BuĞ¢’“°¢–b‚G&VÖ–æ–ærâ’°¢GwF"ÓçWFFR„EEôD#£§F&ÆR‚w&÷VæE÷7V&Ö—76–öç2r’Å²w&VF–7F–öåö6÷VçBsÓâG&VÖ–æ–æuÒÅ²wW6W%ö–BsÓâ†–çB’G&÷u²wW6W%ö–BuÒÂw&÷VæEö–BsÓâ†–çB’G&÷u²w&÷VæEö–BuÕÒÅ²rVBuÒÅ²rVBrÂrVBuÒ“°¢ÒVÇ6R°¢GwF"ÓæFVÆWFR„EEôD#£§F&ÆR‚w&÷VæE÷7V&Ö—76–öç2r’Å²wW6W%ö–BsÓâ†–çB’G&÷u²wW6W%ö–BuÒÂw&÷VæEö–BsÓâ†–çB’G&÷u²w&÷VæEö–BuÕÒÅ²rVBrÂrVBuÒ“°¢Ğ¢EEõ66÷&–æs£§&V6Æ5öÖF6‚‚†–çB’G&÷u²vÖF6…ö–BuÒ“°¢EEôÆövvW#£¦Æör‚vÆFU÷&VF–7F–öåö6æ6VÆÆVBrÂtçVÆ÷væòG—öFFç’ò&÷§ö7¬I–6—RÖV7§RârÅ²w&VF–7F–öåö–BsÓâG&VF–7F–öä–BÂvÖF6…ö–BsÓâ†–çB’G&÷u²vÖF6…ö–BuÒÂw7V&Ö—GFVEöBsÓâG&÷u²w7V&Ö—GFVEöBuÒÂw7F'G5öBsÓâG&÷u²w7F'G5öBuÒÂw&VÖ÷fVE÷ö–çG2sÓâ†fÆöB’G&÷u²wö–çG2uÕÒÂvæ÷F–6RrÂ†–çB’G&÷u²wW6W%ö–BuÒ“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂuG—¦÷7FX"çVÆ÷vç’Âw–æ–¶¬HV6R¢æ–VvòVæ·G’öF¬I—FRârÂw7V66W72rÅ²wfW&–g•÷&VF–7F–öç2sÓãÒ“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâfF"‚“¢fö–B°¢FÖW76vW2ÒEEôfF#£¦ÖW76vW2‚“°¢6VÆc£§6†VÆÂ‚tdD"rÂt¶ö×Væ–¶G’öÖö6æ–¶wœY·v–WFÆæR\[Ç—F¶÷væ–¶öÒröG÷v–VFæ–6‚ÖöÖVçF6‚âr“°¢V6†òsÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"ræW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr"6Æ73Ò&GB×6WGF–æw2#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GE÷6fUöfF"#âs°¢wöæöæ6Uöf–VÆB‚vGE÷6fUöfF"r“°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#åôÔô4ä”²E•U$Â÷7ããÆƒ#åFV·7G’r6†×W&¶6ƒÂöƒ#ãÇ6Æ73Ò&GBÖ×WFVB#ä'GW"Æ÷7V¦R¦VFìHR¢öG÷v–VG¦’'§——6ç–6‚Fò7—GV6¦’âw7§—7F¶–RFV·7G’Öü[ÆW7¢VG—F÷vHröæœ[ÆV¢ãÂ÷ãÆF—b6Æ73Ò&GBÖfF"ÖFÖ–âÖÆ—7B#âs°¢f÷&V6‚‚FÖW76vW22F¶W“ÓâF—FVÒ’°¢V6†òsÆFWF–Ç26Æ73Ò&GBÖfF"ÖFÖ–â×&÷r#ãÇ7VÖÖ'“ãÆ–Ör7&3Ò"ræW65÷W&Â‚F—FVÕ²wW&ÂuÒ’âr"ÇCÒ"#ãÇ7ããÇ7G&öæsâræW65ö‡FÖÂ‚F—FVÕ²vÆ&VÂuÒ’âsÂ÷7G&öæsãÇ6ÖÆÃâræ6÷VçB‚F—FVÕ²wFW‡G2uÒ’ârVG—F÷vÆç–6‚öG÷v–VG¦“Â÷6ÖÆÃãÂ÷7ããÂ÷7VÖÖ'“ãÆF—b6Æ73Ò&GBÖfF"ÖÖW76vRÖw&–B#âs°¢f÷&V6‚‚F—FVÕ²wFW‡G2uÒ2F–æFWƒÓâGFW‡B’V6†òsÆÆ&VÃãÇ7ãäöG÷v–VL[¢râ‚F–æFW‚³’âsÂ÷7ããÆ–çWBæÖSÒ&ÖW76vW5²ræW65öGG"‚F¶W’’âuÕ²râ†–çB’F–æFW‚âuÒ"Ö†ÆVæwFƒÒ#ƒ"fÇVSÒ"ræW65öGG"‚GFW‡B’âr#ãÂöÆ&VÃâs°¢V6†òsÂöF—cãÂöFWF–Ç3âs°¢Ğ¢V6†òsÂöF—cãÂ÷6V7F–öããÆF—b6Æ73Ò&GB×6fV&"#ãÆF—cãÇ7G&öæsä¶ö×Væ–¶G’fF&Â÷7G&öæsãÇ7ãå¦Ö–ç’,I–LHRv–Fö7¦æRöB&§RòöLY·v–\[ÆVæ—RÆ–¶6¦’ãÂ÷7ããÂöF—cãÆ'WGFöâ6Æ73Ò&'WGFöâ'WGFöâ×&–Ö'’GBÖ'WGFöâ#å¦—7¢¶ö×Væ–¶G“Âö'WGFöããÂöF—cãÂöf÷&Óâs°¢6VÆc£¦VæE÷6†VÆÂ‚“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâ&÷f–FW%öf–VÆG2‡7G&–ærGF—FÆRÂ'&’Ff–VÆG2Â7G&–ærF6ÆÆ&6²Â'&’G2“¢fö–B°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÇ7â6Æ73Ò&GBÖW–V'&÷r#äÄôtõtä”SÂ÷7ããÆƒ#ârâW65ö‡FÖÂ‚GF—FÆR’âsÂöƒ#ãÆF—b6Æ73Ò&GBÖf÷&ÒÓ"#âs°¢f÷&V6‚‚Ff–VÆG22²FæÖRÂFÆ&VÂÂGG—UÒ’V6†òsÆÆ&VÃârâW65ö‡FÖÂ‚FÆ&VÂ’âsÆ–çWBG—SÒ"râW65öGG"‚GG—R’âr"æÖSÒ"râW65öGG"‚FæÖR’âr"fÇVSÒ"râW65öGG"‚G5²FæÖUÒ’âr"râ‚GG—RÓÓÒw77v÷&BròvWFö6ö×ÆWFSÒ&æWr×77v÷&B"s¢rr’âsãÂöÆ&VÃâs°¢V6†òsÂöF—cãÆF—b6Æ73Ò&GBÖ6ÆÆ&6²#å&VF—&V7BU$“¢Æ6öFSârâW65ö‡FÖÂ‚F6ÆÆ&6²’âsÂö6öFSãÂöF—cãÂ÷6V7F–öãâs°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ7–æ5öæ÷r‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷7–æ5öæ÷rr“°¢G"ÒEEõ7–æ3£§'Vâ‡G'VR“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×7–æ2rÂG%²vö²uÓòu7–æ6‡&öæ—¦6¦¦¶üXF7¦öæâæ÷vS¢râ†–çB’G%²vÖF6†W5öæWruÒârÂ¦·GVÆ—¦÷væS¢râ†–çB’G%²vÖF6†W5÷WFFVBuÒârâs¢‚G%²vW'&÷"uÓóòt,X,HVB7–æ6‡&öæ—¦6¦’âr’ÂG%²vö²uÓòw7V66W72s¢vW'&÷"r“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ6fU÷6WGF–æw2‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷6fU÷6WGF–æw2r“°¢FöÆBÒEEôD#£§6WGF–æw2‚“°¢FæWrÒFöÆC°¢f÷&V6‚…²w6V6öârÂw6÷W&6U÷W&ÂrÂw6÷W&6U÷Æµ÷W&ÂrÂw6÷W&6UóÆÕ÷W&ÂrÂw6÷W&6Uó&ÆÕ÷W&ÂrÂvvöövÆUö6Æ–VçEö–BrÂvvöövÆUö6Æ–VçE÷6V7&WBrÂvf6V&ööµöö–BrÂvf6V&ööµö÷6V7&WBuÒ2F²’°¢GbÒw÷Vç6Æ6‚‚Eõõ5E²FµÒóòrr“°¢FæWu²FµÒÒ7G%ö6öçF–ç2‚F²Âw6÷W&6Uòr’ÇÂF²ÓÓÒw6÷W&6U÷W&ÂròW65÷W&Å÷&r‚Gb’¢6æ—F—¦U÷FW‡Eöf–VÆB‚Gb“°¢Ğ¢F6öçF7DVÖ–ÂÒ6æ—F—¦UöVÖ–Â‡w÷Vç6Æ6‚‚Eõõ5E²v6öçF7EöVÖ–ÂuÒóòrr’“°¢FæWu²v6öçF7EöVÖ–ÂuÒÒ—5öVÖ–Â‚F6öçF7DVÖ–Â’òF6öçF7DVÖ–Â¢6æ—F—¦UöVÖ–Â†vWEö÷F–öâ‚vFÖ–åöVÖ–Âr’“°¢f÷&V6‚…²wö–çG5÷v–ææW"rÂwW&fV7E÷&÷VæEö&öçW2rÂw&Sö†—E÷ö–çG2rÂw&S÷W&fV7Eö&öçW2rÂw&S%ö†—E÷ö–çG2rÂw&S%÷W&fV7Eö&öçW2uÒ2F²’FæWu²FµÒÒÖ‚ƒÂ†fÆöB’‚Eõõ5E²FµÒóò’“°¢f÷&V6‚…²v'&æE÷&–Ö'’rÂv'&æEö66VçBrÂv'&æE÷7W&f6RuÒ2F²’FæWu²FµÒÒ6æ—F—¦Uö†W…ö6öÆ÷"‚Eõõ5E²FµÒóòrr’ó¢FöÆE²FµÓ°¢FöÆDÆVwVT6öÆ÷'2Òw÷'6Uö&w2‚†'&’’‚FöÆE²vÆVwVUö6öÆ÷'2uÒóòµÒ’Â²sÆÒsÓâr3STTd"rÂwÆ²sÓâr4d#TC"rÂs&ÆÒsÓâr3Dcdc”BuÒ“°¢f÷&V6‚…²sÆÒrÂwÆ²rÂs&ÆÒuÒ2F¶W’’FæWu²vÆVwVUö6öÆ÷'2uÕ²F¶W•ÒÒ6æ—F—¦Uö†W…ö6öÆ÷"‚Eõõ5E²vÆVwVUö6öÆ÷'2uÕ²F¶W•Òóòrr’ó¢FöÆDÆVwVT6öÆ÷'5²F¶W•Ó°¢FæWu²w7–æ5öVæ&ÆVBuÒÒV×G’‚Eõõ5E²w7–æ5öVæ&ÆVBuÒ’ò¢°¢FæWu²w6†÷uö6÷VçFF÷vç2uÒÒV×G’‚Eõõ5E²w6†÷uö6÷VçFF÷vç2uÒ’ò¢°¢FæWu²vE÷6Æ÷E÷&Wf–WruÒÒV×G’‚Eõõ5E²vE÷6Æ÷E÷&Wf–WruÒ’ò¢°¢FæWu²v'GW%ö•öVæ&ÆVBuÒÒV×G’‚Eõõ5E²v'GW%ö•öVæ&ÆVBuÒ’ò¢°¢FæWu²v'GW%ö•öÖöFVÂuÒÒ6æ—F—¦U÷FW‡Eöf–VÆB‡w÷Vç6Æ6‚‚Eõõ5E²v'GW%ö•öÖöFVÂuÒóò‚FöÆE²v'GW%ö•öÖöFVÂuÒóòvvVÖ–æ’Ó"ãRÖfÆ6‚ÖÆ—FRr’’“°¢FæWu²v'GW%ö•÷VW7F–öç2uÒÒÖ‚ƒÆÖ–âƒRÂ†–çB’‚Eõõ5E²v'GW%ö•÷VW7F–öç2uÓóó2’’“°¢F–ç7G'V7F–öâÒG&–Ò‡6æ—F—¦U÷FW‡F&Vöf–VÆB‡w÷Vç6Æ6‚‚Eõõ5E²v'GW%ö•ö–ç7G'V7F–öâuÒóòrr’’“°¢FæWu²v'GW%ö•ö–ç7G'V7F–öâuÒÒF–ç7G'V7F–öâÓÒrròF–ç7G'V7F–öâ¢‡7G&–ær’‚FöÆE²v'GW%ö•ö–ç7G'V7F–öâuÒóòEEôD#£¦FVfVÇEö'GW%ö•ö–ç7G'V7F–öâ‚’“°¢FæWu²w7–æ5ö–çFW'fÅöÖ–çWFW2uÒÒÖ‚ƒRÆÖ–âƒCCÂ†–çB’‚Eõõ5E²w7–æ5ö–çFW'fÅöÖ–çWFW2uÓóóc’’“°¢f÷&V6‚…²wÆ²rÂsÆÒrÂs&ÆÒuÒ2F¶W’’FæWu²vÆVwVUöæÖW2uÕ²F¶W•Ó×6æ—F—¦U÷FW‡Eöf–VÆB‡w÷Vç6Æ6‚‚Eõõ5E²vÆVwVUöæÖW2uÕ²F¶W•Óóòrr’“°¢FÖöFRÒ6æ—F—¦Uö¶W’‚Eõõ5E²w6—FUöÖöFRuÒóòwFW7Br“°¢FæWu²w6—FUöÖöFRuÒÒ–åö'&’‚FÖöFRÂ²w&öGV7F–öârÂwFW7BrÂv'&V²uÒÂG'VR’òFÖöFR¢wFW7Bs°¢G6VÆV7FVBÒ'&•öÖ‚w6æ—F—¦Uö¶W’rÂ†'&’’‚Eõõ5E²vÆVwVW2uÒóòµÒ’“°¢FæWu²vÆVwVW2uÒÒ²wÆ²sÓæ–åö'&’‚wÆ²rÂG6VÆV7FVBÇG'VR“ó£ÂsÆÒsÓæ–åö'&’‚sÆÒrÂG6VÆV7FVBÇG'VR“ó£Âs&ÆÒsÓæ–åö'&’‚s&ÆÒrÂG6VÆV7FVBÇG'VR“ó£Ó°¢f÷&V6‚…²vÆUö6Æ–VçEö–BrÂvÆU÷FVÕö–BrÂvÆUö¶W•ö–BrÂvÆU÷&—fFUö¶W’rÂwö–çG5öW†7BrÂwö–çG5öÖ&v–âuÒ2FFW&V6FVB’Vç6WB‚FæWu²FFW&V6FVEÒ“°¢WFFUö÷F–öâ‚vGE÷6WGF–æw2rÂFæWr“°¢GF–ÖW7F××wöæW‡E÷66†VGVÆVB‚vGE÷7–æ5÷66†VGVÆRr“¶–b‚GF–ÖW7F×—w÷Vç66†VGVÆUöWfVçB‚GF–ÖW7F×ÂvGE÷7–æ5÷66†VGVÆRr“´EEôD#£¦Vç7W&Uö7&öâ‚“°¢EEôÆövvW#£¦Æör‚w6WGF–æw5÷6fVBrÂu¦—6æòW7Fv–Væ–G—W&âr“°¢–b‚V×G’‚Eõõ5E²w7–æ5÷&W7VÇG5öæ÷ruÒ’’°¢G&W7VÇBÒEEõ7–æ3£§'Vâ‡G'VR“°¢FÖW76vRÒV×G’‚G&W7VÇE²vö²uÒ¢òu7–æ6‡&öæ—¦6¦¦¶üXF7¦öæâ¦·GVÆ—¦÷væRÖV7¦S¢râ†–çB’G&W7VÇE²vÖF6†W5÷WFFVBuÒârÂ'¦VÆ–7¦öæRG—“¢râ†–çB’G&W7VÇE²w66÷&W2uÒârâp¢¢u7–æ6‡&öæ—¦6¦¦¶üXF7¦öæ7¬IœY¶6–÷vòâræ–×ÆöFR‚rrÆ'&•÷6Æ–6R‚†'&’’‚G&W7VÇE²wv&æ–æw2uÒóòµÒ’ÃÃ2’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂFÖW76vRÂV×G’‚G&W7VÇE²vö²uÒ“òw7V66W72s¢vW'&÷"r“°¢Ğ¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂuW7Fv–Væ–¦—6æRâr“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâFE÷&÷VæB‚“¢fö–B°¢6VÆc£¦wV&B‚vGEöFE÷&÷VæBr“°¢vÆö&ÂGwF#°¢G2ÒEEôD#£§6WGF–æw2‚“°¢FæòÒÖ‚ƒÂ†–çB’‚Eõõ5E²w&÷VæEöæòuÒóò’“°¢GF—FÆRÒ6æ—F—¦U÷FW‡Eöf–VÆB‚Eõõ5E²wF—FÆRuÒóòrr’ó¢Fæòârâ¶öÆV¦¶s°¢Fæ÷rÒ7W'&VçE÷F–ÖR‚v×—7Âr“°¢Fö²ÒGwF"Óæ–ç6W'B„EEôD#£§F&ÆR‚w&÷VæG2r’Å°¢w6V6öâsÓâG5²w6V6öâuÒÂvÆVwVUö¶W’sÓæ–åö'&’‡6æ—F—¦Uö¶W’‚Eõõ5E²vÆVwVUö¶W’uÓóòsÆÒr’Å²wÆ²rÂsÆÒrÂs&ÆÒuÒÇG'VR“÷6æ—F—¦Uö¶W’‚Eõõ5E²vÆVwVUö¶W’uÒ“¢sÆÒrÂvw&÷Wö¶W’sÓç6æ—F—¦U÷FW‡Eöf–VÆB‚Eõõ5E²vw&÷Wö¶W’uÓóòrr’Âw&÷VæEöæòsÓâFæòÂwF—FÆRsÓâGF—FÆRÂw7FGW2sÓâvG&gBrÂw6÷W&6RsÓâvÖçVÂrÀ¢vW‡FW&æÅö¶W’sÓç6†‚G5²w6V6öâuÒâwÆÖçVÇÂrâFæòâwÂrâ‚Eõõ5E²vÆVwVUö¶W’uÓóòsÆÒr’âwÂrâ‚Eõõ5E²vw&÷Wö¶W’uÓóòrr’’Âv7&VFVEöBsÓâFæ÷rÂwWFFVEöBsÓâFæ÷p¢Ò“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×&÷VæG2rÂFö³òt¶öÆV¦¶FöFæ¦¶ò7¦¶–2âs¢tæ–RVFX&ò6œI’FöFHr¶öÆV¦¶’ârÂFö³òw7V66W72s¢vW'&÷"r“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ÷Vå÷&÷VæB‚“¢fö–B°¢6VÆc£¦wV&B‚vGEö÷Vå÷&÷VæBr“°¢vÆö&ÂGwF#°¢F–BÒ†–çB’‚Eõõ5E²w&÷VæEö–BuÒóò“°¢F6Æ÷6RÒ6VÆc£¦×—7ÅöFFWF–ÖR‚Eõõ5E²v6Æ÷6W5öBuÒóòrr“°¢G&÷VæBÒGwF"ÓævWE÷&÷r‚GwF"Óç&W&R‚u4TÄT5B¢e$ôÒrâEEôD#£§F&ÆR‚w&÷VæG2r’ârt„U$R–CÒVBrÂF–B’“°¢–b‚G&÷VæBÇÂF6Æ÷6R’6VÆc£§&VF—&V7B‚vFV6¶×G—W"×&÷VæG2rÂtæ–W&v–LX&÷vRFæR¶öÆV¦¶’ÇV"FW&Ö–çR¦Ö¶æœI–6–ârÂvW'&÷"r“°¢F6Æ÷6TGBÒ6VÆc£¦Æö6ÅöGB‚F6Æ÷6R“°¢Fæ÷rÒæWrFFUF–ÖT–Ö×WF&ÆR‚væ÷rrÂw÷F–ÖW¦öæR‚’“°¢–b‚F6Æ÷6TGBÇÂF6Æ÷6TGBÃÒFæ÷r’6VÆc£§&VF—&V7B‚vFV6¶×G—W"×&÷VæG2rÂuFW&Ö–â¦Ö¶æœI–6–×W6’'œHrr'§—7¬X&üY¶6’ârÂvW'&÷"r“°¢Ff—'7D¶æ÷vâÒGwF"ÓævWE÷f"‚GwF"Óç&W&R‚u4TÄT5BÔ”â‡7F'G5öB’e$ôÒrâEEôD#£§F&ÆR‚vÖF6†W2r’ârt„U$R&÷VæEö–CÒVBäB7F'E÷F–ÖUö¶æ÷vãÓäB7F'G5öB•2äõBåTÄÂrÂF–B’“°¢Ff—'7DGBÒ6VÆc£¦Æö6ÅöGB‚Ff—'7D¶æ÷vâó¢çVÆÂ“°¢–b‚Ff—'7DGBbbF6Æ÷6TGBâFf—'7DGB’6VÆc£§&VF—&V7B‚vFV6¶×G—W"×&÷VæG2rÂuG—÷væ–R×W6’¦÷7FHr¦Ö¶æœI—FRæ§;<[¦æ–V¢ò&÷§ö7¬I–6—R–W'w7¦VvòÖV7§R‚râ6VÆc£¦FFU÷Â‚Ff—'7D¶æ÷vâ’âr’ârÂvW'&÷"r“°¢–b‚Ff—'7DGBbbFf—'7DGBÃÒFæ÷r’6VÆc£§&VF—&V7B‚vFV6¶×G—W"×&÷VæG2rÂtæ–RÖü[Ææ÷Gv÷'§œHr¶öÆV¦¶’ò&÷§ö7¬I–6—R–W'w7¦VvòÖV7§RârÂvW'&÷"r“° ¢Fæ÷u7ÂÒ7W'&VçE÷F–ÖR‚v×—7Âr“°¢GwF"ÓçWFFR„EEôD#£§F&ÆR‚w&÷VæG2r’Å²w7FGW2sÓâv÷VârÂvÖçVÅöf–Æ&–Æ—G’sÓãÂv÷Vç5öBsÓâFæ÷u7ÂÂv6Æ÷6W5öBsÓâF6Æ÷6RÂwWFFVEöBsÓâFæ÷u7ÅÒÅ²v–BsÓâF–EÒÅ²rW2rÂrVBrÂrW2rÂrW2rÂrW2uÒÅ²rVBuÒ“°¢EEôÆövvW#£¦Æör‚w&÷VæEö÷VæVBrÂtFÖ–æ—7G&F÷"÷Gv÷'§œX"¶öÆV¦¼I’FòG—÷væ–ârÅ²w&÷VæEö–BsÓâF–BÂv6Æ÷6W5öBsÓâF6Æ÷6UÒÂvæ÷F–6RrÂvWEö7W'&VçE÷W6W%ö–B‚’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×&÷VæG2rÂuG—÷væ–R¶öÆV¦¶’¦÷7FX&ò÷Gv'FRFòrâ6VÆc£¦FFU÷Â‚F6Æ÷6R’ârâr“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ6Æ÷6U÷&÷VæB‚“¢fö–B°¢6VÆc£¦wV&B‚vGEö6Æ÷6U÷&÷VæBr“°¢vÆö&ÂGwF#°¢F–BÒ†–çB’‚Eõõ5E²w&÷VæEö–BuÒóò“°¢Fæ÷rÒ7W'&VçE÷F–ÖR‚v×—7Âr“°¢Fö²ÒGwF"ÓçVW'’‚GwF"Óç&W&R‚%UDDR"âEEôD#£§F&ÆR‚w&÷VæG2r’â"4UB7FGW3Òv6Æ÷6VBrÆÖçVÅöf–Æ&–Æ—G“ÓÆ6Æ÷6W5öCÔ44Rt„Tâ6Æ÷6W5öB•2åTÄÂõ"6Æ÷6W5öCâW2D„TâW2TÅ4R6Æ÷6W5öBTäBÇWFFVEöCÒW2t„U$R–CÒVB"ÂFæ÷rÂFæ÷rÂFæ÷rÂF–B’“°¢EEôÆövvW#£¦Æör‚w&÷VæEö6Æ÷6VBrÂtFÖ–æ—7G&F÷"¦Ö¶ìH\X"G—÷væ–R¶öÆV¦¶’ârÅ²w&÷VæEö–BsÓâF–EÒÂvæ÷F–6RrÂvWEö7W'&VçE÷W6W%ö–B‚’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×&÷VæG2rÂFö²ÓÒfÇ6RòuG—÷væ–R¶öÆV¦¶’¦Ö¶æœI—FRâr¢tæ–RVFX&ò6œI’¦Ö¶ìH\Hr¶öÆV¦¶’ârÂFö²ÓÒfÇ6Sòw7V66W72s¢vW'&÷"r“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâFEöÖF6‚‚“¢fö–B°¢6VÆc£¦wV&B‚vGEöFEöÖF6‚r“°¢vÆö&ÂGwF#°¢G&÷VæD–CÒ†–çB’‚Eõõ5E²w&÷VæEö–BuÓóó“²F†öÖSÒ†–çB’‚Eõõ5E²v†öÖU÷FVÕö–BuÓóó“²Fv“Ò†–çB’‚Eõõ5E²vv•÷FVÕö–BuÓóó“²G7F'C×6VÆc£¦×—7ÅöFFWF–ÖR‚Eõõ5E²w7F'G5öBuÓóòrr“°¢–b‚G&÷VæD–GÇÂF†öÖWÇÂFv—ÇÂF†öÖSÓÓÒFv—ÇÂG7F'B’6VÆc£§&VF—&V7B‚vFV6¶×G—W"ÖÖF6†W2rÂu7&vL[¢FæRÖV7§RârÂvW'&÷"rÅ²w&÷VæEö–BsÓâG&÷VæD–EÒ“°¢G6ƒ×6VÆc£¦çVÆÆ&ÆUö–çB‚Eõõ5E²w66÷&Uö†öÖRuÓóòrr“²G6×6VÆc£¦çVÆÆ&ÆUö–çB‚Eõõ5E²w66÷&Uöv’uÓóòrr“²Fæ÷sÖ7W'&VçE÷F–ÖR‚v×—7Âr“°¢GwF"Óæ–ç6W'B„EEôD#£§F&ÆR‚vÖF6†W2r’Å²w&÷VæEö–BsÓâG&÷VæD–BÂvW‡FW&æÅö¶W’sÓç6†‚vÖçVÇÂrâG&÷VæD–BâwÂrâF†öÖRâwÂrâFv’âwÂrâG7F'BâwÂrçwövVæW&FU÷WV–CB‚’’Âv†öÖU÷FVÕö–BsÓâF†öÖRÂvv•÷FVÕö–BsÓâFv’Âw7F'G5öBsÓâG7F'BÂw7F'E÷F–ÖUö¶æ÷vâsÓãÂw66÷&Uö†öÖRsÓâG6‚Âw66÷&Uöv’sÓâG6Âw7FGW2sÓâ‚G6‚ÓÖçVÆÂbbG6ÓÖçVÆÂ“òvf–æ—6†VBs¢w66†VGVÆVBrÂvÖçVÅöÆö6²sÓãÂv7&VFVEöBsÓâFæ÷rÂwWFFVEöBsÓâFæ÷uÒ“°¢FÖ–CÒ†–çB’GwF"Óæ–ç6W'Eö–C²–b‚FÖ–BbbG6‚ÓÖçVÆÂbbG6ÓÖçVÆÂ’EEõ66÷&–æs£§&V6Æ5öÖF6‚‚FÖ–B“°¢EEôÆövvW#£¦Æör‚vÖF6…öFFVBrÂtFöFæòÖV7¢,I–7¦æ–RârÅ²vÖF6…ö–BsÓâFÖ–EÒ“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"ÖÖF6†W2rÂtÖV7¢FöFç’’¦&W§–V7¦öç’'¦VB7–æ6‡&öæ—¦6¬HRârÂw7V66W72rÅ²w&÷VæEö–BsÓâG&÷VæD–EÒ“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ6fUöÖF6‚‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷6fUöÖF6‚r“°¢vÆö&ÂGwF#°¢F–CÒ†–çB’‚Eõõ5E²vÖF6…ö–BuÓóó“²FÓÒGwF"ÓævWE÷&÷r‚GwF"Óç&W&R‚u4TÄT5B¢e$ôÒräEEôD#£§F&ÆR‚vÖF6†W2r’ârt„U$R–CÒVBrÂF–B’“°¢–b‚FÒ’6VÆc£§&VF—&V7B‚vFV6¶×G—W"ÖÖF6†W2rÂtæ–R¦æÆW¦–öæòÖV7§RârÂvW'&÷"r“°¢G7F'C×6VÆc£¦×—7ÅöFFWF–ÖR‚Eõõ5E²w7F'G5öBuÓóòrr“²G6ƒ×6VÆc£¦çVÆÆ&ÆUö–çB‚Eõõ5E²w66÷&Uö†öÖRuÓóòrr“²G6×6VÆc£¦çVÆÆ&ÆUö–çB‚Eõõ5E²w66÷&Uöv’uÓóòrr“°¢FFFÕ²w7F'G5öBsÓâG7F'Có¢FÒÓç7F'G5öBÂw7F'E÷F–ÖUö¶æ÷vâsÓãÂw66÷&Uö†öÖRsÓâG6‚Âw66÷&Uöv’sÓâG6Âw7FGW2sÓâ‚G6‚ÓÖçVÆÂbbG6ÓÖçVÆÂ“òvf–æ—6†VBs¢w66†VGVÆVBrÂvÖçVÅöÆö6²sÓâV×G’‚Eõõ5E²vÖçVÅöÆö6²uÒ“ó£ÂwWFFVEöBsÓæ7W'&VçE÷F–ÖR‚v×—7Âr•Ó°¢G&W6WEW6W'3ÕµÓ°¢–b‚‡7G&–ær’FFF²w7F'G5öBuÒÓÒ‡7G&–ær’FÒÓç7F'G5öB’°¢G&VF–7F–öåF&ÆSÔEEôD#£§F&ÆR‚w&VF–7F–öç2r“²G7V&Ö—76–öåF&ÆSÔEEôD#£§F&ÆR‚w&÷VæE÷7V&Ö—76–öç2r“²FÖF6…F&ÆSÔEEôD#£§F&ÆR‚vÖF6†W2r“°¢G&W6WEW6W'3Ö'&•öÖ‚v–çGfÂrÂ†'&’’GwF"ÓævWEö6öÂ‚GwF"Óç&W&R‚%4TÄT5BW6W%ö–Be$ôÒG&VF–7F–öåF&ÆRt„U$RÖF6…ö–CÒVB"ÂF–B’’“°¢GwF"ÓæFVÆWFR‚G&VF–7F–öåF&ÆRÅ²vÖF6…ö–BsÓâF–EÒÅ²rVBuÒ“°¢f÷&V6‚‚G&W6WEW6W'22G&W6WEV–B’°¢F6÷VçCÒ†–çB’GwF"ÓævWE÷f"‚GwF"Óç&W&R‚%4TÄT5B4õTåB‚¢’e$ôÒG&VF–7F–öåF&ÆR¤ô”âFÖF6…F&ÆRÖÒôâÖÒæ–C×æÖF6…ö–Bt„U$RçW6W%ö–CÒVBäBÖÒç&÷VæEö–CÒVB"ÂG&W6WEV–BÂ†–çB’FÒÓç&÷VæEö–B’“°¢–b‚F6÷VçB’GwF"ÓçWFFR‚G7V&Ö—76–öåF&ÆRÅ²w&VF–7F–öåö6÷VçBsÓâF6÷VçEÒÅ²wW6W%ö–BsÓâG&W6WEV–BÂw&÷VæEö–BsÓâ†–çB’FÒÓç&÷VæEö–EÒÅ²rVBuÒÅ²rVBrÂrVBuÒ“°¢VÇ6RGwF"ÓæFVÆWFR‚G7V&Ö—76–öåF&ÆRÅ²wW6W%ö–BsÓâG&W6WEV–BÂw&÷VæEö–BsÓâ†–çB’FÒÓç&÷VæEö–EÒÅ²rVBrÂrVBuÒ“°¢Ğ¢Ğ¢GwF"ÓçWFFR„EEôD#£§F&ÆR‚vÖF6†W2r’ÂFFFÅ²v–BsÓâF–EÒ“°¢–b‚G&W6WEW6W'2bb6Æ75öW†—7G2‚tEEôæ÷F–f–6F–öç2r’’EEôæ÷F–f–6F–öç3£§66†VGVÆUö6†ævVB‚F–BÂ†–çB’FÒÓç&÷VæEö–BÂ‡7G&–ær’FÒÓç7F'G5öBÂ‡7G&–ær’FFF²w7F'G5öBuÒÂG&W6WEW6W'2“°¢–b‚G6‚ÓÖçVÆÂbbG6ÓÖçVÆÂ’EEõ66÷&–æs£§&V6Æ5öÖF6‚‚F–B“°¢EEôÆövvW#£¦Æör‚vÖF6…÷WFFVBrÂtFÖ–æ—7G&F÷"÷&vœX"ÖV7¢ârÅ²vÖF6…ö–BsÓâF–BÂvÖçVÅöÆö6²sÓâFFF²vÖçVÅöÆö6²uÕÒ“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"ÖÖF6†W2rÂtÖV7¢¦·GVÆ—¦÷vç’ârÂw7V66W72rÅ²w&÷VæEö–BsÓâ†–çB’FÒÓç&÷VæEö–EÒ“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâF§W7E÷ö–çG2‚“¢fö–B°¢6VÆc£¦wV&B‚vGEöF§W7E÷ö–çG2r“°¢vÆö&ÂGwF#°¢G3ÔEEôD#£§6WGF–æw2‚“²GV–CÒ†–çB’‚Eõõ5E²wW6W%ö–BuÓóó“²Gö–çG3Ò†fÆöB’‚Eõõ5E²wö–çG2uÓóó“²G&V6öã×6æ—F—¦U÷FW‡Eöf–VÆB‚Eõõ5E²w&V6öâuÓóòrr“°¢–b‚GV–GÇÂG&V6öãÓÓÒrr’6VÆc£§&VF—&V7B‚vFV6¶×G—W"×W6W'2rÂu7&vL[¢FæR¶÷&V·G’ârÂvW'&÷"r“°¢GwF"Óæ–ç6W'B„EEôD#£§F&ÆR‚wö–çEöF§W7FÖVçG2r’Å²wW6W%ö–BsÓâGV–BÂw6V6öâsÓâG5²w6V6öâuÒÂwö–çG2sÓâGö–çG2Âw&V6öâsÓâG&V6öâÂvFÖ–å÷W6W%ö–BsÓævWEö7W'&VçE÷W6W%ö–B‚’Âv7&VFVEöBsÓæ7W'&VçE÷F–ÖR‚v×—7Âr•Ò“°¢EEôÆövvW#£¦Æör‚wö–çG5öF§W7FVBrÂtFÖ–æ—7G&F÷"6¶÷'–v÷vX"Væ·G’ârÅ²wF&vWE÷W6W"sÓâGV–BÂwö–çG2sÓâGö–çG2Âw&V6öâsÓâG&V6öåÒÂvæ÷F–6RrÆvWEö7W'&VçE÷W6W%ö–B‚’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×W6W'2rÂt¶÷&V·FVæ·L;7r¦—6æâr“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâFövvÆUöW‡W'B‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷FövvÆUöW‡W'Br“°¢GV–BÒ†–çB’‚Eõõ5E²wW6W%ö–BuÒóò“°¢GW6W"ÒGV–BâòvWE÷W6W&FF‚GV–B’¢fÇ6S°¢–b‚GW6W"’6VÆc£§&VF—&V7B‚vFV6¶×G—W"×W6W'2rÂtæ–R¦æÆW¦–öæò\[Ç—F¶÷væ–¶ârÂvW'&÷"r“°¢Gv4W‡W'BÒEEõW6W%õ6WGF–æw3£¦—5öW‡W'B‚GV–B“°¢–b‚Gv4W‡W'B’FVÆWFU÷W6W%öÖWF‚GV–BÂvGE÷G—W%öW‡W'Br“°¢VÇ6RWFFU÷W6W%öÖWF‚GV–BÂvGE÷G—W%öW‡W'BrÂ“°¢EEôÆövvW#£¦Æör‚vW‡W'E÷7FGW5ö6†ævVBrÂGv4W‡W'CòtöFV'&æò÷¦æ7¦Væ–RV·7W'Fâs¢tæFæò÷¦æ7¦Væ–RV·7W'FârÅ²wF&vWE÷W6W"sÓâGV–BÂv—5öW‡W'BsÓâGv4W‡W'Có£ÒÂvæ÷F–6RrÆvWEö7W'&VçE÷W6W%ö–B‚’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×W6W'2rÂGv4W‡W'Còu\[Ç—F¶÷væ–²æ–R¦W7B§\[Â÷¦æ7¦öç’¦¶òV·7W'Bâs¢u\[Ç—F¶÷væ–²¦÷7FX"÷¦æ7¦öç’¦¶òV·7W'Bâr“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâWFFUöfVVF&6²‚“¢fö–B°¢F–BÒÖ‚ƒÂ†–çB’‚Eõõ5E²vfVVF&6µö–BuÒóò’“°¢6VÆc£¦wV&B‚vGE÷WFFUöfVVF&6µòrâF–B“°¢vÆö&ÂGwF#°¢G7FGW2Ò6æ—F—¦Uö¶W’‚‡7G&–ær’‚Eõõ5E²w7FGW2uÒóòvæWrr’“°¢–b‚–åö'&’‚G7FGW2Â²væWrrÂv–å÷&öw&W72rÂw&W6öÇfVBrÂv6æ6VÆÆVBuÒÂG'VR’’°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"ÖfVVF&6²rÂtæ–W&v–LX&÷w’7FGW2¦|X&÷7¦Væ–ârÂvW'&÷"r“°¢Ğ¢Fö²ÒGwF"ÓçWFFR„EEôD#£§F&ÆR‚vfVVF&6²r’Â°¢w7FGW2sÓâG7FGW2À¢vFÖ–å÷W6W%ö–BsÓævWEö7W'&VçE÷W6W%ö–B‚’À¢wWFFVEöBsÓæ7W'&VçE÷F–ÖR‚v×—7Âr’À¢ÒÂ²v–BsÓâF–EÒÂ²rW2rÂrVBrÂrW2uÒÂ²rVBuÒ“°¢EEôÆövvW#£¦Æör‚vfVVF&6µ÷7FGW5ö6†ævVBrÂtFÖ–æ—7G&F÷"¦Ö–VæœX"7FGW2¦|X&÷7¦Væ–ârÂ²vfVVF&6µö–BsÓâF–BÂw7FGW2sÓâG7FGW5ÒÂvæ÷F–6RrÂvWEö7W'&VçE÷W6W%ö–B‚’“°¢G&WGW&å7FGW2Ò6æ—F—¦Uö¶W’‚‡7G&–ær’‚Eõõ5E²w&WGW&å÷7FGW2uÒóòvÆÂr’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"ÖfVVF&6²rÂFö²ÓÒfÇ6Ròu7FGW2¦|X&÷7¦Væ–¦÷7FX"¦—6ç’âr¢tæ–RVFX&ò6œI’¦—6Hr7FGW7RârÂFö²ÓÒfÇ6Ròw7V66W72r¢vW'&÷"rÂ²w7FGW2sÓâG&WGW&å7FGW5Ò“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâæ÷F–f–6F–öå÷FV×ÆFW5öf÷&Ò‚“¢fö–B°¢V6†òsÇ6V7F–öâ6Æ73Ò&GBÖ6&B#ãÆƒ#å7¦&Æöç’÷v–FöÖ–\XCÂöƒ#ãÇåG—G\X'’÷G'§–×V¬HRWFöÖG–7¦æ–R&Vf–·2Ç7G&öæsåG—V¤¶÷7¦çÂÒÂ÷7G&öæsââ7¦&Æöç’'§—öÖæ–\XB’¦Ö–âFW&Ö–ì;7r<HRw7;6ÆæRFÆW6‚’v–FöÖüY¶6’rÆ–¶6¦’â¦Ö–VææRræv–66‚¶Æ×&÷w–6‚W§W\X&æ–×’Fç–Ö’ÖV7§R’\[Ç—F¶÷væ–¶âFG’öF¦V×’r7G&Vf–R7¦6÷vV¢v÷&E&W76â¦Ö–æFV·7GRæ–R¦Ö–Væ–†&Ööæöw&×Rw—7œX&¶’ãÂ÷ãÇå÷v—Fæ–RF÷G–7§’–W'w7¦V¢7V'6·'—6¦’W6‚âröæU6–væÂw–&–W'¢–çFVw&6¬I’7W7FöÒ6öFRÂ'’\[Ç—vHr÷v—Fæ–¢G–6‚W7Fv–\XBâæ§|I’[§,;6LX&÷v–FöÖ–Væ–Öü[ÆRFöFF¶÷vòwœY·v–WFÆHr7—7FVÒFVÆVföçRãÂ÷ãÆf÷&ÒÖWF†öCÒ'÷7B"7F–öãÒ"ræW65÷W&Â†FÖ–å÷W&Â‚vFÖ–â×÷7Bç‡r’’âr#ãÆ–çWBG—SÒ&†–FFVâ"æÖSÒ&7F–öâ"fÇVSÒ&GE÷6fUöæ÷F–f–6F–öå÷FV×ÆFW2#âs°¢wöæöæ6Uöf–VÆB‚vGE÷6fUöæ÷F–f–6F–öå÷FV×ÆFW2r“°¢f÷&V6‚„EEôæ÷F–f–6F–öç3£§FV×ÆFW2‚’2F¶W“ÓâGFV×ÆFR’°¢V6†òsÆf–VÆG6WB6Æ73Ò&GB×6V7F–öâ#ãÆÆVvVæCãÇ7G&öæsâræW65ö‡FÖÂ‚GFV×ÆFU²vÆ&VÂuÒ’âsÂ÷7G&öæsãÂöÆVvVæCãÇãÆÆ&VÂf÷#Ò&GB×FV×ÆFRÒrâF¶W’âr×F—FÆR#åG—G\X"†&W¢&Vf–·7R“ÂöÆ&VÃãÆ'#ãÆ–çWB6Æ73Ò&Æ&vR×FW‡B"–CÒ&GB×FV×ÆFRÒrâF¶W’âr×F—FÆR"æÖSÒ'FV×ÆFW5²râF¶W’âuÕ·F—FÆUÒ"fÇVSÒ"ræW65öGG"‚GFV×ÆFU²wF—FÆRuÒ’âr"&WV—&VCãÂ÷ãÇãÆÆ&VÂf÷#Ò&GB×FV×ÆFRÒrâF¶W’ârÖÖW76vR#åG&\Y¼HsÂöÆ&VÃãÆ'#ãÇFW‡F&V6Æ73Ò&Æ&vR×FW‡B"&÷w3Ò#2"–CÒ&GB×FV×ÆFRÒrâF¶W’ârÖÖW76vR"æÖSÒ'FV×ÆFW5²râF¶W’âuÕ¶ÖW76vUÒ"&WV—&VCâræW65÷FW‡F&V‚GFV×ÆFU²vÖW76vRuÒ’âsÂ÷FW‡F&VãÂ÷ãÇ6Æ73Ò&FW67&—F–öâ#äF÷7LI—æR¦Ö–VææS¢s°¢V6†òGFV×ÆFU²wf&–&ÆW2uÓöW65ö‡FÖÂ†–×ÆöFR‚rÂrÆ'&•öÖ‡7FF–2fâ‚Gb“Óâw²râGbâwÒrÂGFV×ÆFU²wf&–&ÆW2uÒ’’“¢v'&²(	BFV·7B7FX'’s°¢V6†òsÂ÷ãÂöf–VÆG6WCâs°¢Ğ¢V6†òsÇ6Æ73Ò&FW67&—F–öâ#ç¶Æ–vÓ¢Ä²óÄÒó$ÄÓ²¶w'WÓ¢çâw'WÇV"W7G’FV·7C²¶¶öÆV¦¶Ó¢æ§v¶öÆV¦¶“²¶ÖV7§Ó¢v÷7öF'¢(	2vüY¼Hs²·FW&Ö–çÒÂ·7F'•÷FW&Ö–çÒÂ¶æ÷w•÷FW&Ö–çÓ¢FF’vöG¦–æÇV"(	çFW&Ö–âFòW7FÆVæ–(	Ó²·÷¦÷7FÆ÷Ó¢Æ–7¦&ÖV7¬;7r&W¢G—RFÆöF&–÷&7’ãÂ÷ãÆ'WGFöâ6Æ73Ò&'WGFöâ'WGFöâ×&–Ö'’"G—SÒ'7V&Ö—B#å¦—7¢7¦&Æöç’÷v–FöÖ–\XCÂö'WGFöããÂöf÷&ÓãÂ÷6V7F–öãâs°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ6fUöæ÷F–f–6F–öå÷FV×ÆFW2‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷6fUöæ÷F–f–6F–öå÷FV×ÆFW2r“°¢G&W7VÇCÔEEôæ÷F–f–6F–öç3£§6fU÷FV×ÆFW2‚†'&’—w÷Vç6Æ6‚‚Eõõ5E²wFV×ÆFW2uÓóõµÒ’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"Öæ÷F–f–6F–öç2rÆ—5÷wöW'&÷"‚G&W7VÇB“òG&W7VÇBÓævWEöW'&÷%öÖW76vR‚“¢u¦—6æò7¦&Æöç’÷v–FöÖ–\XBârÆ—5÷wöW'&÷"‚G&W7VÇB“òvW'&÷"s¢w7V66W72r“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâFW7Eöæ÷F–f–6F–öç2‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷FW7Eöæ÷F–f–6F–öç2r“°¢–b‚‚Eõõ5E²v6öæf—&Õö'&öF67BuÓóòrr’ÓÒsr’°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂu¦¦æ7¢÷Gv–W&G¦Væ–Rw—7œX&¶’FW7GRFòw7§—7F¶–6‚ârÂvW'&÷"r“°¢&WGW&ã°¢Ğ¢–b‚6Æ75öW†—7G2‚tEEôæ÷F–f–6F–öç2r’ÇÂEEôæ÷F–f–6F–öç3£§W6…÷&VG’‚’’°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂtöæU6–væÂæ–R¦W7B6¶öæf–wW&÷vç’ârÂvW'&÷"r“°¢&WGW&ã°¢Ğ¢G&W7VÇCÔEEôæ÷F–f–6F–öç3£§VWVUöFÖ–å÷FW7B‚“°¢FÖW76vSÒu¦Ææ÷væòFW7BW6‚FÆrâG&W7VÇE²wVWVVBuÒâr¶öçB¢|X,HV7¦öç–Ö’÷v–FöÖ–Væ–Ö’âw—7œX&¶'F–Ö’'¦W¢uÔ7&öâÂæ§v7¦\Y¶æ–V¢¦R6V·VæBâw–æ–¶’7&vG¦—7¢r†—7F÷&–’âs°¢–b‚G&W7VÇE²wVWVVBuÒbbG&W7VÇE²vf–ÆVBuÒ’FÖW76vSÒt'&²\[Ç—F¶÷væ–¼;7r¢|X,HV7¦öç–ÒvV"W6‚âæ–R¦Ææ÷væòw—7œX&¶’âs°¢–b‚G&W7VÇE²vf–ÆVBuÒ’FÖW76vRãÒræ–RVFX&ò6œI’¦Ææ÷vHrw—7œX&¶’FÆrâG&W7VÇE²vf–ÆVBuÒâr¶öçBâs°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂFÖW76vRÂG&W7VÇE²vf–ÆVBuÓòvW'&÷"s¢w7V66W72r“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ6fUöfF"‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷6fUöfF"r“°¢EEôfF#£§6fR‚†'&’’‚Eõõ5E²vÖW76vW2uÒóòµÒ’“°¢EEôÆövvW#£¦Æör‚vfF%öÖW76vW5÷6fVBrÂu¦—6æò¶ö×Væ–¶G’fF&ârÅµÒÂvæ÷F–6RrÂvWEö7W'&VçE÷W6W%ö–B‚’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"ÖfF"rÂt¶ö×Væ–¶G’fF&¦÷7FX'’¦—6æRâr“°¢Ğ ¢V&Æ–27FF–2gVæ7F–öâ&W6WE÷G—W%öFF‚“¢fö–B°¢6VÆc£¦wV&B‚vGE÷&W6WE÷G—W%öFFr“°¢–b‡G&–Ò‚‡7G&–ær—w÷Vç6Æ6‚‚Eõõ5E²v6öæf—&ÖF–öâuÒóòrr’’ÓÒuu”5¥œY¬Hbr’°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂtæ–Rw—6æò&v–LX&÷vVvò÷Gv–W&G¦Væ–u”5¥œY¬HbârÂvW'&÷"r“°¢Ğ¢vÆö&ÂGwF#°¢GwF"ÓçVW'’‚u5D%BE$å45D”ôâr“°¢G'’°¢òòFVÆWFRFWVæFVçBFFf—'7BÂF†VâF†R6ö×ÆWFR7÷'G26FÆöwVRâF†—0¢òòÇ6ò&VÖ÷fW2ÖçVÆÇ’VçFW&VB66÷&W2æBÆö6·2Â6òF†RföÆÆ÷v–ær7–æ0¢òòÇv—2&V'V–ÆG2ÆVwVW2g&öÒF†V—"öff–6–Â6÷W&6W2à¢f÷&V6‚…²w&VF–7F–öç2rÂw&÷VæE÷7V&Ö—76–öç2rÂwö–çEöF§W7FÖVçG2rÂv'GW%ö’rÂw&W6V6öå÷&VF–7F–öç2rÂvÖF6†W2rÂw&÷VæG2rÂwFV×2uÒ2GF&ÆR’°¢–b‚GwF"ÓçVW'’‚tDTÄUDRe$ôÒräEEôD#£§F&ÆR‚GF&ÆR’’ÓÓÒfÇ6R’F‡&÷ræWr'VçF–ÖTW†6WF–öâ‚GwF"ÓæÆ7EöW'&÷"ó¢t,X,HVB7§—7¦7¦Væ–F&VÆ’râGF&ÆR“°¢Ğ¢–b‚GwF"ÓçVW'’‚GwF"Óç&W&R‚$DTÄUDRe$ôÒ²GwF"ÓçW6W&ÖWFÒt„U$RÖWFö¶W’”â‚W2ÂW2’"ÂvGE÷&æ¶–æuöæÖRrÂvGEöff÷&—FU÷FVÕö–Br’’ÓÓÒfÇ6R’°¢F‡&÷ræWr'VçF–ÖTW†6WF–öâ‚GwF"ÓæÆ7EöW'&÷"ó¢t,X,HVB7§—7¦7¦Væ–W7Fv–\XB\[Ç—F¶÷væ–¼;7rr“°¢Ğ¢GwF"ÓçVW'’‚t4ôÔÔ•Br“°¢Ò6F6‚…F‡&÷v&ÆRFR’°¢GwF"ÓçVW'’‚u$ôÄÄ$4²r“°¢EEôÆövvW#£¦Æör‚wG—W%÷&W6WEöf–ÆVBrÂFRÓævWDÖW76vR‚’ÅµÒÂvW'&÷"rÂvWEö7W'&VçE÷W6W%ö–B‚’“°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×6WGF–æw2rÂtæ–RVFX&ò6œI’w–7§œY¶6œHrFç–6‚G—W&ârÂvW'&÷"r“°¢Ğ ¢òòÖF6‚”G2æB&÷VæB”G2&R&V7&VFVB'’F†R–×÷'Bâ&VÖ÷fRöæÇ’F†V— ¢òòÖ–æs²¶VWF†R6öæf–wW&VB$ôåU2ö–çBfÇVRæBWfW'’÷F†W"6WGF–ærà¢FVÆWFUö÷F–öâ‚vGEö&öçW5öÖF6†W2r“°¢FVÆWFUö÷F–öâ‚vGEóÆÕ÷7FæF–æw5ö66†Rr“°¢F6öçFW‡D66†RÒGwF"ÓæW65öÆ–¶R‚u÷G&ç6–VçEöGEöÆ7G…òr’ârRs°¢F6öçFW‡EF–ÖV÷WBÒGwF"ÓæW65öÆ–¶R‚u÷G&ç6–VçE÷F–ÖV÷WEöGEöÆ7G…òr’ârRs°¢GwF"ÓçVW'’‚GwF"Óç&W&R€¢$DTÄUDRe$ôÒ²GwF"Óæ÷F–öç7Òt„U$R÷F–öåöæÖRÄ”´RW2õ"÷F–öåöæÖRÄ”´RW2"À¢F6öçFW‡D66†RÀ¢F6öçFW‡EF–ÖV÷W@¢’“° ¢EEôÆövvW#£¦Æör€¢wG—W%öFF÷&W6WBrÀ¢tFÖ–æ—7G&F÷"W7VìH\X"FæRG—W'6¶–RÂw–æ–¶’ÂÖV7¦RÂ¶öÆV¦¶’’G'\[Ç–ç’â¶öçF÷&¢¶öæf–wW&6¬I’wG–7¦¶’¦6†÷væòârÀ¢µÒÀ¢wv&æ–ærrÀ¢vWEö7W'&VçE÷W6W%ö–B‚¢“° ¢G7–æ2ÒEEõ7–æ3£§'Vâ‡G'VR“°¢FÆVwVU&W7VÇG2Ò†'&’’‚G7–æ5²vÆVwVW2uÒóòµÒ“°¢G7–æ6VBÒµÓ°¢Ff–ÆVBÒµÓ°¢f÷&V6‚…²wÆ²sÓâuÄ²rÂsÆÒsÓâsÄÒrÂs&ÆÒsÓâs$ÄÒuÒ2F¶W“ÓâFÆ&VÂ’°¢–b‚V×G’‚FÆVwVU&W7VÇG5²F¶W•Õ²vö²uÒ’’G7–æ6VEµÒÒFÆ&VÃ°¢VÇ6RFf–ÆVEµÒÒFÆ&VÃ°¢Ğ ¢FÖW76vRÒtFæRG—W&¦÷7FX'’w–7§—7¦7¦öæRâöæ÷væ–Rö'&æó¢râ‚G7–æ6VBò–×ÆöFR‚rÂrÂG7–æ6VB’¢v'&²Æ–rr’ârâs°¢–b‚Ff–ÆVB’°¢FÖW76vRãÒræ–RVFX&ò6œI’ö'&Hs¢râ–×ÆöFR‚rÂrÂFf–ÆVB’ârâ7¦7¦V|;<X'’¦—6æòr†—7F÷&–’âs°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×7–æ2rÂFÖW76vRÂvW'&÷"r“°¢Ğ¢FÖW76vRãÒr¦–×÷'F÷væòrâ†–çB’‚G7–æ5²vÖF6†W5öæWruÒóò’ârÖV7¬;7râs°¢6VÆc£§&VF—&V7B‚vFV6¶×G—W"×7–æ2rÂFÖW76vRÂw7V66W72r“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâçVÆÆ&ÆUö–çB‚GfÇVR“¢ö–çB°¢–b‚GfÇVRÓÓÒrrÇÂGfÇVRÓÓÒçVÆÂ’&WGW&âçVÆÃ°¢&WGW&âÖ‚ƒÂ†–çB’GfÇVR“°¢Ğ ¢&—fFR7FF–2gVæ7F–öâ×—7ÅöFFWF–ÖR‚GfÇVR“¢÷7G&–ær°¢GfÇVRÒ6æ—F—¦U÷FW‡Eöf–VÆB‡w÷Vç6Æ6‚‚‡7G&–ær’GfÇVR’“°¢–b‚GfÇVR’&WGW&âçVÆÃ°¢GG¢Òw÷F–ÖW¦öæR‚“°¢FBÒFFUF–ÖT–Ö×WF&ÆS£¦7&VFTg&öÔf÷&ÖB‚r’ÖÒÖEÅDƒ¦’rÂGfÇVRÂGG¢“°¢–b‚FB’FBÒFFUF–ÖT–Ö×WF&ÆS£¦7&VFTg&öÔf÷&ÖB‚r’ÖÒÖBƒ¦“§2rÂGfÇVRÂGG¢“°¢&WGW&âFBòFBÓæf÷&ÖB‚u’ÖÒÖBƒ¦“§2r’¢çVÆÃ°¢Ğ§Ğ
