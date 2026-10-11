@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.35
+- W sekcji „Rozgrywki” ustawień administratora dodano przycisk „Synchronizuj wyniki teraz”.
+- Ręczna synchronizacja zapisuje bieżące ustawienia źródeł, pobiera dane PLK, 1LM i 2LM oraz pokazuje podsumowanie zaktualizowanych meczów i przeliczonych typów.
+
 ## 0.6.34
 - Uszczelniono wszystkie ścieżki zapisu typów: mecz z potwierdzoną godziną nie może zostać wytypowany w chwili rozpoczęcia ani później.
 - W Ustawieniach administratora dodano audyt „Weryfikuj typowania” z listą naruszeń i bezpiecznym anulowaniem pojedynczego typu wraz z odjęciem jego punktów.

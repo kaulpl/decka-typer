@@ -14,4 +14,6 @@ check(str_contains($admin, 'dt_cancel_late_prediction_'), 'Each cancellation mus
 check(str_contains($admin, "DT_Scoring::recalc_match"), 'Cancellation must recalculate affected scoring');
 check(str_contains($admin, 'late_prediction_cancelled'), 'Cancellation must be recorded in history');
 check(str_contains($rest, "perfect_round_bonus") && str_contains($rest, "['earned_points']"), 'Closed-round points must include the perfect-round bonus');
+$adminSource = $admin;
+check(str_contains($adminSource, 'Synchronizuj wyniki teraz') && str_contains($adminSource, "DT_Sync::run(true)"), 'Competition settings must expose immediate result synchronization');
 echo "Late prediction safeguards: OK\n";
