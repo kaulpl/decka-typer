@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.42
+- Link LiveStats do innego spotkania jest teraz traktowany jako punkt startowy wyszukiwania, a nie jako dane wybranego meczu Decki.
+- Generator porównuje nazwy obu drużyn i automatycznie przeszukuje pobliskie publiczne identyfikatory w polskiej przestrzeni LiveStats.
+- Dopiero identyfikator potwierdzonego meczu Decki zostaje zapisany przy spotkaniu; błędny link startowy nie jest zapamiętywany.
+- Podczas wyszukiwania panel pokazuje liczbę sprawdzonych rekordów i informuje, gdy potrzebny jest bliższy terminowo mecz startowy.
+
 ## 0.6.41
 - Poprawiono pobieranie oficjalnych statystyk FIBA LiveStats, gdy CloudFront blokuje żądania wychodzące z hostingu WordPressa.
 - W takiej sytuacji dane meczu są pobierane bezpośrednio przez przeglądarkę administratora, a następnie lokalnie zamieniane na planszę 16:9.
