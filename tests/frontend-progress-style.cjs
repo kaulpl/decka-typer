@@ -13,5 +13,9 @@ assert.doesNotMatch(js, /icon\('target'\).*matches\.length.*meczów/);
 assert.match(css, /\.dt-pick-progress\.is-danger\{background:#c91f36!important\}/);
 assert.match(css, /\.dt-pick-progress\.is-success\{background:#138a55!important\}/);
 assert.match(css, /\.dt-pick-progress\{[^}]*color:#fff!important/);
+assert.match(js, /!open&&cfg\.loggedIn/);
+assert.match(js, /Zdobyte punkty:/);
+assert.match(js, /Number\(round\.earned_points\|\|0\)/);
+assert.match(css, /\.dt-earned-points\{/);
 
 console.log('Frontend prediction progress styles: OK');

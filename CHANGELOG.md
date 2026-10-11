@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.34
+- Uszczelniono wszystkie ścieżki zapisu typów: mecz z potwierdzoną godziną nie może zostać wytypowany w chwili rozpoczęcia ani później.
+- W Ustawieniach administratora dodano audyt „Weryfikuj typowania” z listą naruszeń i bezpiecznym anulowaniem pojedynczego typu wraz z odjęciem jego punktów.
+- Synchronizacja PLK obsługuje aktualne pola `resultHome` i `resultGuest`, zachowując zgodność ze starszym formatem wyników.
+- Przy zamkniętej kolejce użytkownik widzi obok postępu sumę zdobytych w niej punktów.
+
 ## 0.6.33
 - Dodano zakładkę administratora „Kolejka z Arturem” z wyborem konta oraz dwóch kolejek 1LM wyświetlanych obok siebie.
 - Każdy mecz pokazuje wynik, typ Artura, oznaczenie BONUS oraz status: trafiony, nietrafiony, oczekuje lub brak typu.

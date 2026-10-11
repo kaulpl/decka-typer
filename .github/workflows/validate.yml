@@ -50,6 +50,12 @@ jobs:
       - name: Live score separation regression tests
         run: php tests/live-scores.php
 
+      - name: PLK result parsing regression tests
+        run: php tests/plk-results.php
+
+      - name: Late prediction safeguard regression tests
+        run: php tests/late-predictions.php
+
       - name: Admin user dashboard regression tests
         run: php tests/admin-user-dashboard.php
 
