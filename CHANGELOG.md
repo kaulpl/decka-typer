@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.37
+- Przebudowano układ kart na infografikach „Kolejki z Arturem”: drużyny, termin oraz typ mają teraz osobne, niekolidujące strefy.
+- Logo TypujKosza.pl znajduje się na czytelnej białej plakietce.
+- Usunięto dolną stopkę z nazwą typera, rozdzielczością i adresem strony.
+
 ## 0.6.36
 - „Kolejka z Arturem” domyślnie pokazuje po lewej najnowszą w pełni rozstrzygniętą kolejkę 1LM, a po prawej następną kolejkę; oba wybory nadal można zmienić ręcznie.
 - Dodano pobieranie grafik PNG 1920 × 1080: podsumowania typów Artura, zapowiedzi następnej kolejki oraz listy osób, które trafiły mecz BONUS.

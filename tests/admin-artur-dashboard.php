@@ -14,4 +14,6 @@ $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js
 check(str_contains($source,'resolved_count') && str_contains($source,'$nextRounds'), 'Default columns use latest resolved and next round');
 check(str_contains($source,'Pobierz podsumowanie 16:9') && str_contains($source,'Pobierz zapowiedź 16:9') && str_contains($source,'Pobierz trafienia BONUS 16:9'), 'All infographic actions are available');
 check(str_contains($graphics,'1920') && str_contains($graphics,'1080') && str_contains($graphics,'logoUrl'), 'Infographics are 16:9 and include the TypujKosza logo');
+check(str_contains($graphics,"rr(ctx,1360,48,500,118,24,C.white)"), 'TypujKosza logo has a white backing panel');
+check(!str_contains($graphics,'Typuje:') && !str_contains($graphics,'1920 × 1080  •'), 'Generated graphics do not contain the old footer');
 echo "Admin Artur dashboard: OK\n";
