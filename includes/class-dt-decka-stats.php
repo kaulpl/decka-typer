@@ -22,10 +22,11 @@ class DT_Decka_Stats {
         if(!preg_match('/1lm-(\d+)/',(string)$match['external_key'],$id)) wp_send_json_error(['message'=>'Ten mecz nie ma publicznego identyfikatora PZKosz.'],422);
         $url='https://1lm.pzkosz.pl/mecz/'.rawurlencode($id[1]).'/';
         $response=wp_remote_get($url,['timeout'=>20,'redirection'=>4,'headers'=>['User-Agent'=>'TypujKosza/'.DT_VERSION.' (+'.home_url('/').')']]);
-        if(is_wp_error($response) || (int)wp_remote_retrieve_response_code($response)!==200) wp_send_json_error(['message'=>'Nie udało się pobrać statystyk z PZKosz.'],502);
-        $html=(string)wp_remote_retrieve_body($response);
+        $html=!is_wp_error($response) && (int)wp_remote_retrieve_response_code($response)===200 ? (string)wp_remote_retrieve_body($response) : '';
         $liveInput=esc_url_raw(wp_unslash((string)($_POST['livestats_url']??'')));
-        $liveId=self::livestats_id($liveInput) ?: self::livestats_id($html);
+        $saved=(array)get_option('dt_livestats_match_ids',[]);
+        $liveId=self::livestats_id($liveInput) ?: self::livestats_id($html) ?: (isset($saved[$matchId]) ? (string)$saved[$matchId] : null);
+        if($liveId && $liveInput!=='' && (!isset($saved[$matchId]) || (string)$saved[$matchId]!==$liveId)){$saved[$matchId]=$liveId;update_option('dt_livestats_match_ids',$saved,false);}
         $stats=null;
         if($liveId){
             $liveUrl='https://fibalivestats.dcd.shared.geniussports.com/data/'.$liveId.'/data.json';
@@ -35,8 +36,9 @@ class DT_Decka_Stats {
                 if(is_array($json))$stats=self::parse_livestats($json);
             }
         }
-        if(!$stats)$stats=self::parse_game_html($html);
-        if(!$stats) wp_send_json_error(['message'=>'PZKosz nie udostępnia jeszcze pełnych statystyk tego meczu.'],422);
+        if(!$stats && $html!=='')$stats=self::parse_game_html($html);
+        if(!$stats && !$liveId) wp_send_json_error(['message'=>'Nie znaleziono identyfikatora LiveStats dla tego meczu. Wklej publiczny adres FIBA LiveStats i spróbuj ponownie.'],422);
+        if(!$stats)$stats=['team'=>null,'leaders'=>[],'shots'=>[],'source'=>'browser_livestats','browser_fetch'=>true,'livestats_data_url'=>'https://fibalivestats.dcd.shared.geniussports.com/data/'.$liveId.'/data.json'];
         $logo=static function(string $name,string $fallback): string {
             return class_exists('DT_Team_Logos') ? (DT_Team_Logos::url_for($name) ?: $fallback) : $fallback;
         };
@@ -84,7 +86,7 @@ class DT_Decka_Stats {
 
     public static function parse_livestats(array $data): ?array {
         $teams=$data['tm']??null;if(!is_array($teams))return null;$decka=null;
-        foreach($teams as $team){if(is_array($team) && stripos((string)($team['name']??$team['nameInternational']??''),'Decka Pelplin')!==false){$decka=$team;break;}}
+        foreach($teams as $team){if(!is_array($team))continue;$name=(string)($team['name']??$team['nameInternational']??$team['shortName']??'');if(stripos($name,'decka')!==false || stripos($name,'pelplin')!==false){$decka=$team;break;}}
         if(!$decka)return null;
         $shot=static function(array $team,string $made,string $attempted): array {
             $m=(int)($team[$made]??0);$a=(int)($team[$attempted]??0);return ['made'=>$m,'attempted'=>$a,'percent'=>$a?round($m*100/$a,1):0.0];

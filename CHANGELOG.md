@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.41
+- Poprawiono pobieranie oficjalnych statystyk FIBA LiveStats, gdy CloudFront blokuje żądania wychodzące z hostingu WordPressa.
+- W takiej sytuacji dane meczu są pobierane bezpośrednio przez przeglądarkę administratora, a następnie lokalnie zamieniane na planszę 16:9.
+- Publiczny identyfikator LiveStats jest automatycznie wykrywany na stronie meczu PZKosz, a ręcznie podany adres zostaje zapamiętany dla wybranego meczu.
+- Rozpoznawanie Decki działa także dla skróconych nazw drużyny zawierających „Decka” lub „Pelplin”.
+
 ## 0.6.40
 - W „Kolejce z Arturem” dodano pobieranie telewizyjnej planszy 16:9 z podsumowaniem wybranego zakończonego meczu Decki Pelplin.
 - Plansza pokazuje wynik, skuteczność za 2, za 3, z gry i za 1, trzech najlepszych zawodników według EVAL oraz najważniejsze statystyki drużynowe.
