@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.48
+- Gdy Puls Basketu zwraca stronę bez tabeli ładowanej przez JavaScript, generator automatycznie korzysta z zapisanego przy meczu oficjalnego adresu PZKosz.
+- Dodano parser serwerowego box score PZKosz: pełne sumy drużynowe, trzech liderów według EVAL oraz wynik każdej kwarty.
+- Naprawiono niezdefiniowaną wartość roku sezonu w komunikacie o niedopasowanym meczu.
+
 ## 0.6.47
 - Parser pełnych statystyk obsługuje rzeczywisty wiersz sumy Puls Basketu, w którym przed etykietą „RAZEM” znajduje się pusta komórka numeru zawodnika.
 - Kolumny punktów, zbiórek, asyst, skuteczności, przechwytów, bloków, strat i EVAL są przesuwane zgodnie z wykrytym wariantem tabeli.
