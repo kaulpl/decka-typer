@@ -45,6 +45,7 @@ $official=DT_Decka_Stats::parse_pzkosz_game($pzkosz,true);
 check(is_array($official) && $official['source']==='pzkosz', 'Parse official server-rendered PZKosz fallback');
 check($official['team']['field']['made']===31 && $official['team']['reb']===36 && $official['team']['steals']===8 && $official['team']['turnovers']===17, 'Read official team totals');
 check($official['leaders'][0]['name']==='Jayden Coke-Domingue' && $official['leaders'][0]['eval']===22, 'Read official player leaders');
+check($official['leaders'][0]['two']['made']===7 && $official['leaders'][0]['three']['made']===1 && $official['leaders'][0]['free']['made']===5, 'Read leader shooting splits');
 check($official['quarters']['decka']===[23,23,15,30] && $official['quarters']['opponent']===[23,16,27,14], 'Read official quarter score');
 $officialRaw=DT_Decka_Stats::parse_pzkosz_raw($pzkosz,true);
 check(is_array($officialRaw) && $officialRaw['team']['points']===91 && $officialRaw['team']['eval']===104, 'Parse a PZKosz box score without relying on the full-page DOM');
