@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.43
+- Generator planszy meczu Decki korzysta teraz z Puls Basketu zamiast blokowanego źródła FIBA LiveStats.
+- Wybrane spotkanie jest automatycznie odnajdywane po obu drużynach i końcowym wyniku; administrator nie musi podawać żadnego adresu ani identyfikatora.
+- Z publicznego box score pobierane są skuteczność rzutowa, statystyki drużynowe oraz trzech najlepszych zawodników według EVAL.
+- Gdy źródło nie udostępnia współrzędnych rzutów, plansza pokazuje wyniki kwart i statystyki zaawansowane Decki zamiast pustej mapy.
+
 ## 0.6.42
 - Link LiveStats do innego spotkania jest teraz traktowany jako punkt startowy wyszukiwania, a nie jako dane wybranego meczu Decki.
 - Generator porównuje nazwy obu drużyn i automatycznie przeszukuje pobliskie publiczne identyfikatory w polskiej przestrzeni LiveStats.
