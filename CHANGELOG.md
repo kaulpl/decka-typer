@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.46
+- Mecz Puls Basketu jest dopasowywany przede wszystkim po unikalnej parze drużyn; wynik nie jest już obowiązkowym warunkiem.
+- Wyszukiwanie sprawdza kilka poziomów kontenera karty, ponieważ pusty link może być oddzielony od nazw drużyn dodatkową warstwą HTML.
+- Komunikat błędu podaje teraz rok sezonu użyty do wyszukiwania, co ułatwia dalszą diagnostykę źródła.
+
 ## 0.6.45
 - Naprawiono wybór sezonu Puls Basketu dla zapisu `2026/27`: w adresie źródła używany jest teraz prawidłowo rok końcowy `2027`, a nie `2026`.
 - Dodano testy obu obsługiwanych formatów sezonu: `2026/27` oraz `2026/2027`.
