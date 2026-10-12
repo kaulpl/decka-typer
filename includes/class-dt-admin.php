@@ -668,9 +668,9 @@ class DT_Admin {
              ORDER BY m.starts_at DESC",
             $season
         ));
-        echo '<section class="dt-card dt-section dt-artur-decka-stats"><span class="dt-eyebrow">PLANSZA MECZOWA 16:9</span><h2>Podsumowanie meczu Decki</h2><p class="dt-muted">Statystyki i mapa rzutów są pobierane z oficjalnego FIBA LiveStats. Gdy identyfikatora LiveStats nie uda się znaleźć automatycznie, można wkleić publiczny adres meczu; dane PZKosz pozostają źródłem zapasowym.</p><div class="dt-artur-export-actions"><label>Wybierz zakończony mecz<select data-dt-decka-match>';
+        echo '<section class="dt-card dt-section dt-artur-decka-stats"><span class="dt-eyebrow">PLANSZA MECZOWA 16:9</span><h2>Podsumowanie meczu Decki</h2><p class="dt-muted">Generator automatycznie wyszukuje wybrane spotkanie w Puls Basketu i pobiera pełny box score, liderów, wyniki kwart oraz statystyki zaawansowane.</p><div class="dt-artur-export-actions"><label>Wybierz zakończony mecz<select data-dt-decka-match>';
         foreach($deckaMatches as $m){$score=(int)$m->score_home.':'.(int)$m->score_away;echo '<option value="'.(int)$m->id.'">'.esc_html((int)$m->round_no.'. kolejka · '.$m->home_name.' '.$score.' '.$m->away_name).'</option>';}
-        echo '</select></label><label>URL FIBA LiveStats <small>(opcjonalnie)</small><input type="url" data-dt-livestats-url placeholder="https://fibalivestats.../u/POL/2902819/sc.html"></label><button type="button" class="button button-primary dt-button" data-dt-decka-stat-graphic '.(!$deckaMatches?'disabled':'').'><span class="dashicons dashicons-chart-area"></span>Pobierz statystyki meczu 16:9</button><span class="dt-decka-stat-status" aria-live="polite"></span></div></section>';
+        echo '</select></label><button type="button" class="button button-primary dt-button" data-dt-decka-stat-graphic '.(!$deckaMatches?'disabled':'').'><span class="dashicons dashicons-chart-area"></span>Pobierz statystyki meczu 16:9</button><span class="dt-decka-stat-status" aria-live="polite"></span></div></section>';
         self::end_shell();
     }
 
