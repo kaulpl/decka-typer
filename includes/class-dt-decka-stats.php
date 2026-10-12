@@ -176,12 +176,10 @@ class DT_Decka_Stats {
         }
         if(!$boxes)return null;
         $box=$boxes[min($deckaHome?0:1,count($boxes)-1)];
-        if(!preg_match_all('~<tr\b([^>]*)>(.*?)</tr>~isu',$box,$rows,PREG_SET_ORDER))return null;
         $players=[];$team=null;
-        foreach($rows as $row){
-            if(!preg_match_all('~<t[dh]\b[^>]*>(.*?)</t[dh]>~isu',$row[2],$found))continue;
-            $cells=array_map([self::class,'raw_cell'],$found[1]);
-            $isSum=preg_match('~\bclass\s*=\s*["\'][^"\']*\bsum\b~i',$row[1]) || self::norm($cells[0]??'')==='suma';
+        foreach(self::raw_rows($box) as $row){
+            $cells=self::raw_row_cells($row['html']);if(!$cells)continue;
+            $isSum=preg_match('~\bclass\s*=\s*["\'][^"\']*\bsum\b~i',$row['attrs']) || self::norm($cells[0]??'')==='suma';
             if($isSum){
                 $team=self::pzkosz_team_cells($cells);
                 continue;
@@ -211,14 +209,34 @@ class DT_Decka_Stats {
     }
 
     private static function raw_complete_sum(string $table): bool {
-        if(!preg_match_all('~<tr\b[^>]*>(.*?)</tr>~isu',$table,$rows))return false;
-        foreach($rows[1] as $row){
-            if(!preg_match_all('~<t[dh]\b[^>]*>(.*?)</t[dh]>~isu',$row,$cells))continue;
-            $clean=array_map([self::class,'raw_cell'],$cells[1]);
-            if((self::norm($clean[0]??'')==='suma' || stripos($row,'class="sum"')!==false || stripos($row,"class='sum'")!==false)
+        foreach(self::raw_rows($table) as $row){
+            $clean=self::raw_row_cells($row['html']);
+            if((self::norm($clean[0]??'')==='suma' || preg_match('~\bclass\s*=\s*["\'][^"\']*\bsum\b~i',$row['attrs']))
                 && self::pzkosz_team_cells($clean)!==null)return true;
         }
         return false;
+    }
+
+    private static function raw_rows(string $table): array {
+        if(!preg_match_all('~<tr\b([^>]*)>~isu',$table,$found,PREG_OFFSET_CAPTURE))return [];
+        $rows=[];$count=count($found[0]);
+        for($i=0;$i<$count;$i++){
+            $start=$found[0][$i][1]+strlen($found[0][$i][0]);
+            $end=$i+1<$count?$found[0][$i+1][1]:strlen($table);
+            $rows[]=['attrs'=>$found[1][$i][0],'html'=>substr($table,$start,$end-$start)];
+        }
+        return $rows;
+    }
+
+    private static function raw_row_cells(string $row): array {
+        if(!preg_match_all('~<t[dh]\b[^>]*>~isu',$row,$found,PREG_OFFSET_CAPTURE))return [];
+        $cells=[];$count=count($found[0]);
+        for($i=0;$i<$count;$i++){
+            $start=$found[0][$i][1]+strlen($found[0][$i][0]);
+            $end=$i+1<$count?$found[0][$i+1][1]:strlen($row);
+            $cells[]=self::raw_cell(substr($row,$start,$end-$start));
+        }
+        return $cells;
     }
 
     private static function pzkosz_team_cells(array $cells): ?array {
