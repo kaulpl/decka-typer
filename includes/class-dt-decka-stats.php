@@ -170,7 +170,6 @@ class DT_Decka_Stats {
         $boxes=[];
         foreach($matches[1] as $table){
             if(stripos($table,'class="sum"')===false && stripos($table,"class='sum'")===false)continue;
-            if(stripos($table,'EVAL')===false)continue;
             $boxes[]=$table;
             if(count($boxes)===2)break;
         }
