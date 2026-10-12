@@ -170,7 +170,7 @@ class DT_Decka_Stats {
         if($html==='')return null;
         $boxes=[];
         foreach(self::raw_tables($html) as $table){
-            if(!self::raw_complete_sum($table))continue;
+            if(self::pzkosz_team_text($table)===null)continue;
             $boxes[]=$table;
             if(count($boxes)===2)break;
         }
@@ -188,6 +188,7 @@ class DT_Decka_Stats {
             $players[]=['number'=>trim($cells[0]),'name'=>trim($cells[2]),'points'=>(int)$cells[3],'reb'=>(int)$cells[15],
                 'ast'=>(int)$cells[16],'steals'=>(int)$cells[20],'eval'=>(int)$cells[23]];
         }
+        if(!$team)$team=self::pzkosz_team_text($box);
         if(!$team)return null;
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
         return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_raw_quarters($html,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
@@ -209,12 +210,34 @@ class DT_Decka_Stats {
     }
 
     private static function raw_complete_sum(string $table): bool {
+        if(self::pzkosz_team_text($table)!==null)return true;
         foreach(self::raw_rows($table) as $row){
             $clean=self::raw_row_cells($row['html']);
             if((self::norm($clean[0]??'')==='suma' || preg_match('~\bclass\s*=\s*["\'][^"\']*\bsum\b~i',$row['attrs']))
                 && self::pzkosz_team_cells($clean)!==null)return true;
         }
         return false;
+    }
+
+    /** Parse the visible totals text, independent of td/tr markup and colspan. */
+    private static function pzkosz_team_text(string $table): ?array {
+        $text=self::raw_cell($table);$pos=strripos($text,'Suma');
+        if($pos===false)return null;$tail=substr($text,$pos);
+        if(!preg_match('/Suma\s+(\d+)\s+\d{1,3}:\d{2}/iu',$tail,$head))return null;
+        if(!preg_match_all('/\d+\s*\/\s*\d+/',$tail,$shotMatches,PREG_OFFSET_CAPTURE) || count($shotMatches[0])<4)return null;
+        $shotValues=array_slice(array_column($shotMatches[0],0),0,4);
+        $afterFourth=$shotMatches[0][3][1]+strlen($shotMatches[0][3][0]);
+        $rest=substr($tail,$afterFourth);
+        if(!preg_match_all('/-?\d+(?:[.,]\d+)?/',$rest,$numbers) || count($numbers[0])<11)return null;
+        // Free-throw percentage is first, followed by OREB, DREB, REB, AST,
+        // fouls, fouls drawn, turnovers, steals, blocks, blocks received, EVAL.
+        $n=array_map(static fn(string $v): float=>(float)str_replace(',','.',$v),$numbers[0]);
+        return ['points'=>(int)$head[1],'reb'=>(int)($n[3]??0),'ast'=>(int)($n[4]??0),
+            'two'=>self::made_attempted($shotValues[0]),'three'=>self::made_attempted($shotValues[1]),
+            'field'=>self::made_attempted($shotValues[2]),'free'=>self::made_attempted($shotValues[3]),
+            'oreb'=>(int)($n[1]??0),'dreb'=>(int)($n[2]??0),'fouls'=>(int)($n[5]??0),
+            'turnovers'=>(int)($n[7]??0),'steals'=>(int)($n[8]??0),'blocks'=>(int)($n[9]??0),
+            'eval'=>(int)($n[11]??end($n))];
     }
 
     private static function raw_rows(string $table): array {
