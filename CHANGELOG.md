@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.50
+- Parser PZKosz wybiera tabelę statystyk według pewnej kolejności gospodarz–gość zamiast zależeć od zmiennej struktury nagłówka drużyny.
+- Obsłużono zarówno mecze domowe, jak i wyjazdowe Decki oraz strony zawierające tylko jedną tabelę box score.
+- Dodano test wyboru drugiej tabeli, gdy Decka występuje jako gość.
+
 ## 0.6.49
 - Oficjalny adres meczu PZKosz jest odzyskiwany z klucza synchronizacji, nawet jeśli starszy rekord przechowuje tylko ogólny adres terminarza.
 - Gdy identyfikatora nie ma w kluczu, generator automatycznie odnajduje właściwy mecz w terminarzu po obu drużynach i wyniku.
