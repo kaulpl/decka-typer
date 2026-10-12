@@ -11,7 +11,7 @@ class DT_Decka_Stats {
         global $wpdb;
         $matchId=absint($_POST['match_id']??0);
         $match=$wpdb->get_row($wpdb->prepare(
-            "SELECT m.id,m.starts_at,m.score_home,m.score_away,h.name home_name,h.logo_url home_logo,
+            "SELECT m.id,m.starts_at,m.score_home,m.score_away,m.source_url,h.name home_name,h.logo_url home_logo,
                     a.name away_name,a.logo_url away_logo,r.round_no,r.season
              FROM ".DT_DB::table('matches')." m
              JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id
@@ -22,14 +22,24 @@ class DT_Decka_Stats {
         ),ARRAY_A);
         if(!$match || (stripos((string)$match['home_name'],'Decka Pelplin')===false && stripos((string)$match['away_name'],'Decka Pelplin')===false)) wp_send_json_error(['message'=>'Nie znaleziono meczu Decki.'],404);
 
-        $gamesUrl=sprintf(self::PULS_GAMES,self::season_year((string)$match['season']));
+        $year=self::season_year((string)$match['season']);
+        $gamesUrl=sprintf(self::PULS_GAMES,$year);
         $gamesHtml=self::fetch($gamesUrl);
         if($gamesHtml==='') wp_send_json_error(['message'=>'Nie udało się połączyć z Puls Basketu. Spróbuj ponownie za chwilę.'],502);
         $game=self::find_puls_game($gamesHtml,$match);
         if(!$game) wp_send_json_error(['message'=>'Nie znaleziono pary drużyn tego meczu na liście Puls Basketu (sezon '.$year.').'],422);
         $gameUrl='https://pulsbasketu.com'.$game['path'];
         $stats=self::parse_puls_game(self::fetch($gameUrl));
-        if(!$stats) wp_send_json_error(['message'=>'Puls Basketu nie udostępnia jeszcze pełnych statystyk tego meczu.'],422);
+        // Puls hydrates the box score in JavaScript on some requests. The
+        // synchronized match already carries its stable official PZKosz URL,
+        // whose server-rendered table is a reliable fallback for the same data.
+        if(!$stats && self::is_pzkosz_match_url((string)($match['source_url']??''))){
+            $stats=self::parse_pzkosz_game(
+                self::fetch((string)$match['source_url']),
+                stripos((string)$match['home_name'],'Decka Pelplin')!==false
+            );
+        }
+        if(!$stats) wp_send_json_error(['message'=>'Nie udało się odczytać pełnych statystyk meczu ani z Puls Basketu, ani z oficjalnej strony PZKosz.'],422);
 
         $logo=static function(string $name,string $fallback): string {
             return class_exists('DT_Team_Logos') ? (DT_Team_Logos::url_for($name) ?: $fallback) : $fallback;
@@ -97,6 +107,49 @@ class DT_Decka_Stats {
         if(!$team)return null;
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
         return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::quarters($xp),'advanced'=>self::advanced($xp),'source'=>'pulsbasketu'];
+    }
+
+    public static function parse_pzkosz_game(string $html,bool $deckaHome): ?array {
+        $dom=self::dom($html);if(!$dom)return null;$xp=new DOMXPath($dom);$box=null;
+        foreach($xp->query('//h3') as $heading){
+            $name=self::norm((string)$heading->textContent);
+            if(!str_contains($name,'decka')&&!str_contains($name,'pelplin'))continue;
+            $candidate=$xp->query('following::table[contains(concat(" ",normalize-space(@class)," ")," statystyki ")][1]',$heading)->item(0);
+            if($candidate){$box=$candidate;break;}
+        }
+        if(!$box)return null;
+        $players=[];$team=null;
+        foreach($xp->query('.//tr',$box) as $row){
+            $cells=self::cells($xp,$row);if(!$cells)continue;$rowClass=$row instanceof DOMElement?$row->getAttribute('class'):'';
+            if(str_contains(' '.$rowClass.' ',' sum ') || self::norm($cells[0]??'')==='suma'){
+                if(count($cells)<22)continue;
+                $team=['points'=>(int)$cells[1],'reb'=>(int)$cells[13],'ast'=>(int)$cells[14],
+                    'field'=>self::made_attempted($cells[7]),'two'=>self::made_attempted($cells[3]),'three'=>self::made_attempted($cells[5]),'free'=>self::made_attempted($cells[9]),
+                    'oreb'=>(int)$cells[11],'dreb'=>(int)$cells[12],'steals'=>(int)$cells[18],'blocks'=>(int)$cells[19],
+                    'turnovers'=>(int)$cells[17],'fouls'=>(int)$cells[15],'eval'=>(int)$cells[21]];
+                continue;
+            }
+            if(count($cells)<24 || !preg_match('/^\d+$/',trim($cells[0])) || trim($cells[2])==='')continue;
+            $players[]=['number'=>trim($cells[0]),'name'=>trim($cells[2]),'points'=>(int)$cells[3],'reb'=>(int)$cells[15],
+                'ast'=>(int)$cells[16],'steals'=>(int)$cells[20],'eval'=>(int)$cells[23]];
+        }
+        if(!$team)return null;
+        usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
+        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_quarters($xp,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
+    }
+
+    private static function pzkosz_quarters(DOMXPath $xp,bool $deckaHome): array {
+        foreach($xp->query('//span|//div') as $node){
+            $text=trim(preg_replace('/\s+/u',' ',(string)$node->textContent));
+            if(!preg_match('/(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)/',$text,$m))continue;
+            $home=[(int)$m[1],(int)$m[3],(int)$m[5],(int)$m[7]];$away=[(int)$m[2],(int)$m[4],(int)$m[6],(int)$m[8]];
+            return ['decka'=>$deckaHome?$home:$away,'opponent'=>$deckaHome?$away:$home];
+        }return [];
+    }
+
+    private static function is_pzkosz_match_url(string $url): bool {
+        $host=strtolower((string)wp_parse_url($url,PHP_URL_HOST));$path=(string)wp_parse_url($url,PHP_URL_PATH);
+        return ($host==='1lm.pzkosz.pl'||$host==='rozgrywki.pzkosz.pl') && preg_match('~/mecz/\d+~',$path)===1;
     }
 
     private static function quarters(DOMXPath $xp): array {
