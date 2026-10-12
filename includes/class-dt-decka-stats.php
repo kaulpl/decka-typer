@@ -354,6 +354,14 @@ class DT_Decka_Stats {
             $pos=stripos($html,'detailed-score');
             if($pos!==false)$text=self::raw_visible_text(substr($html,$pos,600));
         }
+        if($text===''){
+            $offset=0;
+            while(($pipe=strpos($html,'|',$offset))!==false){
+                $candidate=self::raw_visible_text(substr($html,max(0,$pipe-120),360));
+                if(preg_match('/\d+\s*:\s*\d+\s*\|\s*\d+\s*:\s*\d+\s*\|/',$candidate)){$text=$candidate;break;}
+                $offset=$pipe+1;
+            }
+        }
         if(!preg_match('/(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)/',$text,$m))return [];
         $home=[(int)$m[1],(int)$m[3],(int)$m[5],(int)$m[7]];$away=[(int)$m[2],(int)$m[4],(int)$m[6],(int)$m[8]];
         return ['decka'=>$deckaHome?$home:$away,'opponent'=>$deckaHome?$away:$home];
