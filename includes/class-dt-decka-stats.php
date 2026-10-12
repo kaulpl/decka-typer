@@ -34,10 +34,10 @@ class DT_Decka_Stats {
         // synchronized match already carries its stable official PZKosz URL,
         // whose server-rendered table is a reliable fallback for the same data.
         $officialUrl='';
+        $officialHtml='';
         if(!$stats){
             $storedUrl=(string)($match['source_url']??'');
             if(self::is_pzkosz_match_url($storedUrl))$officialUrl=$storedUrl;
-            elseif(preg_match('/(?:^|-)1lm-(\d+)$/',(string)($match['external_key']??''),$officialId))$officialUrl='https://1lm.pzkosz.pl/mecz/'.$officialId[1];
             else{
                 $scheduleUrl=self::is_pzkosz_url($storedUrl)?$storedUrl:'https://1lm.pzkosz.pl/terminarz-i-wyniki.html';
                 $officialUrl=self::find_pzkosz_game_url(self::fetch($scheduleUrl),$match,$scheduleUrl)??'';
@@ -45,12 +45,20 @@ class DT_Decka_Stats {
                     $scheduleUrl='https://1lm.pzkosz.pl/terminarz-i-wyniki.html';
                     $officialUrl=self::find_pzkosz_game_url(self::fetch($scheduleUrl),$match,$scheduleUrl)??'';
                 }
+                if($officialUrl==='' && preg_match('/(?:^|-)1lm-(\d+)$/',(string)($match['external_key']??''),$officialId))$officialUrl='https://1lm.pzkosz.pl/mecz/'.$officialId[1];
             }
-            if($officialUrl!=='')$stats=self::parse_pzkosz_game(self::fetch($officialUrl),stripos((string)$match['home_name'],'Decka Pelplin')!==false);
+            if($officialUrl!==''){
+                $officialHtml=self::fetch($officialUrl);
+                $stats=self::parse_pzkosz_game($officialHtml,stripos((string)$match['home_name'],'Decka Pelplin')!==false);
+            }
         }
         if(!$stats){
-            $code=$officialUrl===''?'STAT-MECZ-2':'STAT-MECZ-3';
-            wp_send_json_error(['message'=>'Nie udało się odczytać pełnych statystyk meczu. Kod: '.$code.'.'],422);
+            if($officialUrl==='')$code='STAT-MECZ-2';
+            elseif($officialHtml==='')$code='STAT-MECZ-3A';
+            elseif(strlen($officialHtml)>8000000)$code='STAT-MECZ-3B';
+            elseif(stripos($officialHtml,'statystyki')===false)$code='STAT-MECZ-3C';
+            else $code='STAT-MECZ-3D';
+            wp_send_json_error(['message'=>'Nie udało się odczytać pełnych statystyk meczu. Kod: '.$code.'; rozmiar='.strlen($officialHtml).' B.'],422);
         }
 
         $logo=static function(string $name,string $fallback): string {
