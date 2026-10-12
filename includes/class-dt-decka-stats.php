@@ -50,15 +50,16 @@ class DT_Decka_Stats {
         foreach($xp->query('//a[contains(@href,"/league/1lm/") and contains(@href,"/games/")]') as $link){
             $path=(string)$link->getAttribute('href');
             if(!preg_match('~(/pl/league/1lm/\d+/games/(\d+))~',$path,$m))continue;
-            // The empty overlay link and the card contents can be separated by
-            // one or more wrapper elements. Inspect the closest four levels.
-            $node=$link;$score=0;$text='';
-            for($level=0;$level<4 && $node instanceof DOMNode;$level++,$node=$node->parentNode){
-                $candidate=self::norm($node->textContent);
-                $candidateScore=self::name_score((string)$match['home_name'],$candidate)+self::name_score((string)$match['away_name'],$candidate);
-                if($candidateScore>$score){$score=$candidateScore;$text=$candidate;}
-                if($candidateScore>=1.5)break;
-            }
+            // Puls places the empty overlay inside one `relative` game card.
+            // Never climb to the list container, where teams from other games
+            // could be incorrectly associated with this link.
+            $card=$xp->query('ancestor::*[contains(concat(" ",normalize-space(@class)," ")," relative ")][1]',$link)->item(0);
+            if(!$card)$card=$link->parentNode;
+            $text=self::norm((string)($card?->textContent??''));
+            $homeNameScore=self::name_score((string)$match['home_name'],$text);
+            $awayNameScore=self::name_score((string)$match['away_name'],$text);
+            if($homeNameScore<0.5 || $awayNameScore<0.5)continue;
+            $score=$homeNameScore+$awayNameScore;
             if($text==='')continue;
             $home=$match['score_home']??null;$away=$match['score_away']??null;
             if($home!==null && $away!==null && preg_match('/(?:^|\D)'.preg_quote((string)$home,'/').'\s+'.preg_quote((string)$away,'/').'(?:\D|$)/',$text))$score+=2;
