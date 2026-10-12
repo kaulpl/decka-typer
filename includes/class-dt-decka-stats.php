@@ -130,14 +130,16 @@ class DT_Decka_Stats {
     }
 
     public static function parse_pzkosz_game(string $html,bool $deckaHome): ?array {
-        $dom=self::dom($html);if(!$dom)return null;$xp=new DOMXPath($dom);$box=null;
+        $dom=self::dom($html);
+        if(!$dom)return self::parse_pzkosz_raw($html,$deckaHome);
+        $xp=new DOMXPath($dom);$box=null;
         // The official page always renders the home and away box scores in
         // that order. Selecting by match side is more reliable than coupling
         // the parser to a decorative heading that differs between templates.
         $tables=$xp->query('//table[contains(concat(" ",normalize-space(@class)," ")," statystyki ")]');
         if($tables && $tables->length>=2)$box=$tables->item($deckaHome?0:1);
         elseif($tables && $tables->length===1)$box=$tables->item(0);
-        if(!$box)return null;
+        if(!$box)return self::parse_pzkosz_raw($html,$deckaHome);
         $players=[];$team=null;
         foreach($xp->query('.//tr',$box) as $row){
             $cells=self::cells($xp,$row);if(!$cells)continue;$rowClass=$row instanceof DOMElement?$row->getAttribute('class'):'';
@@ -153,9 +155,59 @@ class DT_Decka_Stats {
             $players[]=['number'=>trim($cells[0]),'name'=>trim($cells[2]),'points'=>(int)$cells[3],'reb'=>(int)$cells[15],
                 'ast'=>(int)$cells[16],'steals'=>(int)$cells[20],'eval'=>(int)$cells[23]];
         }
-        if(!$team)return null;
+        if(!$team)return self::parse_pzkosz_raw($html,$deckaHome);
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
         return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_quarters($xp,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
+    }
+
+    /**
+     * PZKosz pages are large and contain malformed legacy HTML (including
+     * entities without a semicolon). Some libxml versions therefore build an
+     * incomplete DOM. Read the two box-score tables directly as a fallback.
+     */
+    public static function parse_pzkosz_raw(string $html,bool $deckaHome): ?array {
+        if($html==='' || !preg_match_all('~<table\b[^>]*class=["\'][^"\']*\bstatystyki\b[^"\']*["\'][^>]*>(.*?)</table>~isu',$html,$matches))return null;
+        $boxes=[];
+        foreach($matches[1] as $table){
+            if(stripos($table,'class="sum"')===false && stripos($table,"class='sum'")===false)continue;
+            if(stripos($table,'EVAL')===false)continue;
+            $boxes[]=$table;
+            if(count($boxes)===2)break;
+        }
+        if(!$boxes)return null;
+        $box=$boxes[min($deckaHome?0:1,count($boxes)-1)];
+        if(!preg_match_all('~<tr\b([^>]*)>(.*?)</tr>~isu',$box,$rows,PREG_SET_ORDER))return null;
+        $players=[];$team=null;
+        foreach($rows as $row){
+            if(!preg_match_all('~<t[dh]\b[^>]*>(.*?)</t[dh]>~isu',$row[2],$found))continue;
+            $cells=array_map([self::class,'raw_cell'],$found[1]);
+            $isSum=preg_match('~\bclass\s*=\s*["\'][^"\']*\bsum\b~i',$row[1]) || self::norm($cells[0]??'')==='suma';
+            if($isSum){
+                if(count($cells)<22)continue;
+                $team=['points'=>(int)$cells[1],'reb'=>(int)$cells[13],'ast'=>(int)$cells[14],
+                    'field'=>self::made_attempted($cells[7]),'two'=>self::made_attempted($cells[3]),'three'=>self::made_attempted($cells[5]),'free'=>self::made_attempted($cells[9]),
+                    'oreb'=>(int)$cells[11],'dreb'=>(int)$cells[12],'steals'=>(int)$cells[18],'blocks'=>(int)$cells[19],
+                    'turnovers'=>(int)$cells[17],'fouls'=>(int)$cells[15],'eval'=>(int)$cells[21]];
+                continue;
+            }
+            if(count($cells)<24 || !preg_match('/^\d+$/',trim($cells[0])) || trim($cells[2])==='')continue;
+            $players[]=['number'=>trim($cells[0]),'name'=>trim($cells[2]),'points'=>(int)$cells[3],'reb'=>(int)$cells[15],
+                'ast'=>(int)$cells[16],'steals'=>(int)$cells[20],'eval'=>(int)$cells[23]];
+        }
+        if(!$team)return null;
+        usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
+        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_raw_quarters($html,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
+    }
+
+    private static function raw_cell(string $html): string {
+        return trim(preg_replace('/\s+/u',' ',html_entity_decode(strip_tags(str_replace(['&nbsp;','&nbsp'],[' ',' '],$html)),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+    }
+
+    private static function pzkosz_raw_quarters(string $html,bool $deckaHome): array {
+        $text=self::raw_cell($html);
+        if(!preg_match('/(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)/',$text,$m))return [];
+        $home=[(int)$m[1],(int)$m[3],(int)$m[5],(int)$m[7]];$away=[(int)$m[2],(int)$m[4],(int)$m[6],(int)$m[8]];
+        return ['decka'=>$deckaHome?$home:$away,'opponent'=>$deckaHome?$away:$home];
     }
 
     public static function find_pzkosz_game_url(string $html,array $match,string $baseUrl): ?string {
