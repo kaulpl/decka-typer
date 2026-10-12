@@ -49,6 +49,12 @@ check($official['quarters']['decka']===[23,23,15,30] && $official['quarters']['o
 $officialRaw=DT_Decka_Stats::parse_pzkosz_raw($pzkosz,true);
 check(is_array($officialRaw) && $officialRaw['team']['points']===91 && $officialRaw['team']['eval']===104, 'Parse a PZKosz box score without relying on the full-page DOM');
 check($officialRaw['leaders'][0]['name']==='Jayden Coke-Domingue' && $officialRaw['quarters']['decka']===[23,23,15,30], 'Read leaders and quarters through the raw HTML fallback');
+$noStartingFive=str_replace('<td>*</td><td>Jayden Coke-Domingue</td>','<td>Jayden Coke-Domingue</td>',$pzkosz);
+$noStartingFiveStats=DT_Decka_Stats::parse_pzkosz_raw($noStartingFive,true);
+check($noStartingFiveStats['leaders'][0]['name']==='Jayden Coke-Domingue' && $noStartingFiveStats['leaders'][0]['points']===22 && $noStartingFiveStats['leaders'][0]['eval']===22, 'Map a player dynamically when PZKosz omits the S5 column');
+$advancedOfficial=str_replace('</body>','<table><tr><th></th><th>Decka Pelplin</th><th>Miasto Szkła Krosno</th></tr><tr><th>Punkty ze strat</th><td>15</td><td>14</td></tr><tr><th>Punkty w "pomalowanym"</th><td>44 (22/36) 61.1</td><td>42</td></tr><tr><th>Punkty drugiej szansy</th><td>11</td><td>7</td></tr><tr><th>Punkty szybkiego ataku</th><td>25</td><td>16</td></tr><tr><th>Punkty z ławki</th><td>26</td><td>34</td></tr></table></body>',$pzkosz);
+$advancedStats=DT_Decka_Stats::parse_pzkosz_raw($advancedOfficial,true);
+check($advancedStats['advanced']['turnover_points']===15 && $advancedStats['advanced']['paint_points']===44 && $advancedStats['advanced']['fast_break']===25 && $advancedStats['advanced']['bench']===26, 'Read official PZKosz advanced team statistics');
 $largeOfficial=str_repeat('<script>window.__page_padding="'.str_repeat('x',1000).'";</script>',1800).$pzkosz;
 $largeRaw=DT_Decka_Stats::parse_pzkosz_raw($largeOfficial,true);
 check(is_array($largeRaw) && $largeRaw['team']['field']['made']===31, 'Extract the box score from a full-size PZKosz page without a whole-document regular expression');
@@ -73,8 +79,9 @@ check(is_array($officialAway) && $officialAway['team']['points']===91, 'Choose t
 $admin=file_get_contents(dirname(__DIR__).'/includes/class-dt-admin.php');
 $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js');
 $class=file_get_contents(dirname(__DIR__).'/includes/class-dt-decka-stats.php');
-check(str_contains($admin,'data-dt-decka-stat-graphic') && str_contains($admin,'Puls Basketu') && !str_contains($admin,'data-dt-livestats-url'), 'Expose automatic Puls Basketu control without a FIBA URL field');
+check(str_contains($admin,'data-dt-decka-stat-graphic') && !str_contains($admin,'Puls Basketu') && !str_contains($admin,'data-dt-livestats-url'), 'Expose the automatic official-statistics control without old source labels');
 check(str_contains($graphics,'gameDetails') && str_contains($graphics,'PRZEBIEG MECZU') && str_contains($graphics,'KLUCZOWE LICZBY DECKI'), 'Render quarters and advanced statistics when coordinates are unavailable');
+check(!str_contains($graphics,'Puls Basketu'), 'Do not print Puls Basketu labels in the generated graphic or status');
 check(!str_contains($graphics,'findLiveStatsGame') && !str_contains($graphics,'liveStatsPayload'), 'Remove browser-side FIBA identifier scanning');
 check(str_contains($class,'find_puls_game') && str_contains($class,'parse_puls_game'), 'Find and parse Puls Basketu games on the server');
 check(str_contains($class,'find_pzkosz_game_url') && str_contains($class,'STAT-MECZ-3A') && str_contains($class,'STAT-MECZ-3D'), 'Discover an official PZKosz detail URL and expose precise diagnostic stages');
