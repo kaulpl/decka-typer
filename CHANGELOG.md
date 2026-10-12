@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.45
+- Naprawiono wybór sezonu Puls Basketu dla zapisu `2026/27`: w adresie źródła używany jest teraz prawidłowo rok końcowy `2027`, a nie `2026`.
+- Dodano testy obu obsługiwanych formatów sezonu: `2026/27` oraz `2026/2027`.
+
 ## 0.6.44
 - Poprawiono automatyczne wyszukiwanie meczu na Puls Basketu: nazwy drużyn i wynik są teraz odczytywane z całej karty, ponieważ nakładający się na nią link nie zawiera tekstu.
 - Test integracji odwzorowuje rzeczywistą strukturę kart meczowych Puls Basketu, w tym pusty link prowadzący do szczegółów spotkania.

@@ -126,8 +126,11 @@ class DT_Decka_Stats {
         $tokens=array_values(array_filter(explode(' ',self::norm($name)),static fn(string $v): bool=>strlen($v)>2&&!in_array($v,['sa','ssa','ks','mks','azs'],true)));if(!$tokens)return 0;$found=0;foreach($tokens as $token)if(str_contains($haystack,$token))$found++;return $found/count($tokens);
     }
 
-    private static function season_year(string $season): string {
-        if(preg_match('/(20\d{2})(?!.*20\d{2})/',$season,$m))return $m[1];if(preg_match('/(\d{2})\s*$/',$season,$m))return '20'.$m[1];return gmdate('Y');
+    public static function season_year(string $season): string {
+        if(preg_match('/^(20\d{2})\D+(20\d{2})$/',trim($season),$m))return $m[2];
+        if(preg_match('/^(20\d{2})\D+(\d{2})$/',trim($season),$m))return substr($m[1],0,2).$m[2];
+        if(preg_match('/(20\d{2})/',trim($season),$m))return $m[1];
+        return gmdate('Y');
     }
 
     private static function made_attempted(string $value): array {

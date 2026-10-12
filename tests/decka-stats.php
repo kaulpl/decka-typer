@@ -4,6 +4,9 @@ define('ABSPATH', __DIR__);
 function check($value, $message) { if (!$value) throw new RuntimeException($message); }
 require dirname(__DIR__) . '/includes/class-dt-decka-stats.php';
 
+check(DT_Decka_Stats::season_year('2026/27')==='2027', 'Use the ending year for a shortened season label');
+check(DT_Decka_Stats::season_year('2026/2027')==='2027', 'Use the ending year for a full season label');
+
 $games='<div class="relative"><a href="/pl/league/1lm/2027/games/37603" class="absolute inset-0"></a><span>WKK Wrocław</span><b>97</b><span>Decka Pelplin</span><b>83</b></div>
 <div class="relative"><a href="/pl/league/1lm/2027/games/37611" class="absolute inset-0"></a><span>Decka Pelplin</span><strong>91 : 80</strong><span>Miasto Szkła Krosno</span></div>';
 $found=DT_Decka_Stats::find_puls_game($games,['home_name'=>'Decka Pelplin','away_name'=>'Miasto Szkła Krosno','score_home'=>91,'score_away'=>80]);
