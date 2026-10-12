@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.51
+- Generator preferuje pełny oficjalny adres meczu znaleziony w terminarzu PZKosz; skrócony adres z samym identyfikatorem jest używany dopiero awaryjnie.
+- Diagnostyka rozróżnia pustą odpowiedź (`3A`), przekroczony rozmiar (`3B`), stronę bez statystyk (`3C`) i tabelę odrzuconą przez parser (`3D`).
+- Komunikat podaje rozmiar odpowiedzi PZKosz, co pozwala odróżnić blokadę połączenia od błędu struktury HTML.
+
 ## 0.6.50
 - Parser PZKosz wybiera tabelę statystyk według pewnej kolejności gospodarz–gość zamiast zależeć od zmiennej struktury nagłówka drużyny.
 - Obsłużono zarówno mecze domowe, jak i wyjazdowe Decki oraz strony zawierające tylko jedną tabelę box score.
