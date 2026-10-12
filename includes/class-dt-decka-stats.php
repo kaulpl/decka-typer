@@ -221,7 +221,7 @@ class DT_Decka_Stats {
 
     /** Parse the visible totals text, independent of td/tr markup and colspan. */
     private static function pzkosz_team_text(string $table): ?array {
-        $text=self::raw_cell($table);$pos=strripos($text,'Suma');
+        $text=self::raw_visible_text($table);$pos=strripos($text,'Suma');
         if($pos===false)return null;$tail=substr($text,$pos);
         if(!preg_match('/Suma\s+(\d+)\s+\d{1,3}:\d{2}/iu',$tail,$head))return null;
         if(!preg_match_all('/\d+\s*\/\s*\d+/',$tail,$shotMatches,PREG_OFFSET_CAPTURE) || count($shotMatches[0])<4)return null;
@@ -288,6 +288,11 @@ class DT_Decka_Stats {
 
     private static function raw_cell(string $html): string {
         return trim(preg_replace('/\s+/u',' ',html_entity_decode(strip_tags(str_replace(['&nbsp;','&nbsp'],[' ',' '],$html)),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+    }
+
+    private static function raw_visible_text(string $html): string {
+        $html=preg_replace('~<[^>]+>~',' ',$html);
+        return trim(preg_replace('/\s+/u',' ',html_entity_decode(str_replace(['&nbsp;','&nbsp'],[' ',' '],$html),ENT_QUOTES|ENT_HTML5,'UTF-8')));
     }
 
     private static function pzkosz_raw_quarters(string $html,bool $deckaHome): array {
