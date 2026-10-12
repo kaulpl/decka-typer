@@ -20,7 +20,7 @@ $html='<!doctype html><html><body>
 <tr><td>7</td><td>Jan Pierwszy</td><td>31:00</td><td>21</td><td>6</td><td>5</td><td>8/12</td><td>6/8</td><td>2/4</td><td>3/4</td><td>2</td><td>4</td><td>3</td><td>1</td><td>2</td><td>2</td><td>4</td><td>27</td><td>12</td></tr>
 <tr><td>12</td><td>Adam Drugi</td><td>29:00</td><td>18</td><td>8</td><td>2</td><td>7/13</td><td>5/8</td><td>2/5</td><td>2/2</td><td>3</td><td>5</td><td>1</td><td>2</td><td>1</td><td>3</td><td>2</td><td>24</td><td>8</td></tr>
 <tr><td>4</td><td>Piotr Trzeci</td><td>24:00</td><td>9</td><td>3</td><td>7</td><td>3/8</td><td>2/4</td><td>1/4</td><td>2/2</td><td>1</td><td>2</td><td>4</td><td>0</td><td>2</td><td>2</td><td>3</td><td>19</td><td>6</td></tr>
-<tr><td>RAZEM</td><td>200:00</td><td>91</td><td>36</td><td>22</td><td>31/60</td><td>24/42</td><td>7/18</td><td>22/31</td><td>10</td><td>26</td><td>8</td><td>7</td><td>17</td><td>25</td><td>23</td><td>104</td><td>-</td></tr></table>
+<tr><td></td><td>RAZEM</td><td>200:00</td><td>91</td><td>36</td><td>22</td><td>31/60 (51.7%)</td><td>24/42 (57.1%)</td><td>7/18 (38.9%)</td><td>22/31 (71.0%)</td><td>10</td><td>26</td><td>8</td><td>7</td><td>17</td><td>25</td><td>23</td><td>104</td><td>-</td></tr></table>
 <table aria-label="Decka Pelplin Advanced Statistics"><tr><th>PKT ZE STRAT</th><th>PKT W POMALOWANYM</th><th>CELNE W POMALOWANYM</th><th>PRÓBY W POMALOWANYM</th><th>PKT 2 SZANSY</th><th>PKT Z KONTRY</th><th>PKT ŁAWKI</th></tr><tr><td>15</td><td>44</td><td>22</td><td>36</td><td>11</td><td>25</td><td>26</td></tr></table>
 </body></html>';
 $stats=DT_Decka_Stats::parse_puls_game($html);
