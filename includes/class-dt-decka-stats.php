@@ -169,8 +169,8 @@ class DT_Decka_Stats {
     public static function parse_pzkosz_raw(string $html,bool $deckaHome): ?array {
         if($html==='')return null;
         $boxes=[];
-        foreach(self::raw_stat_tables($html) as $table){
-            if(stripos($table,'class="sum"')===false && stripos($table,"class='sum'")===false)continue;
+        foreach(self::raw_tables($html) as $table){
+            if(!self::raw_complete_sum($table))continue;
             $boxes[]=$table;
             if(count($boxes)===2)break;
         }
@@ -200,30 +200,34 @@ class DT_Decka_Stats {
     }
 
     /** Extract tables without running one regular expression over the 1.8 MB page. */
-    private static function raw_stat_tables(string $html): array {
+    private static function raw_tables(string $html,bool $decoded=false): array {
         $tables=[];$offset=0;$length=strlen($html);
         while($offset<$length && ($start=stripos($html,'<table',$offset))!==false){
             $openEnd=strpos($html,'>',$start);
             if($openEnd===false)break;
-            $open=substr($html,$start,$openEnd-$start+1);
             $close=stripos($html,'</table>',$openEnd+1);
             if($close===false)break;
-            if(preg_match('~\bclass\s*=\s*(["\'])(.*?)\1~isu',$open,$class)
-                && preg_match('/(?:^|\s)statystyki(?:\s|$)/i',$class[2])){
-                $tables[]=substr($html,$openEnd+1,$close-$openEnd-1);
-            }
+            $tables[]=substr($html,$openEnd+1,$close-$openEnd-1);
             $offset=$close+8;
         }
+        if(!$tables && !$decoded && stripos($html,'&lt;table')!==false)return self::raw_tables(html_entity_decode($html,ENT_QUOTES|ENT_HTML5,'UTF-8'),true);
         return $tables;
     }
 
+    private static function raw_complete_sum(string $table): bool {
+        if(!preg_match_all('~<tr\b[^>]*>(.*?)</tr>~isu',$table,$rows))return false;
+        foreach($rows[1] as $row){
+            if(!preg_match_all('~<t[dh]\b[^>]*>(.*?)</t[dh]>~isu',$row,$cells))continue;
+            if(count($cells[1])>=22 && self::norm(self::raw_cell($cells[1][0]??''))==='suma')return true;
+        }
+        return false;
+    }
+
     public static function pzkosz_raw_diagnostics(string $html): string {
-        $tables=self::raw_stat_tables($html);$sums=0;$wide=0;
+        $tables=self::raw_tables($html);$sums=0;$wide=0;
         foreach($tables as $table){
-            if(stripos($table,'class="sum"')===false && stripos($table,"class='sum'")===false)continue;
-            $sums++;
-            if(preg_match('~<tr\b[^>]*class\s*=\s*["\'][^"\']*\bsum\b[^"\']*["\'][^>]*>(.*?)</tr>~isu',$table,$row)
-                && preg_match_all('~<t[dh]\b[^>]*>.*?</t[dh]>~isu',$row[1],$cells) && count($cells[0])>=22)$wide++;
+            if(stripos(self::raw_cell($table),'suma')!==false)$sums++;
+            if(self::raw_complete_sum($table))$wide++;
         }
         return 'tabele='.count($tables).'; sumy='.$sums.'; pelne='.$wide;
     }
