@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.54
+- Box score PZKosz jest rozpoznawany po kompletnym wierszu „Suma”, bez zależności od klasy CSS tabeli.
+- Dodano obsługę tabel zwróconych jako zakodowany tekst HTML oraz testy obu wariantów.
+
 ## 0.6.53
 - Zastąpiono pełnostronicowe wyrażenie regularne strumieniowym wycinaniem tabel PZKosz, odpornym na limity PCRE hostingu przy stronach o rozmiarze około 1,8 MB.
 - Dodano test pełnowymiarowej strony oraz diagnostykę liczby znalezionych tabel, sum i kompletnych wierszy.
