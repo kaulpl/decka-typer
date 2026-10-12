@@ -32,6 +32,18 @@ check($stats['quarters']['decka']===[23,23,15,30] && $stats['quarters']['opponen
 check($stats['advanced']['paint_points']===44 && $stats['advanced']['fast_break']===25, 'Read advanced team statistics');
 check($stats['shots']===[], 'Do not invent shot coordinates unavailable in page HTML');
 
+$pzkosz='<!doctype html><html><body><div><span>23:23 | 23:16 | 15:27 | 30:14</span></div>
+<h3><a>Decka Pelplin</a></h3><table class="statystyki splitTable"><tr><th>NR</th><th>S5</th><th>Zawodnik</th><th>Pkt</th></tr>
+<tr class="row_stat"><td>21</td><td>*</td><td>Jayden Coke-Domingue</td><td>22</td><td>37:52</td><td>7/10</td><td>70</td><td>1/5</td><td>20</td><td>8/15</td><td>53.3</td><td>5/7</td><td>71.4</td><td>0</td><td>3</td><td>3</td><td>6</td><td>4</td><td>5</td><td>4</td><td>3</td><td>1</td><td>0</td><td>22</td><td>13</td></tr>
+<tr class="row_stat"><td>0</td><td>*</td><td>Samajae Haynes-Jones</td><td>18</td><td>33:23</td><td>4/13</td><td>30.8</td><td>1/3</td><td>33.3</td><td>5/16</td><td>31.3</td><td>7/7</td><td>100</td><td>2</td><td>4</td><td>6</td><td>10</td><td>4</td><td>4</td><td>2</td><td>1</td><td>0</td><td>0</td><td>22</td><td>11</td></tr>
+<tr class="row_stat"><td>13</td><td></td><td>Tobiasz Dydak</td><td>10</td><td>20:52</td><td>3/5</td><td>60</td><td>0/0</td><td>0</td><td>3/5</td><td>60</td><td>4/6</td><td>66.7</td><td>4</td><td>3</td><td>7</td><td>2</td><td>1</td><td>4</td><td>2</td><td>2</td><td>2</td><td>0</td><td>17</td><td>-1</td></tr>
+<tr class="sum"><td>Suma</td><td>91</td><td>200:00</td><td>24/42</td><td>57.1</td><td>7/18</td><td>38.9</td><td>31/60</td><td>51.7</td><td>22/31</td><td>71</td><td>10</td><td>26</td><td>36</td><td>22</td><td>25</td><td>23</td><td>17</td><td>8</td><td>7</td><td>5</td><td>104</td><td></td></tr></table></body></html>';
+$official=DT_Decka_Stats::parse_pzkosz_game($pzkosz,true);
+check(is_array($official) && $official['source']==='pzkosz', 'Parse official server-rendered PZKosz fallback');
+check($official['team']['field']['made']===31 && $official['team']['reb']===36 && $official['team']['steals']===8 && $official['team']['turnovers']===17, 'Read official team totals');
+check($official['leaders'][0]['name']==='Jayden Coke-Domingue' && $official['leaders'][0]['eval']===22, 'Read official player leaders');
+check($official['quarters']['decka']===[23,23,15,30] && $official['quarters']['opponent']===[23,16,27,14], 'Read official quarter score');
+
 $admin=file_get_contents(dirname(__DIR__).'/includes/class-dt-admin.php');
 $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js');
 $class=file_get_contents(dirname(__DIR__).'/includes/class-dt-decka-stats.php');
