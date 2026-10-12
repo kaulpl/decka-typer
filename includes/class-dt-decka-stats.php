@@ -152,13 +152,11 @@ class DT_Decka_Stats {
                     'turnovers'=>(int)$cells[17],'fouls'=>(int)$cells[15],'eval'=>(int)$cells[21]];
                 continue;
             }
-            if(count($cells)<24 || !preg_match('/^\d+$/',trim($cells[0])) || trim($cells[2])==='')continue;
-            $players[]=['number'=>trim($cells[0]),'name'=>trim($cells[2]),'points'=>(int)$cells[3],'reb'=>(int)$cells[15],
-                'ast'=>(int)$cells[16],'steals'=>(int)$cells[20],'eval'=>(int)$cells[23]];
+            $player=self::pzkosz_player_cells($cells);if($player)$players[]=$player;
         }
         if(!$team)return self::parse_pzkosz_raw($html,$deckaHome);
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
-        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_quarters($xp,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
+        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_quarters($xp,$deckaHome),'advanced'=>self::pzkosz_advanced($html,$deckaHome),'source'=>'pzkosz'];
     }
 
     /**
@@ -184,14 +182,12 @@ class DT_Decka_Stats {
                 $team=self::pzkosz_team_cells($cells);
                 continue;
             }
-            if(count($cells)<24 || !preg_match('/^\d+$/',trim($cells[0])) || trim($cells[2])==='')continue;
-            $players[]=['number'=>trim($cells[0]),'name'=>trim($cells[2]),'points'=>(int)$cells[3],'reb'=>(int)$cells[15],
-                'ast'=>(int)$cells[16],'steals'=>(int)$cells[20],'eval'=>(int)$cells[23]];
+            $player=self::pzkosz_player_cells($cells);if($player)$players[]=$player;
         }
         if(!$team)$team=self::pzkosz_team_text($box);
         if(!$team)return null;
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
-        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_raw_quarters($html,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
+        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_raw_quarters($html,$deckaHome),'advanced'=>self::pzkosz_advanced($html,$deckaHome),'source'=>'pzkosz'];
     }
 
     /** Extract tables without running one regular expression over the 1.8 MB page. */
@@ -277,6 +273,41 @@ class DT_Decka_Stats {
             'turnovers'=>(int)($cells[17]??0),'fouls'=>(int)($cells[15]??0),'eval'=>$lastNumeric];
     }
 
+    private static function pzkosz_player_cells(array $cells): ?array {
+        if(!$cells || !preg_match('/^\d+$/',trim((string)$cells[0])))return null;
+        $timeIndex=null;
+        foreach($cells as $i=>$cell)if(preg_match('/^\d{1,3}:\d{2}$/',trim((string)$cell))){$timeIndex=$i;break;}
+        if($timeIndex===null || $timeIndex<2)return null;
+        $pointsIndex=$timeIndex-1;$name='';
+        for($i=$pointsIndex-1;$i>=1;$i--){if(preg_match('/\pL/u',(string)$cells[$i])){$name=trim((string)$cells[$i]);break;}}
+        if($name==='')return null;
+        $shots=[];foreach($cells as $i=>$cell)if(preg_match('/^\s*\d+\s*\/\s*\d+/',(string)$cell))$shots[]=$i;
+        if(count($shots)<4)return null;$after=$shots[3]+1;$tail=[];
+        for($i=$after;$i<count($cells);$i++)if(preg_match('/^-?\d+(?:[.,]\d+)?$/',trim((string)$cells[$i])))$tail[]=(float)str_replace(',','.',trim((string)$cells[$i]));
+        return ['number'=>trim((string)$cells[0]),'name'=>$name,'points'=>(int)$cells[$pointsIndex],
+            'reb'=>(int)($tail[3]??0),'ast'=>(int)($tail[4]??0),'steals'=>(int)($tail[8]??0),
+            'eval'=>(int)($tail[11]??($tail[count($tail)-2]??0))];
+    }
+
+    private static function pzkosz_advanced(string $html,bool $deckaHome): array {
+        foreach(self::raw_tables($html) as $table){
+            $label=self::norm(self::raw_visible_text($table));
+            if(!str_contains($label,'punkty ze strat') || !str_contains($label,'punkty drugiej szansy') || !str_contains($label,'punkty z lawki'))continue;
+            $out=[];
+            foreach(self::raw_rows($table) as $row){
+                $cells=self::raw_row_cells($row['html']);if(count($cells)<3)continue;
+                $key=self::norm($cells[0]);$value=(int)($cells[$deckaHome?1:2]??0);
+                if(str_contains($key,'punkty ze strat'))$out['turnover_points']=$value;
+                elseif(str_contains($key,'punkty w pomalowanym'))$out['paint_points']=$value;
+                elseif(str_contains($key,'punkty drugiej szansy'))$out['second_chance']=$value;
+                elseif(str_contains($key,'punkty szybkiego ataku'))$out['fast_break']=$value;
+                elseif(str_contains($key,'punkty z lawki'))$out['bench']=$value;
+            }
+            if($out)return $out;
+        }
+        return [];
+    }
+
     public static function pzkosz_raw_diagnostics(string $html): string {
         $tables=self::raw_tables($html);$sums=0;$wide=0;
         foreach($tables as $table){
@@ -296,7 +327,7 @@ class DT_Decka_Stats {
     }
 
     private static function pzkosz_raw_quarters(string $html,bool $deckaHome): array {
-        $text=self::raw_cell($html);
+        $text=self::raw_visible_text($html);
         if(!preg_match('/(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)\s*\|\s*(\d+)\s*:\s*(\d+)/',$text,$m))return [];
         $home=[(int)$m[1],(int)$m[3],(int)$m[5],(int)$m[7]];$away=[(int)$m[2],(int)$m[4],(int)$m[6],(int)$m[8]];
         return ['decka'=>$deckaHome?$home:$away,'opponent'=>$deckaHome?$away:$home];
