@@ -46,6 +46,9 @@ check(is_array($official) && $official['source']==='pzkosz', 'Parse official ser
 check($official['team']['field']['made']===31 && $official['team']['reb']===36 && $official['team']['steals']===8 && $official['team']['turnovers']===17, 'Read official team totals');
 check($official['leaders'][0]['name']==='Jayden Coke-Domingue' && $official['leaders'][0]['eval']===22, 'Read official player leaders');
 check($official['quarters']['decka']===[23,23,15,30] && $official['quarters']['opponent']===[23,16,27,14], 'Read official quarter score');
+$awayHtml=str_replace('<h3><a>Decka Pelplin</a></h3>','<table class="statystyki splitTable"><tr><td>Suma</td></tr></table><h3><a>Decka Pelplin</a></h3>',$pzkosz);
+$officialAway=DT_Decka_Stats::parse_pzkosz_game($awayHtml,false);
+check(is_array($officialAway) && $officialAway['team']['points']===91, 'Choose the second PZKosz box score when Decka is the away team');
 
 $admin=file_get_contents(dirname(__DIR__).'/includes/class-dt-admin.php');
 $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js');
