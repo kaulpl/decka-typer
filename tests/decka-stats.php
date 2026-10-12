@@ -63,6 +63,9 @@ check($shortRaw['team']['points']===91 && $shortRaw['team']['eval']===104 && $sh
 $unclosed=str_replace(['</td>','</th>','</tr>'],['','',''],$pzkosz);
 $unclosedRaw=DT_Decka_Stats::parse_pzkosz_raw($unclosed,true);
 check($unclosedRaw['team']['points']===91 && $unclosedRaw['team']['eval']===104 && $unclosedRaw['leaders'][0]['name']==='Jayden Coke-Domingue', 'Parse malformed PZKosz rows without closing cell and row tags');
+$textOnly=preg_replace('~<tr class="sum">.*?</tr>~s','<div>Suma 91 200:00 24/42 57.1 7/18 38.9 31/60 51.7 22/31 71 10 26 36 22 25 23 17 8 7 5 104</div>',$pzkosz);
+$textOnlyRaw=DT_Decka_Stats::parse_pzkosz_raw($textOnly,true);
+check($textOnlyRaw['team']['points']===91 && $textOnlyRaw['team']['reb']===36 && $textOnlyRaw['team']['eval']===104, 'Parse PZKosz totals directly from visible text without any sum-row cells');
 $awayHtml=str_replace('<h3><a>Decka Pelplin</a></h3>','<table class="statystyki splitTable"><tr><td>Suma</td></tr></table><h3><a>Decka Pelplin</a></h3>',$pzkosz);
 $officialAway=DT_Decka_Stats::parse_pzkosz_game($awayHtml,false);
 check(is_array($officialAway) && $officialAway['team']['points']===91, 'Choose the second PZKosz box score when Decka is the away team');
