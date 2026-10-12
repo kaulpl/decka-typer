@@ -4,56 +4,35 @@ define('ABSPATH', __DIR__);
 function check($value, $message) { if (!$value) throw new RuntimeException($message); }
 require dirname(__DIR__) . '/includes/class-dt-decka-stats.php';
 
-$data = [
-    'tm' => [[
-        'name' => 'Decka Pelplin',
-        'tot_sPoints' => 81,
-        'tot_sTwoPointersMade' => 20,
-        'tot_sTwoPointersAttempted' => 34,
-        'tot_sThreePointersMade' => 9,
-        'tot_sThreePointersAttempted' => 25,
-        'tot_sFieldGoalsMade' => 29,
-        'tot_sFieldGoalsAttempted' => 59,
-        'tot_sFreeThrowsMade' => 14,
-        'tot_sFreeThrowsAttempted' => 17,
-        'tot_sReboundsTotal' => 37,
-        'tot_sAssists' => 19,
-        'tot_sSteals' => 8,
-        'tot_sTurnovers' => 11,
-        'tot_sBlocks' => 3,
-        'tot_eff_1' => 96,
-        'pl' => [
-            ['shirtNumber'=>'7','name'=>'Jan Pierwszy','sPoints'=>21,'sReboundsTotal'=>6,'sAssists'=>5,'eff_1'=>27],
-            ['shirtNumber'=>'12','name'=>'Adam Drugi','sPoints'=>18,'sReboundsTotal'=>8,'sAssists'=>2,'eff_1'=>24],
-            ['shirtNumber'=>'4','name'=>'Piotr Trzeci','sPoints'=>9,'sReboundsTotal'=>3,'sAssists'=>7,'eff_1'=>19],
-            ['shirtNumber'=>'9','name'=>'Rezerwowy','sPoints'=>11,'sReboundsTotal'=>2,'sAssists'=>1,'eff_1'=>10],
-        ],
-        'shot' => [
-            ['actionNumber'=>101,'x'=>25.5,'y'=>72.0,'p'=>2],
-            ['actionNumber'=>102,'x'=>81.0,'y'=>38.5,'p'=>3],
-        ],
-    ]],
-    'pbp' => [
-        ['actionNumber'=>101,'success'=>1],
-        ['actionNumber'=>102,'success'=>0],
-    ],
-];
+$games='<a href="/pl/league/1lm/2027/games/37603">WKK Wrocław 97:83 Decka Pelplin</a>
+<a href="/pl/league/1lm/2027/games/37611"><span>Decka Pelplin</span><strong>91 : 80</strong><span>Miasto Szkła Krosno</span></a>';
+$found=DT_Decka_Stats::find_puls_game($games,['home_name'=>'Decka Pelplin','away_name'=>'Miasto Szkła Krosno','score_home'=>91,'score_away'=>80]);
+check($found===['id'=>'37611','path'=>'/pl/league/1lm/2027/games/37611'], 'Find the correct Puls Basketu game by teams and score');
+check(DT_Decka_Stats::find_puls_game($games,['home_name'=>'Decka Pelplin','away_name'=>'Inny Klub','score_home'=>91,'score_away'=>80])===null, 'Reject a different opponent even when score matches');
 
-$stats = DT_Decka_Stats::parse_livestats($data);
-check(is_array($stats) && $stats['source'] === 'livestats', 'Recognize Decka in the LiveStats feed');
-check($stats['team']['two'] === ['made'=>20,'attempted'=>34,'percent'=>58.8], 'Calculate 2PT percentage');
-check($stats['team']['field']['made'] === 29 && $stats['team']['reb'] === 37, 'Read team box score');
-check(count($stats['leaders']) === 3 && $stats['leaders'][0]['name'] === 'Jan Pierwszy', 'Select the top three players by EVAL');
-check($stats['shots'][0]['x'] === 25.5 && $stats['shots'][0]['made'] === 1, 'Match a made shot to play-by-play');
-check($stats['shots'][1]['points'] === 3 && $stats['shots'][1]['made'] === 0, 'Match a missed three-pointer');
-check(DT_Decka_Stats::parse_livestats(['tm'=>[['name'=>'Inny klub']]]) === null, 'Reject feeds without Decka');
+$html='<!doctype html><html><body>
+<table aria-label="Wynik kwart"><tr><th>Drużyna</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th>Razem</th></tr><tr><td>Decka Pelplin</td><td>23</td><td>23</td><td>15</td><td>30</td><td>91</td></tr><tr><td>Miasto Szkła Krosno</td><td>23</td><td>16</td><td>27</td><td>14</td><td>80</td></tr></table>
+<table aria-label="Decka Pelplin Box Score"><tr><th>#</th><th>ZAWODNIK</th><th>CZAS</th><th>PKT</th><th>ZB</th><th>AST</th><th>Z GRY</th><th>ZA 2</th><th>ZA 3</th><th>ZA 1</th><th>ZB A</th><th>ZB O</th><th>PRZ</th><th>BLK</th><th>STR</th><th>F</th><th>FW</th><th>EVAL</th><th>+/-</th></tr>
+<tr><td>7</td><td>Jan Pierwszy</td><td>31:00</td><td>21</td><td>6</td><td>5</td><td>8/12</td><td>6/8</td><td>2/4</td><td>3/4</td><td>2</td><td>4</td><td>3</td><td>1</td><td>2</td><td>2</td><td>4</td><td>27</td><td>12</td></tr>
+<tr><td>12</td><td>Adam Drugi</td><td>29:00</td><td>18</td><td>8</td><td>2</td><td>7/13</td><td>5/8</td><td>2/5</td><td>2/2</td><td>3</td><td>5</td><td>1</td><td>2</td><td>1</td><td>3</td><td>2</td><td>24</td><td>8</td></tr>
+<tr><td>4</td><td>Piotr Trzeci</td><td>24:00</td><td>9</td><td>3</td><td>7</td><td>3/8</td><td>2/4</td><td>1/4</td><td>2/2</td><td>1</td><td>2</td><td>4</td><td>0</td><td>2</td><td>2</td><td>3</td><td>19</td><td>6</td></tr>
+<tr><td>RAZEM</td><td>200:00</td><td>91</td><td>36</td><td>22</td><td>31/60</td><td>24/42</td><td>7/18</td><td>22/31</td><td>10</td><td>26</td><td>8</td><td>7</td><td>17</td><td>25</td><td>23</td><td>104</td><td>-</td></tr></table>
+<table aria-label="Decka Pelplin Advanced Statistics"><tr><th>PKT ZE STRAT</th><th>PKT W POMALOWANYM</th><th>CELNE W POMALOWANYM</th><th>PRÓBY W POMALOWANYM</th><th>PKT 2 SZANSY</th><th>PKT Z KONTRY</th><th>PKT ŁAWKI</th></tr><tr><td>15</td><td>44</td><td>22</td><td>36</td><td>11</td><td>25</td><td>26</td></tr></table>
+</body></html>';
+$stats=DT_Decka_Stats::parse_puls_game($html);
+check(is_array($stats) && $stats['source']==='pulsbasketu', 'Parse Puls Basketu Decka box score');
+check($stats['team']['two']===['made'=>24,'attempted'=>42,'percent'=>57.1], 'Calculate 2PT percentage');
+check($stats['team']['field']['made']===31 && $stats['team']['reb']===36 && $stats['team']['eval']===104, 'Read team totals');
+check(count($stats['leaders'])===3 && $stats['leaders'][0]['name']==='Jan Pierwszy', 'Select the top three players by EVAL');
+check($stats['quarters']['decka']===[23,23,15,30] && $stats['quarters']['opponent']===[23,16,27,14], 'Read quarter scores');
+check($stats['advanced']['paint_points']===44 && $stats['advanced']['fast_break']===25, 'Read advanced team statistics');
+check($stats['shots']===[], 'Do not invent shot coordinates unavailable in page HTML');
 
 $admin=file_get_contents(dirname(__DIR__).'/includes/class-dt-admin.php');
 $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js');
-check(str_contains($admin,'data-dt-decka-stat-graphic') && str_contains($admin,'data-dt-livestats-url'), 'Expose match and optional LiveStats controls');
-check(str_contains($graphics,'MAPA RZUTÓW DECKI') && str_contains($graphics,'3 NAJLEPSZYCH ZAWODNIKÓW'), 'Render shot map and player leaders');
-check(str_contains($graphics,'liveStatsPayload') && str_contains($graphics,'payload.browser_fetch'), 'Fall back to a browser-side LiveStats request when the host is blocked');
-check(str_contains($graphics,'findLiveStatsGame') && str_contains($graphics,'liveMatchScore'), 'Treat a supplied game as a seed and verify both teams before using it');
 $class=file_get_contents(dirname(__DIR__).'/includes/class-dt-decka-stats.php');
-check(str_contains($class,"get_option('dt_livestats_match_ids'") && str_contains($class,"'browser_fetch'=>true"), 'Remember a verified LiveStats ID and return browser fallback metadata');
-echo "Decka match statistics: OK\n";
+check(str_contains($admin,'data-dt-decka-stat-graphic') && str_contains($admin,'Puls Basketu') && !str_contains($admin,'data-dt-livestats-url'), 'Expose automatic Puls Basketu control without a FIBA URL field');
+check(str_contains($graphics,'gameDetails') && str_contains($graphics,'PRZEBIEG MECZU') && str_contains($graphics,'KLUCZOWE LICZBY DECKI'), 'Render quarters and advanced statistics when coordinates are unavailable');
+check(!str_contains($graphics,'findLiveStatsGame') && !str_contains($graphics,'liveStatsPayload'), 'Remove browser-side FIBA identifier scanning');
+check(str_contains($class,'find_puls_game') && str_contains($class,'parse_puls_game'), 'Find and parse Puls Basketu games on the server');
+echo "Decka match statistics from Puls Basketu: OK\n";
