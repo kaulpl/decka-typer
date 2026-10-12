@@ -26,7 +26,7 @@ class DT_Decka_Stats {
         $gamesHtml=self::fetch($gamesUrl);
         if($gamesHtml==='') wp_send_json_error(['message'=>'Nie udało się połączyć z Puls Basketu. Spróbuj ponownie za chwilę.'],502);
         $game=self::find_puls_game($gamesHtml,$match);
-        if(!$game) wp_send_json_error(['message'=>'Puls Basketu nie udostępnia jeszcze tego meczu albo nie udało się go jednoznacznie dopasować.'],422);
+        if(!$game) wp_send_json_error(['message'=>'Nie znaleziono pary drużyn tego meczu na liście Puls Basketu (sezon '.$year.').'],422);
         $gameUrl='https://pulsbasketu.com'.$game['path'];
         $stats=self::parse_puls_game(self::fetch($gameUrl));
         if(!$stats) wp_send_json_error(['message'=>'Puls Basketu nie udostępnia jeszcze pełnych statystyk tego meczu.'],422);
@@ -50,16 +50,24 @@ class DT_Decka_Stats {
         foreach($xp->query('//a[contains(@href,"/league/1lm/") and contains(@href,"/games/")]') as $link){
             $path=(string)$link->getAttribute('href');
             if(!preg_match('~(/pl/league/1lm/\d+/games/(\d+))~',$path,$m))continue;
-            // Puls Basketu renders an empty absolute-positioned link over the
-            // card; teams and score are siblings inside the parent card.
-            $card=$link->parentNode instanceof DOMNode ? $link->parentNode : $link;
-            $text=self::norm($card->textContent);if($text==='')continue;
-            $score=self::name_score((string)$match['home_name'],$text)+self::name_score((string)$match['away_name'],$text);
+            // Puls places the empty overlay inside one `relative` game card.
+            // Never climb to the list container, where teams from other games
+            // could be incorrectly associated with this link.
+            $card=$xp->query('ancestor::*[contains(concat(" ",normalize-space(@class)," ")," relative ")][1]',$link)->item(0);
+            if(!$card)$card=$link->parentNode;
+            $text=self::norm((string)($card?->textContent??''));
+            $homeNameScore=self::name_score((string)$match['home_name'],$text);
+            $awayNameScore=self::name_score((string)$match['away_name'],$text);
+            if($homeNameScore<0.5 || $awayNameScore<0.5)continue;
+            $score=$homeNameScore+$awayNameScore;
+            if($text==='')continue;
             $home=$match['score_home']??null;$away=$match['score_away']??null;
             if($home!==null && $away!==null && preg_match('/(?:^|\D)'.preg_quote((string)$home,'/').'\s+'.preg_quote((string)$away,'/').'(?:\D|$)/',$text))$score+=2;
+            $date=substr((string)($match['starts_at']??''),0,10);
+            if($date!=='' && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/',$date,$d) && str_contains($text,$d[3].' '.$d[2].' '.$d[1]))$score+=0.5;
             if($score>$bestScore){$bestScore=$score;$best=['id'=>$m[2],'path'=>$m[1]];}
         }
-        return $bestScore>=3.2?$best:null;
+        return $bestScore>=1.5?$best:null;
     }
 
     public static function parse_puls_game(string $html): ?array {
