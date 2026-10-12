@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.57
+- Statystyki drużynowe PZKosz są odczytywane bezpośrednio z tekstu „Suma”, niezależnie od struktury komórek, colspan i liczby kolumn.
+- Dodano test tabeli, w której suma nie zawiera żadnych komórek HTML.
+
 ## 0.6.56
 - Odczyt wierszy i komórek PZKosz nie wymaga już znaczników zamykających `</tr>` i `</td>`.
 - Dodano test regresji dla niepoprawnego HTML naprawianego wcześniej wyłącznie przez przeglądarkę.
