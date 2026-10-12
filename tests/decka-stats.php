@@ -49,6 +49,10 @@ check($official['quarters']['decka']===[23,23,15,30] && $official['quarters']['o
 $officialRaw=DT_Decka_Stats::parse_pzkosz_raw($pzkosz,true);
 check(is_array($officialRaw) && $officialRaw['team']['points']===91 && $officialRaw['team']['eval']===104, 'Parse a PZKosz box score without relying on the full-page DOM');
 check($officialRaw['leaders'][0]['name']==='Jayden Coke-Domingue' && $officialRaw['quarters']['decka']===[23,23,15,30], 'Read leaders and quarters through the raw HTML fallback');
+$largeOfficial=str_repeat('<script>window.__page_padding="'.str_repeat('x',1000).'";</script>',1800).$pzkosz;
+$largeRaw=DT_Decka_Stats::parse_pzkosz_raw($largeOfficial,true);
+check(is_array($largeRaw) && $largeRaw['team']['field']['made']===31, 'Extract the box score from a full-size PZKosz page without a whole-document regular expression');
+check(DT_Decka_Stats::pzkosz_raw_diagnostics($largeOfficial)==='tabele=1; sumy=1; pelne=1', 'Report exact raw table diagnostics');
 $awayHtml=str_replace('<h3><a>Decka Pelplin</a></h3>','<table class="statystyki splitTable"><tr><td>Suma</td></tr></table><h3><a>Decka Pelplin</a></h3>',$pzkosz);
 $officialAway=DT_Decka_Stats::parse_pzkosz_game($awayHtml,false);
 check(is_array($officialAway) && $officialAway['team']['points']===91, 'Choose the second PZKosz box score when Decka is the away team');

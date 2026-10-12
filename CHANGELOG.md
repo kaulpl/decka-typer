@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.53
+- Zastąpiono pełnostronicowe wyrażenie regularne strumieniowym wycinaniem tabel PZKosz, odpornym na limity PCRE hostingu przy stronach o rozmiarze około 1,8 MB.
+- Dodano test pełnowymiarowej strony oraz diagnostykę liczby znalezionych tabel, sum i kompletnych wierszy.
+
 ## 0.6.52
 - Dodano parser awaryjny surowego HTML dla dużych stron meczowych PZKosz, aby statystyki Decki nie zależały od poprawnego zbudowania całego drzewa DOM przez libxml.
 - Parser wybiera wyłącznie dwie właściwe tabele box score i odczytuje sumę, liderów oraz wyniki kwart.
