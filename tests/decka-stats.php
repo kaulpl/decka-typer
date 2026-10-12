@@ -57,5 +57,5 @@ check(str_contains($admin,'data-dt-decka-stat-graphic') && str_contains($admin,'
 check(str_contains($graphics,'gameDetails') && str_contains($graphics,'PRZEBIEG MECZU') && str_contains($graphics,'KLUCZOWE LICZBY DECKI'), 'Render quarters and advanced statistics when coordinates are unavailable');
 check(!str_contains($graphics,'findLiveStatsGame') && !str_contains($graphics,'liveStatsPayload'), 'Remove browser-side FIBA identifier scanning');
 check(str_contains($class,'find_puls_game') && str_contains($class,'parse_puls_game'), 'Find and parse Puls Basketu games on the server');
-check(str_contains($class,'find_pzkosz_game_url') && str_contains($class,'STAT-MECZ-2'), 'Discover an official PZKosz detail URL and expose a diagnostic stage');
+check(str_contains($class,'find_pzkosz_game_url') && str_contains($class,'STAT-MECZ-3A') && str_contains($class,'STAT-MECZ-3D'), 'Discover an official PZKosz detail URL and expose precise diagnostic stages');
 echo "Decka match statistics from Puls Basketu: OK\n";
