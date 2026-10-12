@@ -57,6 +57,9 @@ $classless=str_replace('class="statystyki splitTable"','data-layout="box-score"'
 check(DT_Decka_Stats::parse_pzkosz_raw($classless,true)['team']['points']===91, 'Recognize a complete PZKosz box score without relying on its CSS class');
 $encoded=htmlspecialchars($pzkosz,ENT_QUOTES|ENT_HTML5,'UTF-8');
 check(DT_Decka_Stats::parse_pzkosz_raw($encoded,true)['team']['eval']===104, 'Decode a box score returned as escaped HTML');
+$shortSum=str_replace('<td>5</td><td>104</td><td></td>','<td>104</td>',$pzkosz);
+$shortRaw=DT_Decka_Stats::parse_pzkosz_raw($shortSum,true);
+check($shortRaw['team']['points']===91 && $shortRaw['team']['eval']===104 && $shortRaw['team']['field']['made']===31, 'Parse a shorter PZKosz total row without BO and +/- cells');
 $awayHtml=str_replace('<h3><a>Decka Pelplin</a></h3>','<table class="statystyki splitTable"><tr><td>Suma</td></tr></table><h3><a>Decka Pelplin</a></h3>',$pzkosz);
 $officialAway=DT_Decka_Stats::parse_pzkosz_game($awayHtml,false);
 check(is_array($officialAway) && $officialAway['team']['points']===91, 'Choose the second PZKosz box score when Decka is the away team');

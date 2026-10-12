@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.55
+- Parser PZKosz obsługuje krótsze warianty wiersza „Suma” bez kolumn BO i +/-.
+- Kolumny rzutowe są rozpoznawane po formacie celne/próby, a EVAL od końca wiersza.
+
 ## 0.6.54
 - Box score PZKosz jest rozpoznawany po kompletnym wierszu „Suma”, bez zależności od klasy CSS tabeli.
 - Dodano obsługę tabel zwróconych jako zakodowany tekst HTML oraz testy obu wariantów.
