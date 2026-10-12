@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.52
+- Dodano parser awaryjny surowego HTML dla dużych stron meczowych PZKosz, aby statystyki Decki nie zależały od poprawnego zbudowania całego drzewa DOM przez libxml.
+- Parser wybiera wyłącznie dwie właściwe tabele box score i odczytuje sumę, liderów oraz wyniki kwart.
+
 ## 0.6.51
 - Generator preferuje pełny oficjalny adres meczu znaleziony w terminarzu PZKosz; skrócony adres z samym identyfikatorem jest używany dopiero awaryjnie.
 - Diagnostyka rozróżnia pustą odpowiedź (`3A`), przekroczony rozmiar (`3B`), stronę bez statystyk (`3C`) i tabelę odrzuconą przez parser (`3D`).
