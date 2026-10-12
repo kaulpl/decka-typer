@@ -79,12 +79,15 @@ class DT_Decka_Stats {
         if(!$box)return null;
         $players=[];$team=null;
         foreach($xp->query('.//tr',$box) as $row){
-            $cells=self::cells($xp,$row);if(count($cells)<17)continue;$first=self::norm($cells[0]);
-            if(in_array($first,['razem','suma'],true)){
-                $team=['points'=>(int)$cells[2],'reb'=>(int)$cells[3],'ast'=>(int)$cells[4],
-                    'field'=>self::made_attempted($cells[5]),'two'=>self::made_attempted($cells[6]),'three'=>self::made_attempted($cells[7]),'free'=>self::made_attempted($cells[8]),
-                    'oreb'=>(int)$cells[9],'dreb'=>(int)$cells[10],'steals'=>(int)$cells[11],'blocks'=>(int)$cells[12],
-                    'turnovers'=>(int)$cells[13],'fouls'=>(int)$cells[14],'eval'=>(int)$cells[16]];
+            $cells=self::cells($xp,$row);if(count($cells)<17)continue;$first=self::norm($cells[0]);$second=self::norm($cells[1]??'');
+            if(in_array($first,['razem','suma'],true) || in_array($second,['razem','suma'],true)){
+                // The live Puls table keeps an empty shirt-number cell before
+                // RAZEM; older snapshots omitted it. Normalize both layouts.
+                $offset=in_array($second,['razem','suma'],true)?1:0;
+                $team=['points'=>(int)$cells[2+$offset],'reb'=>(int)$cells[3+$offset],'ast'=>(int)$cells[4+$offset],
+                    'field'=>self::made_attempted($cells[5+$offset]),'two'=>self::made_attempted($cells[6+$offset]),'three'=>self::made_attempted($cells[7+$offset]),'free'=>self::made_attempted($cells[8+$offset]),
+                    'oreb'=>(int)$cells[9+$offset],'dreb'=>(int)$cells[10+$offset],'steals'=>(int)$cells[11+$offset],'blocks'=>(int)$cells[12+$offset],
+                    'turnovers'=>(int)$cells[13+$offset],'fouls'=>(int)$cells[14+$offset],'eval'=>(int)$cells[16+$offset]];
                 continue;
             }
             if(count($cells)<18 || !preg_match('/^\d+$/',trim($cells[0])) || trim($cells[1])==='')continue;

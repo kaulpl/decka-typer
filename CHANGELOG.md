@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.47
+- Parser pełnych statystyk obsługuje rzeczywisty wiersz sumy Puls Basketu, w którym przed etykietą „RAZEM” znajduje się pusta komórka numeru zawodnika.
+- Kolumny punktów, zbiórek, asyst, skuteczności, przechwytów, bloków, strat i EVAL są przesuwane zgodnie z wykrytym wariantem tabeli.
+- Test box score odwzorowuje aktualny układ meczu Decka Pelplin – Miasto Szkła Krosno wraz z procentami w komórkach rzutowych.
+
 ## 0.6.46
 - Mecz Puls Basketu jest dopasowywany przede wszystkim po unikalnej parze drużyn; wynik nie jest już obowiązkowym warunkiem.
 - Wyszukiwanie sprawdza kilka poziomów kontenera karty, ponieważ pusty link może być oddzielony od nazw drużyn dodatkową warstwą HTML.
