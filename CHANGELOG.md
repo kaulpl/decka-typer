@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.49
+- Oficjalny adres meczu PZKosz jest odzyskiwany z klucza synchronizacji, nawet jeśli starszy rekord przechowuje tylko ogólny adres terminarza.
+- Gdy identyfikatora nie ma w kluczu, generator automatycznie odnajduje właściwy mecz w terminarzu po obu drużynach i wyniku.
+- Żądania do źródeł korzystają z nagłówków zwykłej przeglądarki, a ewentualny błąd wskazuje etap `STAT-MECZ-2` lub `STAT-MECZ-3`.
+
 ## 0.6.48
 - Gdy Puls Basketu zwraca stronę bez tabeli ładowanej przez JavaScript, generator automatycznie korzysta z zapisanego przy meczu oficjalnego adresu PZKosz.
 - Dodano parser serwerowego box score PZKosz: pełne sumy drużynowe, trzech liderów według EVAL oraz wynik każdej kwarty.

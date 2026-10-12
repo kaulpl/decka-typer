@@ -11,7 +11,7 @@ class DT_Decka_Stats {
         global $wpdb;
         $matchId=absint($_POST['match_id']??0);
         $match=$wpdb->get_row($wpdb->prepare(
-            "SELECT m.id,m.starts_at,m.score_home,m.score_away,m.source_url,h.name home_name,h.logo_url home_logo,
+            "SELECT m.id,m.starts_at,m.score_home,m.score_away,m.source_url,m.external_key,h.name home_name,h.logo_url home_logo,
                     a.name away_name,a.logo_url away_logo,r.round_no,r.season
              FROM ".DT_DB::table('matches')." m
              JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id
@@ -33,13 +33,25 @@ class DT_Decka_Stats {
         // Puls hydrates the box score in JavaScript on some requests. The
         // synchronized match already carries its stable official PZKosz URL,
         // whose server-rendered table is a reliable fallback for the same data.
-        if(!$stats && self::is_pzkosz_match_url((string)($match['source_url']??''))){
-            $stats=self::parse_pzkosz_game(
-                self::fetch((string)$match['source_url']),
-                stripos((string)$match['home_name'],'Decka Pelplin')!==false
-            );
+        $officialUrl='';
+        if(!$stats){
+            $storedUrl=(string)($match['source_url']??'');
+            if(self::is_pzkosz_match_url($storedUrl))$officialUrl=$storedUrl;
+            elseif(preg_match('/(?:^|-)1lm-(\d+)$/',(string)($match['external_key']??''),$officialId))$officialUrl='https://1lm.pzkosz.pl/mecz/'.$officialId[1];
+            else{
+                $scheduleUrl=self::is_pzkosz_url($storedUrl)?$storedUrl:'https://1lm.pzkosz.pl/terminarz-i-wyniki.html';
+                $officialUrl=self::find_pzkosz_game_url(self::fetch($scheduleUrl),$match,$scheduleUrl)??'';
+                if($officialUrl==='' && $scheduleUrl!=='https://1lm.pzkosz.pl/terminarz-i-wyniki.html'){
+                    $scheduleUrl='https://1lm.pzkosz.pl/terminarz-i-wyniki.html';
+                    $officialUrl=self::find_pzkosz_game_url(self::fetch($scheduleUrl),$match,$scheduleUrl)??'';
+                }
+            }
+            if($officialUrl!=='')$stats=self::parse_pzkosz_game(self::fetch($officialUrl),stripos((string)$match['home_name'],'Decka Pelplin')!==false);
         }
-        if(!$stats) wp_send_json_error(['message'=>'Nie udało się odczytać pełnych statystyk meczu ani z Puls Basketu, ani z oficjalnej strony PZKosz.'],422);
+        if(!$stats){
+            $code=$officialUrl===''?'STAT-MECZ-2':'STAT-MECZ-3';
+            wp_send_json_error(['message'=>'Nie udało się odczytać pełnych statystyk meczu. Kod: '.$code.'.'],422);
+        }
 
         $logo=static function(string $name,string $fallback): string {
             return class_exists('DT_Team_Logos') ? (DT_Team_Logos::url_for($name) ?: $fallback) : $fallback;
@@ -138,6 +150,20 @@ class DT_Decka_Stats {
         return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_quarters($xp,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
     }
 
+    public static function find_pzkosz_game_url(string $html,array $match,string $baseUrl): ?string {
+        $dom=self::dom($html);if(!$dom)return null;$xp=new DOMXPath($dom);$best=null;$bestScore=0;
+        foreach($xp->query('//a[contains(@href,"/mecz/")]') as $link){
+            $row=$xp->query('ancestor::tr[1]',$link)->item(0);if(!$row)$row=$link->parentNode;
+            $text=self::norm((string)($row?->textContent??''));if($text==='')continue;
+            $homeScore=self::name_score((string)$match['home_name'],$text);$awayScore=self::name_score((string)$match['away_name'],$text);
+            if($homeScore<0.5||$awayScore<0.5)continue;$score=$homeScore+$awayScore;
+            $home=$match['score_home']??null;$away=$match['score_away']??null;
+            if($home!==null&&$away!==null&&preg_match('/(?:^|\D)'.preg_quote((string)$home,'/').'\s*[:\-]\s*'.preg_quote((string)$away,'/').'(?:\D|$)/',$text))$score+=2;
+            if($score>$bestScore){$bestScore=$score;$best=self::absolute_url((string)$link->getAttribute('href'),$baseUrl);}
+        }
+        return $bestScore>=1.5?$best:null;
+    }
+
     private static function pzkosz_quarters(DOMXPath $xp,bool $deckaHome): array {
         foreach($xp->query('//span|//div') as $node){
             $text=trim(preg_replace('/\s+/u',' ',(string)$node->textContent));
@@ -150,6 +176,15 @@ class DT_Decka_Stats {
     private static function is_pzkosz_match_url(string $url): bool {
         $host=strtolower((string)wp_parse_url($url,PHP_URL_HOST));$path=(string)wp_parse_url($url,PHP_URL_PATH);
         return ($host==='1lm.pzkosz.pl'||$host==='rozgrywki.pzkosz.pl') && preg_match('~/mecz/\d+~',$path)===1;
+    }
+
+    private static function is_pzkosz_url(string $url): bool {
+        $host=strtolower((string)wp_parse_url($url,PHP_URL_HOST));return $host==='1lm.pzkosz.pl'||$host==='rozgrywki.pzkosz.pl';
+    }
+
+    private static function absolute_url(string $href,string $base): string {
+        if(preg_match('~^https?://~i',$href))return $href;$parts=parse_url($base);if(!$parts||empty($parts['host']))return $href;
+        return ($parts['scheme']??'https').'://'.$parts['host'].'/'.ltrim($href,'/');
     }
 
     private static function quarters(DOMXPath $xp): array {
@@ -169,7 +204,7 @@ class DT_Decka_Stats {
     }
 
     private static function fetch(string $url): string {
-        $response=wp_remote_get($url,['timeout'=>25,'redirection'=>5,'headers'=>['User-Agent'=>'Mozilla/5.0 (compatible; TypujKosza/'.DT_VERSION.'; +'.home_url('/').')','Accept'=>'text/html,application/xhtml+xml']]);
+        $response=wp_remote_get($url,['timeout'=>25,'redirection'=>5,'headers'=>['User-Agent'=>'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36','Accept'=>'text/html,application/xhtml+xml','Accept-Language'=>'pl-PL,pl;q=0.9,en;q=0.7']]);
         return !is_wp_error($response) && (int)wp_remote_retrieve_response_code($response)===200 ? (string)wp_remote_retrieve_body($response) : '';
     }
 

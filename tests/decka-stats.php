@@ -14,6 +14,9 @@ check($found===['id'=>'37611','path'=>'/pl/league/1lm/2027/games/37611'], 'Find 
 check(DT_Decka_Stats::find_puls_game($games,['home_name'=>'Decka Pelplin','away_name'=>'Miasto Szkła Krosno','score_home'=>0,'score_away'=>0])['id']==='37611', 'Match a unique team pair even when the local score is stale');
 check(DT_Decka_Stats::find_puls_game($games,['home_name'=>'Decka Pelplin','away_name'=>'Inny Klub','score_home'=>91,'score_away'=>80])===null, 'Reject a different opponent even when score matches');
 
+$schedule='<table><tr class="tt-game"><td><a href="/mecz/223908/decka-pelplin---miasto-szkla-krosno.html">Decka Pelplin 91 : 80 Miasto Szkła Krosno</a></td></tr></table>';
+check(DT_Decka_Stats::find_pzkosz_game_url($schedule,['home_name'=>'Decka Pelplin','away_name'=>'Miasto Szkła Krosno','score_home'=>91,'score_away'=>80],'https://1lm.pzkosz.pl/terminarz-i-wyniki.html')==='https://1lm.pzkosz.pl/mecz/223908/decka-pelplin---miasto-szkla-krosno.html', 'Discover the official match URL from an older schedule URL');
+
 $html='<!doctype html><html><body>
 <table aria-label="Wynik kwart"><tr><th>Drużyna</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th>Razem</th></tr><tr><td>Decka Pelplin</td><td>23</td><td>23</td><td>15</td><td>30</td><td>91</td></tr><tr><td>Miasto Szkła Krosno</td><td>23</td><td>16</td><td>27</td><td>14</td><td>80</td></tr></table>
 <table aria-label="Decka Pelplin Box Score"><tr><th>#</th><th>ZAWODNIK</th><th>CZAS</th><th>PKT</th><th>ZB</th><th>AST</th><th>Z GRY</th><th>ZA 2</th><th>ZA 3</th><th>ZA 1</th><th>ZB A</th><th>ZB O</th><th>PRZ</th><th>BLK</th><th>STR</th><th>F</th><th>FW</th><th>EVAL</th><th>+/-</th></tr>
@@ -51,4 +54,5 @@ check(str_contains($admin,'data-dt-decka-stat-graphic') && str_contains($admin,'
 check(str_contains($graphics,'gameDetails') && str_contains($graphics,'PRZEBIEG MECZU') && str_contains($graphics,'KLUCZOWE LICZBY DECKI'), 'Render quarters and advanced statistics when coordinates are unavailable');
 check(!str_contains($graphics,'findLiveStatsGame') && !str_contains($graphics,'liveStatsPayload'), 'Remove browser-side FIBA identifier scanning');
 check(str_contains($class,'find_puls_game') && str_contains($class,'parse_puls_game'), 'Find and parse Puls Basketu games on the server');
+check(str_contains($class,'find_pzkosz_game_url') && str_contains($class,'STAT-MECZ-2'), 'Discover an official PZKosz detail URL and expose a diagnostic stage');
 echo "Decka match statistics from Puls Basketu: OK\n";
