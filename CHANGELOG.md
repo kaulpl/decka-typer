@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.59
+- Przebudowano planszę meczu: symetryczny pasek wyniku, miększa typografia, kołowe wykresy skuteczności i liniowy wykres przebiegu kwart.
+- Liderzy otrzymali statystyki rzutów za 2, za 3 i za 1.
+- Wyniki kwart są odczytywane bezpośrednio z małego elementu `detailed-score`, a statystyki zaawansowane również przez DOM.
+
 ## 0.6.58
 - Poprawiono dynamiczne mapowanie numeru, nazwiska, punktów, zbiórek, asyst i EVAL zawodników w różnych układach PZKosz.
 - Dodano wyniki kwart i oficjalne statystyki zaawansowane: punkty ze strat, z pomalowanego, drugiej szansy, szybkiego ataku i ławki.
