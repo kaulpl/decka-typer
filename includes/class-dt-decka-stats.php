@@ -50,7 +50,10 @@ class DT_Decka_Stats {
         foreach($xp->query('//a[contains(@href,"/league/1lm/") and contains(@href,"/games/")]') as $link){
             $path=(string)$link->getAttribute('href');
             if(!preg_match('~(/pl/league/1lm/\d+/games/(\d+))~',$path,$m))continue;
-            $text=self::norm($link->textContent);if($text==='')continue;
+            // Puls Basketu renders an empty absolute-positioned link over the
+            // card; teams and score are siblings inside the parent card.
+            $card=$link->parentNode instanceof DOMNode ? $link->parentNode : $link;
+            $text=self::norm($card->textContent);if($text==='')continue;
             $score=self::name_score((string)$match['home_name'],$text)+self::name_score((string)$match['away_name'],$text);
             $home=$match['score_home']??null;$away=$match['score_away']??null;
             if($home!==null && $away!==null && preg_match('/(?:^|\D)'.preg_quote((string)$home,'/').'\s+'.preg_quote((string)$away,'/').'(?:\D|$)/',$text))$score+=2;

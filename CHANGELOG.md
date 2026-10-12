@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.44
+- Poprawiono automatyczne wyszukiwanie meczu na Puls Basketu: nazwy drużyn i wynik są teraz odczytywane z całej karty, ponieważ nakładający się na nią link nie zawiera tekstu.
+- Test integracji odwzorowuje rzeczywistą strukturę kart meczowych Puls Basketu, w tym pusty link prowadzący do szczegółów spotkania.
+
 ## 0.6.43
 - Generator planszy meczu Decki korzysta teraz z Puls Basketu zamiast blokowanego źródła FIBA LiveStats.
 - Wybrane spotkanie jest automatycznie odnajdywane po obu drużynach i końcowym wyniku; administrator nie musi podawać żadnego adresu ani identyfikatora.
