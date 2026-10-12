@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.58
+- Poprawiono dynamiczne mapowanie numeru, nazwiska, punktów, zbiórek, asyst i EVAL zawodników w różnych układach PZKosz.
+- Dodano wyniki kwart i oficjalne statystyki zaawansowane: punkty ze strat, z pomalowanego, drugiej szansy, szybkiego ataku i ławki.
+- Usunięto wszystkie podpisy i komunikaty „Puls Basketu” z generatora oraz grafiki.
+
 ## 0.6.57
 - Statystyki drużynowe PZKosz są odczytywane bezpośrednio z tekstu „Suma”, niezależnie od struktury komórek, colspan i liczby kolumn.
 - Dodano test tabeli, w której suma nie zawiera żadnych komórek HTML.
