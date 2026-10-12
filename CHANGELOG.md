@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.56
+- Odczyt wierszy i komórek PZKosz nie wymaga już znaczników zamykających `</tr>` i `</td>`.
+- Dodano test regresji dla niepoprawnego HTML naprawianego wcześniej wyłącznie przez przeglądarkę.
+
 ## 0.6.55
 - Parser PZKosz obsługuje krótsze warianty wiersza „Suma” bez kolumn BO i +/-.
 - Kolumny rzutowe są rozpoznawane po formacie celne/próby, a EVAL od końca wiersza.
