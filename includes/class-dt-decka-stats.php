@@ -58,7 +58,8 @@ class DT_Decka_Stats {
             elseif(strlen($officialHtml)>8000000)$code='STAT-MECZ-3B';
             elseif(stripos($officialHtml,'statystyki')===false)$code='STAT-MECZ-3C';
             else $code='STAT-MECZ-3D';
-            wp_send_json_error(['message'=>'Nie udało się odczytać pełnych statystyk meczu. Kod: '.$code.'; rozmiar='.strlen($officialHtml).' B.'],422);
+            $detail=$code==='STAT-MECZ-3D'?'; '.self::pzkosz_raw_diagnostics($officialHtml):'';
+            wp_send_json_error(['message'=>'Nie udało się odczytać pełnych statystyk meczu. Kod: '.$code.'; rozmiar='.strlen($officialHtml).' B'.$detail.'.'],422);
         }
 
         $logo=static function(string $name,string $fallback): string {
@@ -166,9 +167,9 @@ class DT_Decka_Stats {
      * incomplete DOM. Read the two box-score tables directly as a fallback.
      */
     public static function parse_pzkosz_raw(string $html,bool $deckaHome): ?array {
-        if($html==='' || !preg_match_all('~<table\b[^>]*class=["\'][^"\']*\bstatystyki\b[^"\']*["\'][^>]*>(.*?)</table>~isu',$html,$matches))return null;
+        if($html==='')return null;
         $boxes=[];
-        foreach($matches[1] as $table){
+        foreach(self::raw_stat_tables($html) as $table){
             if(stripos($table,'class="sum"')===false && stripos($table,"class='sum'")===false)continue;
             $boxes[]=$table;
             if(count($boxes)===2)break;
@@ -196,6 +197,35 @@ class DT_Decka_Stats {
         if(!$team)return null;
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
         return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_raw_quarters($html,$deckaHome),'advanced'=>[],'source'=>'pzkosz'];
+    }
+
+    /** Extract tables without running one regular expression over the 1.8 MB page. */
+    private static function raw_stat_tables(string $html): array {
+        $tables=[];$offset=0;$length=strlen($html);
+        while($offset<$length && ($start=stripos($html,'<table',$offset))!==false){
+            $openEnd=strpos($html,'>',$start);
+            if($openEnd===false)break;
+            $open=substr($html,$start,$openEnd-$start+1);
+            $close=stripos($html,'</table>',$openEnd+1);
+            if($close===false)break;
+            if(preg_match('~\bclass\s*=\s*(["\'])(.*?)\1~isu',$open,$class)
+                && preg_match('/(?:^|\s)statystyki(?:\s|$)/i',$class[2])){
+                $tables[]=substr($html,$openEnd+1,$close-$openEnd-1);
+            }
+            $offset=$close+8;
+        }
+        return $tables;
+    }
+
+    public static function pzkosz_raw_diagnostics(string $html): string {
+        $tables=self::raw_stat_tables($html);$sums=0;$wide=0;
+        foreach($tables as $table){
+            if(stripos($table,'class="sum"')===false && stripos($table,"class='sum'")===false)continue;
+            $sums++;
+            if(preg_match('~<tr\b[^>]*class\s*=\s*["\'][^"\']*\bsum\b[^"\']*["\'][^>]*>(.*?)</tr>~isu',$table,$row)
+                && preg_match_all('~<t[dh]\b[^>]*>.*?</t[dh]>~isu',$row[1],$cells) && count($cells[0])>=22)$wide++;
+        }
+        return 'tabele='.count($tables).'; sumy='.$sums.'; pelne='.$wide;
     }
 
     private static function raw_cell(string $html): string {
