@@ -123,12 +123,12 @@ class DT_Decka_Stats {
 
     public static function parse_pzkosz_game(string $html,bool $deckaHome): ?array {
         $dom=self::dom($html);if(!$dom)return null;$xp=new DOMXPath($dom);$box=null;
-        foreach($xp->query('//h3') as $heading){
-            $name=self::norm((string)$heading->textContent);
-            if(!str_contains($name,'decka')&&!str_contains($name,'pelplin'))continue;
-            $candidate=$xp->query('following::table[contains(concat(" ",normalize-space(@class)," ")," statystyki ")][1]',$heading)->item(0);
-            if($candidate){$box=$candidate;break;}
-        }
+        // The official page always renders the home and away box scores in
+        // that order. Selecting by match side is more reliable than coupling
+        // the parser to a decorative heading that differs between templates.
+        $tables=$xp->query('//table[contains(concat(" ",normalize-space(@class)," ")," statystyki ")]');
+        if($tables && $tables->length>=2)$box=$tables->item($deckaHome?0:1);
+        elseif($tables && $tables->length===1)$box=$tables->item(0);
         if(!$box)return null;
         $players=[];$team=null;
         foreach($xp->query('.//tr',$box) as $row){
