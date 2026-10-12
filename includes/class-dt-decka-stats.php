@@ -183,11 +183,7 @@ class DT_Decka_Stats {
             $cells=array_map([self::class,'raw_cell'],$found[1]);
             $isSum=preg_match('~\bclass\s*=\s*["\'][^"\']*\bsum\b~i',$row[1]) || self::norm($cells[0]??'')==='suma';
             if($isSum){
-                if(count($cells)<22)continue;
-                $team=['points'=>(int)$cells[1],'reb'=>(int)$cells[13],'ast'=>(int)$cells[14],
-                    'field'=>self::made_attempted($cells[7]),'two'=>self::made_attempted($cells[3]),'three'=>self::made_attempted($cells[5]),'free'=>self::made_attempted($cells[9]),
-                    'oreb'=>(int)$cells[11],'dreb'=>(int)$cells[12],'steals'=>(int)$cells[18],'blocks'=>(int)$cells[19],
-                    'turnovers'=>(int)$cells[17],'fouls'=>(int)$cells[15],'eval'=>(int)$cells[21]];
+                $team=self::pzkosz_team_cells($cells);
                 continue;
             }
             if(count($cells)<24 || !preg_match('/^\d+$/',trim($cells[0])) || trim($cells[2])==='')continue;
@@ -218,9 +214,26 @@ class DT_Decka_Stats {
         if(!preg_match_all('~<tr\b[^>]*>(.*?)</tr>~isu',$table,$rows))return false;
         foreach($rows[1] as $row){
             if(!preg_match_all('~<t[dh]\b[^>]*>(.*?)</t[dh]>~isu',$row,$cells))continue;
-            if(count($cells[1])>=22 && self::norm(self::raw_cell($cells[1][0]??''))==='suma')return true;
+            $clean=array_map([self::class,'raw_cell'],$cells[1]);
+            if((self::norm($clean[0]??'')==='suma' || stripos($row,'class="sum"')!==false || stripos($row,"class='sum'")!==false)
+                && self::pzkosz_team_cells($clean)!==null)return true;
         }
         return false;
+    }
+
+    private static function pzkosz_team_cells(array $cells): ?array {
+        if(count($cells)<12)return null;
+        $shots=[];
+        foreach($cells as $i=>$cell)if(preg_match('/^\s*\d+\s*\/\s*\d+/',(string)$cell))$shots[]=$i;
+        if(count($shots)<4)return null;
+        // PZKosz orders shooting columns as 2PT, 3PT, field goals, free throws.
+        [$two,$three,$field,$free]=array_slice($shots,0,4);
+        $lastNumeric=0;
+        for($i=count($cells)-1;$i>=0;$i--){if(preg_match('/^-?\d+(?:\.\d+)?$/',trim((string)$cells[$i]))){$lastNumeric=(int)$cells[$i];break;}}
+        return ['points'=>(int)($cells[1]??0),'reb'=>(int)($cells[13]??0),'ast'=>(int)($cells[14]??0),
+            'field'=>self::made_attempted($cells[$field]),'two'=>self::made_attempted($cells[$two]),'three'=>self::made_attempted($cells[$three]),'free'=>self::made_attempted($cells[$free]),
+            'oreb'=>(int)($cells[11]??0),'dreb'=>(int)($cells[12]??0),'steals'=>(int)($cells[18]??0),'blocks'=>(int)($cells[19]??0),
+            'turnovers'=>(int)($cells[17]??0),'fouls'=>(int)($cells[15]??0),'eval'=>$lastNumeric];
     }
 
     public static function pzkosz_raw_diagnostics(string $html): string {
