@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.64 — 2026-10-29
+
+- TOP 3 zakończonego meczu w „Kolejce z Arturem” jest wybierane według EVAL, a następnie liczby punktów,
+- double-double i triple-double są specjalnie oznaczane; zawodnik spoza podstawowej trójki jest dopisywany jako bonus,
+- w porównaniu statystyk drużynowych lepszy wynik otrzymuje zielony pasek, a słabszy czerwony,
+- dla strat prawidłowo premiowana jest niższa wartość, a remisy pozostają neutralne.
+
 ## 0.6.63 — 2026-10-29
 
 - u góry panelu „Kolejka z Arturem” dodano przycisk „Pobierz w tle wszystkie dane”,
