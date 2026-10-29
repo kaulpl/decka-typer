@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.68 — 2026-10-29
+
+- poprawiono odczyt indywidualnych statystyk zawodników z protokołu PZKosz w „Kolejce z Arturem”,
+- puste komórki nie przesuwają już strat, przechwytów, bloków, bloków otrzymanych ani EVAL,
+- zawodnicy bez rzutu wolnego lub innej statystyki nie są pomijani,
+- rzuty, zbiórki, asysty, faule, straty, przechwyty, bloki i EVAL są odczytywane ze stałych kolumn względem pola „Czas gry”,
+- nowy test odwzorowuje zawodnika z pustymi komórkami oficjalnego protokołu.
+
 ## 0.6.67 — 2026-10-29
 
 - TOP 3 zamkniętego meczu w „Kolejce z Arturem” jest odczytywane wyłącznie z oficjalnego protokołu pomeczowego tego spotkania,
