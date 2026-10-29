@@ -31,4 +31,5 @@ check(str_contains($source,'Pobierz w tle wszystkie dane') && str_contains($insi
 check(str_contains($insightsJs,'dt_artur_warm_start') && str_contains($insightsJs,'dt_artur_warm_status') && str_contains($insightsJs,'Pobrano '), 'Background warm-up reports progress without blocking the page');
 check(str_contains($insights,'game_top_players') && str_contains($insights,"['eval']") && str_contains($insights,'TRIPLE-DOUBLE') && str_contains($insights,'DOUBLE-DOUBLE'), 'Closed-round TOP 3 uses EVAL and points with double-double bonuses');
 check(str_contains($insights,'comparison_classes') && str_contains($insights,"\$key==='turnovers'"), 'Team comparison highlights better and worse values and reverses turnovers');
+check(str_contains($insights,'achievement_detail') && str_contains($insights,"'points'=>'punkty'") && str_contains($insights,"'blocks'=>'bloki'"), 'Double and triple doubles use the five official single-game categories');
 echo "Admin Artur dashboard: OK\n";

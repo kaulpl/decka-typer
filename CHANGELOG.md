@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.65 — 2026-10-29
+
+- oznaczenia double-double i triple-double są wyliczane wyłącznie z jednego meczu oraz pięciu kategorii: punktów, zbiórek, asyst, przechwytów i bloków,
+- przy oznaczeniu osiągnięcia można sprawdzić kategorie, w których zawodnik uzyskał co najmniej 10,
+- równe wartości w porównaniu statystyk drużynowych są podkreślane żółtym paskiem po obu stronach,
+- dodano osobny test logiki osiągnięć, remisu statystycznego i odwróconej oceny strat.
+
 ## 0.6.64 — 2026-10-29
 
 - TOP 3 zakończonego meczu w „Kolejce z Arturem” jest wybierane według EVAL, a następnie liczby punktów,
