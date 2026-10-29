@@ -33,4 +33,5 @@ check(str_contains($insights,'game_top_players') && str_contains($insights,"['ev
 check(str_contains($insights,'comparison_classes') && str_contains($insights,"\$key==='turnovers'"), 'Team comparison highlights better and worse values and reverses turnovers');
 check(str_contains($insights,'achievement_detail') && str_contains($insights,"'points'=>['punkty','pkt']") && str_contains($insights,"'blocks'=>['bloki','blk']"), 'Double and triple doubles use the five official single-game categories');
 check(str_contains($insights,'achievement_values') && str_contains($insights,'dt-artur-achievement-stats'), 'Closed-round achievement shows the exact double-double or triple-double values');
+check(str_contains($insights,'DT_Decka_Stats::official_protocol') && str_contains($insights,"['source_url'=>\$url"), 'Closed-round players come from the verified post-game protocol and its canonical URL is persisted');
 echo "Admin Artur dashboard: OK\n";
