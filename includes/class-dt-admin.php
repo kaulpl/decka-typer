@@ -13,6 +13,9 @@ class DT_Admin {
         }
         add_action('wp_ajax_dt_decka_stats',[DT_Decka_Stats::class,'ajax']);
         add_action('wp_ajax_dt_artur_insights',[DT_Artur_Insights::class,'ajax']);
+        add_action('wp_ajax_dt_artur_warm_start',[DT_Artur_Insights::class,'ajax_warm_start']);
+        add_action('wp_ajax_dt_artur_warm_status',[DT_Artur_Insights::class,'ajax_warm_status']);
+        add_action('dt_artur_warm_insights',[DT_Artur_Insights::class,'process_warm_job']);
     }
 
     public static function menu(): void {
@@ -651,7 +654,7 @@ class DT_Admin {
         foreach ($rounds as $round) echo '<option value="' . (int)$round->id . '" ' . selected($leftId,(int)$round->id,false) . '>' . esc_html((int)$round->round_no . '. kolejka · ' . (int)$round->match_count . ' meczów') . '</option>';
         echo '</select></label><label>Prawa kolumna<select name="right_round">';
         foreach ($rounds as $round) echo '<option value="' . (int)$round->id . '" ' . selected($rightId,(int)$round->id,false) . '>' . esc_html((int)$round->round_no . '. kolejka · ' . (int)$round->match_count . ' meczów') . '</option>';
-        echo '</select></label><button class="button button-primary dt-button"><span class="dashicons dashicons-update"></span>Pokaż zestawienie</button></div></form></section>';
+        echo '</select></label><button class="button button-primary dt-button"><span class="dashicons dashicons-update"></span>Pokaż zestawienie</button></div></form><div class="dt-artur-preload"><button type="button" class="button dt-button" data-dt-artur-warm><span class="dashicons dashicons-cloud-download"></span>Pobierz w tle wszystkie dane</button><span data-dt-artur-warm-status aria-live="polite">Przygotuje dane dla obu widocznych kolejek.</span></div></section>';
         if (!$users) {
             echo '<section class="dt-card dt-section"><p class="dt-empty">Nie ma jeszcze użytkowników z zapisanymi typami. Po oddaniu typów konto będzie można wybrać w tym panelu.</p></section>';
         } elseif (!$rounds) {
