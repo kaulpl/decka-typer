@@ -17,6 +17,7 @@ $result=$top->invoke(null,$players);
 verify(count($result)===4,'Triple-double outside the EVAL TOP 3 is appended as a bonus');
 verify($result[1]['name']==='EVAL 25','Points break an EVAL tie');
 verify(($result[3]['achievement']??'')==='TRIPLE-DOUBLE' && ($result[3]['achievement_detail']??'')==='punkty, zbiórki, asysty','Triple-double uses three of the five single-game categories');
+verify(($result[3]['achievement_values']??'')==='12 pkt · 11 zb · 10 as','Achievement displays the exact statistics that created it');
 verify(!isset($result[4]),'One category at 10 is not a double-double');
 
 $compare=new ReflectionMethod(DT_Artur_Insights::class,'comparison_classes');

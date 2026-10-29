@@ -75,7 +75,8 @@ class DT_Artur_Insights {
         echo '<div class="dt-artur-detail-head"><strong>Statystyki meczu</strong><span>Dane z oficjalnego protokołu PZKosz</span></div>';
         if(!$home || !$away){echo self::empty('Oficjalny protokół nie zawiera jeszcze pełnych statystyk. Wynik i typ pozostają dostępne powyżej.');return (string)ob_get_clean();}
         self::comparison((string)$m['home_name'],(string)$m['away_name'],$home['team']??[],$away['team']??[]);
-        echo '<div class="dt-artur-leader-columns">';self::leaders((string)$m['home_name'],self::game_top_players((array)($home['players']??$home['leaders']??[])));self::leaders((string)$m['away_name'],self::game_top_players((array)($away['players']??$away['leaders']??[])));echo '</div>';
+        $topRule='TOP 3 według EVAL i punktów · bonus za double-double/triple-double';
+        echo '<div class="dt-artur-leader-columns">';self::leaders((string)$m['home_name'],self::game_top_players((array)($home['players']??$home['leaders']??[])),$topRule);self::leaders((string)$m['away_name'],self::game_top_players((array)($away['players']??$away['leaders']??[])),$topRule);echo '</div>';
         self::facts($m,$home,$away);
         return (string)ob_get_clean();
     }
@@ -98,15 +99,15 @@ class DT_Artur_Insights {
     private static function game_top_players(array $players): array {
         usort($players,static fn(array $a,array $b): int=>[(int)($b['eval']??0),(int)($b['points']??0)]<=>[(int)($a['eval']??0),(int)($a['points']??0)]);
         $top=array_slice($players,0,3);$selected=[];foreach($top as $player)$selected[self::normalize((string)($player['name']??''))]=true;
-        $categories=['points'=>'punkty','reb'=>'zbiórki','ast'=>'asysty','steals'=>'przechwyty','blocks'=>'bloki'];
-        foreach($players as $player){$achieved=[];foreach($categories as $metric=>$label)if((int)($player[$metric]??0)>=10)$achieved[]=$label;$doubles=count($achieved);if($doubles<2)continue;$player['achievement']=$doubles>=3?'TRIPLE-DOUBLE':'DOUBLE-DOUBLE';$player['achievement_detail']=implode(', ',$achieved);$key=self::normalize((string)($player['name']??''));if(isset($selected[$key])){foreach($top as &$picked)if(self::normalize((string)($picked['name']??''))===$key){$picked['achievement']=$player['achievement'];$picked['achievement_detail']=$player['achievement_detail'];}unset($picked);}else{$player['is_bonus']=true;$top[]=$player;$selected[$key]=true;}}
+        $categories=['points'=>['punkty','pkt'],'reb'=>['zbiórki','zb'],'ast'=>['asysty','as'],'steals'=>['przechwyty','przech'],'blocks'=>['bloki','blk']];
+        foreach($players as $player){$achieved=[];$values=[];foreach($categories as $metric=>[$label,$short])if((int)($player[$metric]??0)>=10){$achieved[]=$label;$values[]=(int)$player[$metric].' '.$short;}$doubles=count($achieved);if($doubles<2)continue;$player['achievement']=$doubles>=3?'TRIPLE-DOUBLE':'DOUBLE-DOUBLE';$player['achievement_detail']=implode(', ',$achieved);$player['achievement_values']=implode(' · ',$values);$key=self::normalize((string)($player['name']??''));if(isset($selected[$key])){foreach($top as &$picked)if(self::normalize((string)($picked['name']??''))===$key){$picked['achievement']=$player['achievement'];$picked['achievement_detail']=$player['achievement_detail'];$picked['achievement_values']=$player['achievement_values'];}unset($picked);}else{$player['is_bonus']=true;$top[]=$player;$selected[$key]=true;}}
         return $top;
     }
 
     private static function leaders(string $team,array $players,string $suffix=''): void {
         echo '<section class="dt-artur-leaders"><h4>TOP 3 · '.esc_html($team).'</h4>'.($suffix?'<small>'.esc_html($suffix).'</small>':'').'<ol>';
         if(!$players)echo '<li class="is-empty">Brak danych zawodników</li>';
-        foreach($players as $p){$achievement=!empty($p['achievement'])?'<em title="Kategorie z wynikiem co najmniej 10: '.esc_attr((string)($p['achievement_detail']??'')).'">'.esc_html((string)$p['achievement']).'</em>':'';echo '<li class="'.(!empty($p['is_bonus'])?'is-bonus':'').'"><b>'.esc_html((string)($p['name']??'—')).$achievement.'</b><span>'.esc_html(self::player_line($p)).'</span></li>';}
+        foreach($players as $p){$achievement=!empty($p['achievement'])?'<em title="Kategorie z wynikiem co najmniej 10: '.esc_attr((string)($p['achievement_detail']??'')).'">'.esc_html((string)$p['achievement']).'</em>':'';$achievementStats=!empty($p['achievement_values'])?'<span class="dt-artur-achievement-stats"><strong>'.esc_html((string)$p['achievement']).':</strong> '.esc_html((string)$p['achievement_values']).'</span>':'';echo '<li class="'.(!empty($p['is_bonus'])?'is-bonus':'').'"><b>'.esc_html((string)($p['name']??'—')).$achievement.'</b>'.$achievementStats.'<span>'.esc_html(self::player_line($p)).'</span></li>';}
         echo '</ol></section>';
     }
 
