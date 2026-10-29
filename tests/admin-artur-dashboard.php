@@ -25,4 +25,5 @@ check(!str_contains($graphics,'TYPOWANIE ZAPISANE'), 'Upcoming-round graphic doe
 check(str_contains($source,'<details class="dt-artur-match') && str_contains($source,'is-winner'), 'Matches are expandable and completed winner is emphasized');
 check(!str_contains($insights,'Bilans bezpośredni') && str_contains($insights,'Ostatnie mecze') && str_contains($insights,'3 najbliższe mecze') && str_contains($insights,'Ciekawostki do programu'), 'Preview uses recent and upcoming games without head-to-head');
 check(str_contains($insights,'DT_Decka_Stats::parse_pzkosz_game') && str_contains($insights,'season_leaders') && str_contains($insights,"['players']"), 'Official full-season box scores feed player averages');
+check(str_contains($insights,'team_record') && str_contains($insights,"return \$wins.'-'.max(0,\$games-\$wins)"), 'Preview team heading includes current W-L record');
 echo "Admin Artur dashboard: OK\n";
