@@ -88,12 +88,19 @@ class DT_Artur_Insights {
         $before=(string)$m['starts_at'];
         ob_start();echo '<div class="dt-artur-detail-head"><strong>Zapowiedź spotkania</strong><span>Forma, terminarz i średnie z całego dostępnego sezonu</span></div>';
         echo '<div class="dt-artur-form-columns">';
-        foreach(['home','away'] as $side){$teamId=(int)$m[$side.'_team_id'];$name=(string)$m[$side.'_name'];$recent=self::recent($teamId,$before,$matchId);$next=self::upcoming($teamId,$before,$matchId,$m);[$leaders,$games]=self::season_leaders($teamId,$m);echo '<div class="dt-artur-team-column"><h3>'.esc_html($name).'</h3>';self::form($name,$teamId,$recent);self::next_games($name,$teamId,$next);self::leaders($name,$leaders,$games?'Średnie sezonowe z '.$games.' dostępnych protokołów':'Brak protokołów z bieżącego sezonu');echo '</div>';}
+        foreach(['home','away'] as $side){$teamId=(int)$m[$side.'_team_id'];$name=(string)$m[$side.'_name'];$recent=self::recent($teamId,$before,$matchId);$next=self::upcoming($teamId,$before,$matchId,$m);$record=self::team_record($teamId,$m);[$leaders,$games]=self::season_leaders($teamId,$m);echo '<div class="dt-artur-team-column"><h3>'.esc_html($name).' <small>('.esc_html($record).')</small></h3>';self::form($name,$teamId,$recent);self::next_games($name,$teamId,$next);self::leaders($name,$leaders,$games?'Średnie sezonowe z '.$games.' dostępnych protokołów':'Brak protokołów z bieżącego sezonu');echo '</div>';}
         echo '</div>';return (string)ob_get_clean();
     }
 
     private static function recent(int $teamId,string $before,int $exclude): array {
         global $wpdb;return (array)$wpdb->get_results($wpdb->prepare("SELECT m.*,h.name home_name,a.name away_name FROM ".DT_DB::table('matches')." m JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id WHERE m.id<>%d AND m.starts_at<%s AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND (m.home_team_id=%d OR m.away_team_id=%d) ORDER BY m.starts_at DESC LIMIT 3",$exclude,$before,$teamId,$teamId),ARRAY_A);
+    }
+
+    private static function team_record(int $teamId,array $context): string {
+        global $wpdb;
+        $row=$wpdb->get_row($wpdb->prepare("SELECT SUM(CASE WHEN (m.home_team_id=%d AND m.score_home>m.score_away) OR (m.away_team_id=%d AND m.score_away>m.score_home) THEN 1 ELSE 0 END) wins,COUNT(*) games FROM ".DT_DB::table('matches')." m JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id WHERE m.starts_at<%s AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND r.season=%s AND r.league_key=%s AND r.group_key=%s AND (m.home_team_id=%d OR m.away_team_id=%d)",$teamId,$teamId,$context['starts_at'],$context['season'],$context['league_key'],$context['group_key'],$teamId,$teamId),ARRAY_A);
+        $wins=(int)($row['wins']??0);$games=(int)($row['games']??0);
+        return $wins.'-'.max(0,$games-$wins);
     }
 
     private static function form(string $name,int $teamId,array $rows): void {

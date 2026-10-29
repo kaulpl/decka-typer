@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.62 — 2026-10-29
+
+- przy nazwach drużyn w zapowiedzi „Kolejki z Arturem” dodano mniejszym tekstem aktualny bilans zwycięstw i porażek `(W-L)`, liczony dla bieżącego sezonu, ligi i grupy.
+
 ## 0.6.61 — 2026-10-29
 
 - zapowiedź meczu w „Kolejce z Arturem” ma osobną kolumnę dla każdej drużyny: ostatnie mecze, najbliższy terminarz i TOP 3,
