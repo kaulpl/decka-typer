@@ -127,7 +127,7 @@ class DT_Decka_Stats {
         }
         if(!$team)return null;
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
-        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::quarters($xp),'advanced'=>self::advanced($xp),'source'=>'pulsbasketu'];
+        return ['team'=>$team,'players'=>$players,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::quarters($xp),'advanced'=>self::advanced($xp),'source'=>'pulsbasketu'];
     }
 
     public static function parse_pzkosz_game(string $html,bool $deckaHome): ?array {
@@ -157,7 +157,7 @@ class DT_Decka_Stats {
         if(!$team)return self::parse_pzkosz_raw($html,$deckaHome);
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
         $quarters=self::pzkosz_raw_quarters($html,$deckaHome) ?: self::pzkosz_quarters($xp,$deckaHome);
-        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>$quarters,'advanced'=>self::pzkosz_advanced($html,$deckaHome),'source'=>'pzkosz'];
+        return ['team'=>$team,'players'=>$players,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>$quarters,'advanced'=>self::pzkosz_advanced($html,$deckaHome),'source'=>'pzkosz'];
     }
 
     /**
@@ -188,7 +188,7 @@ class DT_Decka_Stats {
         if(!$team)$team=self::pzkosz_team_text($box);
         if(!$team)return null;
         usort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['reb']]<=>[$a['eval'],$a['points'],$a['reb']]);
-        return ['team'=>$team,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_raw_quarters($html,$deckaHome),'advanced'=>self::pzkosz_advanced($html,$deckaHome),'source'=>'pzkosz'];
+        return ['team'=>$team,'players'=>$players,'leaders'=>array_slice($players,0,3),'shots'=>[],'quarters'=>self::pzkosz_raw_quarters($html,$deckaHome),'advanced'=>self::pzkosz_advanced($html,$deckaHome),'source'=>'pzkosz'];
     }
 
     /** Extract tables without running one regular expression over the 1.8 MB page. */
