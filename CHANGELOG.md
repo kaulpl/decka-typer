@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.63 — 2026-10-29
+
+- u góry panelu „Kolejka z Arturem” dodano przycisk „Pobierz w tle wszystkie dane”,
+- dane obu widocznych kolejek są przygotowywane pojedynczo w kolejce WP-Cron i zapisywane w cache,
+- panel pokazuje bieżący postęp oraz liczbę ewentualnych błędów, pozostając dostępny podczas pobierania,
+- po zakończeniu rozwijane podsumowania i zapowiedzi korzystają z wcześniej przygotowanych danych.
+
 ## 0.6.62 — 2026-10-29
 
 - przy nazwach drużyn w zapowiedzi „Kolejki z Arturem” dodano mniejszym tekstem aktualny bilans zwycięstw i porażek `(W-L)`, liczony dla bieżącego sezonu, ligi i grupy.

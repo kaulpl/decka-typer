@@ -8,13 +8,40 @@ class DT_Artur_Insights {
         check_ajax_referer('dt_artur_insights','nonce');
         $matchId=absint($_POST['match_id']??0);$mode=sanitize_key($_POST['mode']??'');
         if(!$matchId || !in_array($mode,['summary','preview'],true))wp_send_json_error(['message'=>'Nieprawidłowe spotkanie.'],400);
-        $key='dt_artur_insights_'.DT_VERSION.'_'.$mode.'_'.$matchId;
-        $html=get_transient($key);
-        if(!is_string($html)){
-            $html=$mode==='summary'?self::summary($matchId):self::preview($matchId);
-            set_transient($key,$html,$mode==='summary'?DAY_IN_SECONDS:6*HOUR_IN_SECONDS);
-        }
-        wp_send_json_success(['html'=>$html]);
+        wp_send_json_success(['html'=>self::cached_html($matchId,$mode)]);
+    }
+
+    private static function cached_html(int $matchId,string $mode): string {
+        $key='dt_artur_insights_'.DT_VERSION.'_'.$mode.'_'.$matchId;$html=get_transient($key);
+        if(!is_string($html)){$html=$mode==='summary'?self::summary($matchId):self::preview($matchId);set_transient($key,$html,$mode==='summary'?DAY_IN_SECONDS:6*HOUR_IN_SECONDS);}
+        return $html;
+    }
+
+    public static function ajax_warm_start(): void {
+        if(!current_user_can('manage_options'))wp_send_json_error(['message'=>'Brak uprawnień.'],403);
+        check_ajax_referer('dt_artur_insights','nonce');
+        $decoded=json_decode(wp_unslash((string)($_POST['items']??'')),true);$items=[];
+        foreach(is_array($decoded)?$decoded:[] as $item){$id=absint($item['match_id']??0);$mode=sanitize_key($item['mode']??'');if($id&&in_array($mode,['summary','preview'],true))$items[$mode.'-'.$id]=['match_id'=>$id,'mode'=>$mode];if(count($items)>=40)break;}
+        if(!$items)wp_send_json_error(['message'=>'Nie znaleziono meczów do przygotowania.'],400);
+        $jobId=wp_generate_uuid4();$job=['items'=>array_values($items),'total'=>count($items),'done'=>0,'errors'=>0,'state'=>'queued','updated'=>time()];
+        set_transient('dt_artur_warm_'.$jobId,$job,2*HOUR_IN_SECONDS);
+        wp_schedule_single_event(time()+1,'dt_artur_warm_insights',[$jobId]);spawn_cron();
+        wp_send_json_success(['job_id'=>$jobId,'total'=>$job['total']]);
+    }
+
+    public static function ajax_warm_status(): void {
+        if(!current_user_can('manage_options'))wp_send_json_error(['message'=>'Brak uprawnień.'],403);
+        check_ajax_referer('dt_artur_insights','nonce');$jobId=sanitize_text_field(wp_unslash((string)($_POST['job_id']??'')));$job=get_transient('dt_artur_warm_'.$jobId);
+        if(!is_array($job))wp_send_json_error(['message'=>'Proces wygasł albo nie istnieje.'],404);
+        wp_send_json_success(['total'=>(int)$job['total'],'done'=>(int)$job['done'],'errors'=>(int)$job['errors'],'state'=>(string)$job['state']]);
+    }
+
+    public static function process_warm_job(string $jobId): void {
+        $key='dt_artur_warm_'.sanitize_text_field($jobId);$job=get_transient($key);if(!is_array($job)||empty($job['items']))return;
+        $job['state']='running';$item=array_shift($job['items']);
+        try{self::cached_html((int)$item['match_id'],(string)$item['mode']);}catch(Throwable $e){$job['errors']=(int)$job['errors']+1;}
+        $job['done']=(int)$job['done']+1;$job['updated']=time();$job['state']=$job['items']?'running':'complete';set_transient($key,$job,2*HOUR_IN_SECONDS);
+        if($job['items'])wp_schedule_single_event(time()+1,'dt_artur_warm_insights',[$jobId]);
     }
 
     private static function match(int $id): ?array {

@@ -12,6 +12,7 @@ check($state->invoke(null, 0, 10, 20, 70, 78) === 'missing', 'Missing prediction
 $source=file_get_contents(dirname(__DIR__).'/includes/class-dt-admin.php');
 $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js');
 $insights=file_get_contents(dirname(__DIR__).'/includes/class-dt-artur-insights.php');
+$insightsJs=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-insights.js');
 check(str_contains($source,'resolved_count') && str_contains($source,'$nextRounds'), 'Default columns use latest resolved and next round');
 check(str_contains($source,'Pobierz podsumowanie 16:9') && str_contains($source,'Pobierz zapowiedź 16:9') && str_contains($source,'Pobierz trafienia BONUS 16:9'), 'All infographic actions are available');
 check(str_contains($graphics,'1920') && str_contains($graphics,'1080') && str_contains($graphics,'logoUrl'), 'Infographics are 16:9 and include the TypujKosza logo');
@@ -26,4 +27,6 @@ check(str_contains($source,'<details class="dt-artur-match') && str_contains($so
 check(!str_contains($insights,'Bilans bezpośredni') && str_contains($insights,'Ostatnie mecze') && str_contains($insights,'3 najbliższe mecze') && str_contains($insights,'Ciekawostki do programu'), 'Preview uses recent and upcoming games without head-to-head');
 check(str_contains($insights,'DT_Decka_Stats::parse_pzkosz_game') && str_contains($insights,'season_leaders') && str_contains($insights,"['players']"), 'Official full-season box scores feed player averages');
 check(str_contains($insights,'team_record') && str_contains($insights,"return \$wins.'-'.max(0,\$games-\$wins)"), 'Preview team heading includes current W-L record');
+check(str_contains($source,'Pobierz w tle wszystkie dane') && str_contains($insights,'process_warm_job') && str_contains($insights,"wp_schedule_single_event"), 'Artur dashboard can warm all visible match data in background');
+check(str_contains($insightsJs,'dt_artur_warm_start') && str_contains($insightsJs,'dt_artur_warm_status') && str_contains($insightsJs,'Pobrano '), 'Background warm-up reports progress without blocking the page');
 echo "Admin Artur dashboard: OK\n";
