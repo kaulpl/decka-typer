@@ -11,6 +11,7 @@ check($state->invoke(null, 20, 10, 20, null, null) === 'pending', 'Unresolved ga
 check($state->invoke(null, 0, 10, 20, 70, 78) === 'missing', 'Missing prediction');
 $source=file_get_contents(dirname(__DIR__).'/includes/class-dt-admin.php');
 $graphics=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-graphics.js');
+$insights=file_get_contents(dirname(__DIR__).'/includes/class-dt-artur-insights.php');
 check(str_contains($source,'resolved_count') && str_contains($source,'$nextRounds'), 'Default columns use latest resolved and next round');
 check(str_contains($source,'Pobierz podsumowanie 16:9') && str_contains($source,'Pobierz zapowiedź 16:9') && str_contains($source,'Pobierz trafienia BONUS 16:9'), 'All infographic actions are available');
 check(str_contains($graphics,'1920') && str_contains($graphics,'1080') && str_contains($graphics,'logoUrl'), 'Infographics are 16:9 and include the TypujKosza logo');
@@ -21,4 +22,7 @@ check(str_contains($source,"'score_home'=>") && str_contains($source,"'score_awa
 check(str_contains($source,"'home_logo'=>") && str_contains($source,"'away_logo'=>"), 'Graphic payload contains both club logos');
 check(str_contains($graphics,'preloadMatchLogos') && str_contains($graphics,'teamLogo(ctx'), 'Infographics preload and render club logos');
 check(!str_contains($graphics,'TYPOWANIE ZAPISANE'), 'Upcoming-round graphic does not show the saved-prediction label');
+check(str_contains($source,'<details class="dt-artur-match') && str_contains($source,'is-winner'), 'Matches are expandable and completed winner is emphasized');
+check(str_contains($insights,'Bilans bezpośredni') && str_contains($insights,'Ostatnie mecze') && str_contains($insights,'Ciekawostki do programu'), 'Expanded panels contain preview and post-game analysis');
+check(str_contains($insights,'DT_Decka_Stats::parse_pzkosz_game') && str_contains($insights,'average_leaders'), 'Official box scores feed team and player insights');
 echo "Admin Artur dashboard: OK\n";
