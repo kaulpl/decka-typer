@@ -76,6 +76,25 @@ class DT_Decka_Stats {
         wp_send_json_success($stats);
     }
 
+    /** Resolve and verify the official post-game protocol for one synchronized match. */
+    public static function official_protocol(array $match): array {
+        $storedUrl=(string)($match['source_url']??'');$candidates=[];
+        if(self::is_pzkosz_match_url($storedUrl))$candidates[]=$storedUrl;
+        $scheduleUrls=[];
+        if(self::is_pzkosz_url($storedUrl) && !self::is_pzkosz_match_url($storedUrl))$scheduleUrls[]=$storedUrl;
+        $scheduleUrls[]='https://1lm.pzkosz.pl/terminarz-i-wyniki.html';
+        foreach(array_unique($scheduleUrls) as $scheduleUrl){$found=self::find_pzkosz_game_url(self::fetch($scheduleUrl),$match,$scheduleUrl);if($found)$candidates[]=$found;}
+        if(preg_match('/(?:^|-)1lm-(\d+)$/',(string)($match['external_key']??''),$officialId))$candidates[]='https://1lm.pzkosz.pl/mecz/'.$officialId[1];
+        foreach(array_unique($candidates) as $url){$html=self::fetch($url);if($html===''||!self::protocol_matches($html,$match))continue;return ['url'=>$url,'html'=>$html];}
+        return [];
+    }
+
+    private static function protocol_matches(string $html,array $match): bool {
+        $headers='';if(preg_match_all('~<(?:title|h[1-4])\b[^>]*>.*?</(?:title|h[1-4])>~isu',$html,$found))$headers=implode(' ',$found[0]);
+        $text=self::norm(strip_tags($headers!==''?$headers:$html));
+        return self::name_score((string)($match['home_name']??''),$text)>=0.5 && self::name_score((string)($match['away_name']??''),$text)>=0.5;
+    }
+
     public static function find_puls_game(string $html,array $match): ?array {
         $dom=self::dom($html);if(!$dom)return null;$xp=new DOMXPath($dom);$best=null;$bestScore=0;
         foreach($xp->query('//a[contains(@href,"/league/1lm/") and contains(@href,"/games/")]') as $link){
