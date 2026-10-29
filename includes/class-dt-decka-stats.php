@@ -301,14 +301,16 @@ class DT_Decka_Stats {
         $pointsIndex=$timeIndex-1;$name='';
         for($i=$pointsIndex-1;$i>=1;$i--){if(preg_match('/\pL/u',(string)$cells[$i])){$name=trim((string)$cells[$i]);break;}}
         if($name==='')return null;
-        $shots=[];foreach($cells as $i=>$cell)if(preg_match('/^\s*\d+\s*\/\s*\d+/',(string)$cell))$shots[]=$i;
-        if(count($shots)<4)return null;$after=$shots[3]+1;$tail=[];
-        for($i=$after;$i<count($cells);$i++)if(preg_match('/^-?\d+(?:[.,]\d+)?$/',trim((string)$cells[$i])))$tail[]=(float)str_replace(',','.',trim((string)$cells[$i]));
+        // PZKosz keeps a stable layout after "Czas gry". Read fixed offsets
+        // and preserve blank cells; filtering only numeric values shifts S/P/B/BO
+        // whenever a player has no free throw, foul, steal or block.
+        $value=static fn(int $offset): int=>(int)trim((string)($cells[$timeIndex+$offset]??'0'));
+        $shot=static fn(int $offset): array=>self::made_attempted((string)($cells[$timeIndex+$offset]??'0/0'));
         return ['number'=>trim((string)$cells[0]),'name'=>$name,'points'=>(int)$cells[$pointsIndex],
-            'reb'=>(int)($tail[3]??0),'ast'=>(int)($tail[4]??0),'steals'=>(int)($tail[8]??0),'blocks'=>(int)($tail[9]??0),
-            'eval'=>(int)($tail[11]??($tail[count($tail)-2]??0)),
-            'two'=>self::made_attempted($cells[$shots[0]]),'three'=>self::made_attempted($cells[$shots[1]]),
-            'field'=>self::made_attempted($cells[$shots[2]]),'free'=>self::made_attempted($cells[$shots[3]])];
+            'oreb'=>$value(9),'dreb'=>$value(10),'reb'=>$value(11),'ast'=>$value(12),
+            'fouls'=>$value(13),'fouls_drawn'=>$value(14),'turnovers'=>$value(15),
+            'steals'=>$value(16),'blocks'=>$value(17),'blocks_received'=>$value(18),'eval'=>$value(19),
+            'two'=>$shot(1),'three'=>$shot(3),'field'=>$shot(5),'free'=>$shot(7)];
     }
 
     private static function pzkosz_advanced(string $html,bool $deckaHome): array {

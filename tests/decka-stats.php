@@ -43,6 +43,11 @@ $pzkosz='<!doctype html><html><body><div><span>23:23 | 23:16 | 15:27 | 30:14</sp
 <tr class="sum"><td>Suma</td><td>91</td><td>200:00</td><td>24/42</td><td>57.1</td><td>7/18</td><td>38.9</td><td>31/60</td><td>51.7</td><td>22/31</td><td>71</td><td>10</td><td>26</td><td>36</td><td>22</td><td>25</td><td>23</td><td>17</td><td>8</td><td>7</td><td>5</td><td>104</td><td></td></tr></table></body></html>';
 $official=DT_Decka_Stats::parse_pzkosz_game($pzkosz,true);
 check(is_array($official) && $official['source']==='pzkosz', 'Parse official server-rendered PZKosz fallback');
+check($official['players'][0]['steals']===3 && $official['players'][0]['blocks']===1 && $official['players'][0]['eval']===22, 'Read steals, blocks and EVAL from their fixed protocol columns');
+$blankStatsRow='<tr class="row_stat"><td>5</td><td></td><td>Gracz Bez Wolnych</td><td>0</td><td>06:06</td><td>0/1</td><td>0</td><td>0/0</td><td>0</td><td>0/1</td><td>0</td><td></td><td></td><td>1</td><td>2</td><td>3</td><td>1</td><td></td><td>2</td><td>1</td><td>4</td><td>2</td><td>0</td><td>5</td><td>-2</td></tr>';
+$withBlankStats=str_replace('<tr class="sum">',$blankStatsRow.'<tr class="sum">',$pzkosz);
+$blankOfficial=DT_Decka_Stats::parse_pzkosz_game($withBlankStats,true);$blankPlayer=null;foreach($blankOfficial['players'] as $player)if($player['name']==='Gracz Bez Wolnych')$blankPlayer=$player;
+check($blankPlayer && $blankPlayer['free']['attempted']===0 && $blankPlayer['turnovers']===1 && $blankPlayer['steals']===4 && $blankPlayer['blocks']===2 && $blankPlayer['eval']===5, 'Preserve empty cells instead of shifting individual player statistics');
 check($official['team']['field']['made']===31 && $official['team']['reb']===36 && $official['team']['steals']===8 && $official['team']['turnovers']===17, 'Read official team totals');
 check($official['leaders'][0]['name']==='Jayden Coke-Domingue' && $official['leaders'][0]['eval']===22, 'Read official player leaders');
 check($official['leaders'][0]['two']['made']===7 && $official['leaders'][0]['three']['made']===1 && $official['leaders'][0]['free']['made']===5, 'Read leader shooting splits');
