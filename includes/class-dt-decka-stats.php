@@ -286,7 +286,7 @@ class DT_Decka_Stats {
         if(count($shots)<4)return null;$after=$shots[3]+1;$tail=[];
         for($i=$after;$i<count($cells);$i++)if(preg_match('/^-?\d+(?:[.,]\d+)?$/',trim((string)$cells[$i])))$tail[]=(float)str_replace(',','.',trim((string)$cells[$i]));
         return ['number'=>trim((string)$cells[0]),'name'=>$name,'points'=>(int)$cells[$pointsIndex],
-            'reb'=>(int)($tail[3]??0),'ast'=>(int)($tail[4]??0),'steals'=>(int)($tail[8]??0),
+            'reb'=>(int)($tail[3]??0),'ast'=>(int)($tail[4]??0),'steals'=>(int)($tail[8]??0),'blocks'=>(int)($tail[9]??0),
             'eval'=>(int)($tail[11]??($tail[count($tail)-2]??0)),
             'two'=>self::made_attempted($cells[$shots[0]]),'three'=>self::made_attempted($cells[$shots[1]]),
             'field'=>self::made_attempted($cells[$shots[2]]),'free'=>self::made_attempted($cells[$shots[3]])];

@@ -75,7 +75,7 @@ class DT_Artur_Insights {
         echo '<div class="dt-artur-detail-head"><strong>Statystyki meczu</strong><span>Dane z oficjalnego protokołu PZKosz</span></div>';
         if(!$home || !$away){echo self::empty('Oficjalny protokół nie zawiera jeszcze pełnych statystyk. Wynik i typ pozostają dostępne powyżej.');return (string)ob_get_clean();}
         self::comparison((string)$m['home_name'],(string)$m['away_name'],$home['team']??[],$away['team']??[]);
-        echo '<div class="dt-artur-leader-columns">';self::leaders((string)$m['home_name'],$home['leaders']??[]);self::leaders((string)$m['away_name'],$away['leaders']??[]);echo '</div>';
+        echo '<div class="dt-artur-leader-columns">';self::leaders((string)$m['home_name'],self::game_top_players((array)($home['players']??$home['leaders']??[])));self::leaders((string)$m['away_name'],self::game_top_players((array)($away['players']??$away['leaders']??[])));echo '</div>';
         self::facts($m,$home,$away);
         return (string)ob_get_clean();
     }
@@ -83,14 +83,29 @@ class DT_Artur_Insights {
     private static function comparison(string $homeName,string $awayName,array $h,array $a): void {
         $rows=['Punkty'=>['points','num'],'Zbiórki'=>['reb','num'],'Asysty'=>['ast','num'],'Przechwyty'=>['steals','num'],'Bloki'=>['blocks','num'],'Straty'=>['turnovers','num'],'Z gry'=>['field','shot'],'Za 2'=>['two','shot'],'Za 3'=>['three','shot'],'Za 1'=>['free','shot'],'EVAL'=>['eval','num']];
         echo '<div class="dt-artur-team-table"><div class="is-head"><b>'.esc_html($homeName).'</b><span>STATYSTYKA</span><b>'.esc_html($awayName).'</b></div>';
-        foreach($rows as $label=>[$key,$type]){$hv=$type==='shot'?self::pct((array)($h[$key]??[])):(string)($h[$key]??'—');$av=$type==='shot'?self::pct((array)($a[$key]??[])):(string)($a[$key]??'—');echo '<div><strong>'.esc_html($hv).'</strong><span>'.esc_html($label).'</span><strong>'.esc_html($av).'</strong></div>';}
+        foreach($rows as $label=>[$key,$type]){$hv=$type==='shot'?self::pct((array)($h[$key]??[])):(string)($h[$key]??'—');$av=$type==='shot'?self::pct((array)($a[$key]??[])):(string)($a[$key]??'—');$hn=$type==='shot'?self::shot_percent((array)($h[$key]??[])):(float)($h[$key]??0);$an=$type==='shot'?self::shot_percent((array)($a[$key]??[])):(float)($a[$key]??0);$lower=$key==='turnovers';[$hc,$ac]=self::comparison_classes($hn,$an,$lower);echo '<div><strong class="'.$hc.'">'.esc_html($hv).'</strong><span>'.esc_html($label).'</span><strong class="'.$ac.'">'.esc_html($av).'</strong></div>';}
         echo '</div>';
+    }
+
+    private static function shot_percent(array $shot): float {$attempted=(int)($shot['attempted']??0);return $attempted?100*(int)($shot['made']??0)/$attempted:0.0;}
+
+    private static function comparison_classes(float $home,float $away,bool $lowerBetter=false): array {
+        if(abs($home-$away)<0.0001)return ['is-even','is-even'];
+        $homeBetter=$lowerBetter?$home<$away:$home>$away;
+        return $homeBetter?['is-better','is-worse']:['is-worse','is-better'];
+    }
+
+    private static function game_top_players(array $players): array {
+        usort($players,static fn(array $a,array $b): int=>[(int)($b['eval']??0),(int)($b['points']??0)]<=>[(int)($a['eval']??0),(int)($a['points']??0)]);
+        $top=array_slice($players,0,3);$selected=[];foreach($top as $player)$selected[self::normalize((string)($player['name']??''))]=true;
+        foreach($players as $player){$doubles=0;foreach(['points','reb','ast','steals','blocks'] as $metric)if((int)($player[$metric]??0)>=10)$doubles++;if($doubles<2)continue;$player['achievement']=$doubles>=3?'TRIPLE-DOUBLE':'DOUBLE-DOUBLE';$key=self::normalize((string)($player['name']??''));if(isset($selected[$key])){foreach($top as &$picked)if(self::normalize((string)($picked['name']??''))===$key)$picked['achievement']=$player['achievement'];unset($picked);}else{$player['is_bonus']=true;$top[]=$player;$selected[$key]=true;}}
+        return $top;
     }
 
     private static function leaders(string $team,array $players,string $suffix=''): void {
         echo '<section class="dt-artur-leaders"><h4>TOP 3 · '.esc_html($team).'</h4>'.($suffix?'<small>'.esc_html($suffix).'</small>':'').'<ol>';
         if(!$players)echo '<li class="is-empty">Brak danych zawodników</li>';
-        foreach(array_slice($players,0,3) as $p){echo '<li><b>'.esc_html((string)($p['name']??'—')).'</b><span>'.esc_html(self::player_line($p)).'</span></li>';}
+        foreach($players as $p){echo '<li class="'.(!empty($p['is_bonus'])?'is-bonus':'').'"><b>'.esc_html((string)($p['name']??'—')).(!empty($p['achievement'])?'<em>'.esc_html((string)$p['achievement']).'</em>':'').'</b><span>'.esc_html(self::player_line($p)).'</span></li>';}
         echo '</ol></section>';
     }
 
