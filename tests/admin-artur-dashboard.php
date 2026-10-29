@@ -29,4 +29,6 @@ check(str_contains($insights,'DT_Decka_Stats::parse_pzkosz_game') && str_contain
 check(str_contains($insights,'team_record') && str_contains($insights,"return \$wins.'-'.max(0,\$games-\$wins)"), 'Preview team heading includes current W-L record');
 check(str_contains($source,'Pobierz w tle wszystkie dane') && str_contains($insights,'process_warm_job') && str_contains($insights,"wp_schedule_single_event"), 'Artur dashboard can warm all visible match data in background');
 check(str_contains($insightsJs,'dt_artur_warm_start') && str_contains($insightsJs,'dt_artur_warm_status') && str_contains($insightsJs,'Pobrano '), 'Background warm-up reports progress without blocking the page');
+check(str_contains($insights,'game_top_players') && str_contains($insights,"['eval']") && str_contains($insights,'TRIPLE-DOUBLE') && str_contains($insights,'DOUBLE-DOUBLE'), 'Closed-round TOP 3 uses EVAL and points with double-double bonuses');
+check(str_contains($insights,'comparison_classes') && str_contains($insights,"\$key==='turnovers'"), 'Team comparison highlights better and worse values and reverses turnovers');
 echo "Admin Artur dashboard: OK\n";
