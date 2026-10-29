@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.60 — 2026-10-29
+
+- w zamkniętej kolejce panelu „Kolejka z Arturem” zwycięzca każdego meczu jest wyróżniony pogrubieniem,
+- mecze w obu kolumnach są rozwijane, a szczegóły są pobierane dopiero po otwarciu,
+- podsumowanie zakończonego meczu pokazuje porównanie drużyn, TOP 3 zawodników i automatycznie wybrane ciekawostki z oficjalnego protokołu PZKosz,
+- zapowiedź pokazuje bilans bezpośredni, trzy ostatnie wyniki obu drużyn wraz z oznaczeniem W/P oraz liderów ze średnimi wyliczonymi z dostępnych protokołów,
+- zewnętrzne dane są buforowane, a brak części statystyk nie blokuje prezentacji historii zapisanej w serwisie.
+
 ## 0.6.59
 - Przebudowano planszę meczu: symetryczny pasek wyniku, miększa typografia, kołowe wykresy skuteczności i liniowy wykres przebiegu kwart.
 - Liderzy otrzymali statystyki rzutów za 2, za 3 i za 1.
