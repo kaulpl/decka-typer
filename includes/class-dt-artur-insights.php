@@ -19,7 +19,7 @@ class DT_Artur_Insights {
 
     private static function match(int $id): ?array {
         global $wpdb;
-        $row=$wpdb->get_row($wpdb->prepare("SELECT m.*,h.name home_name,a.name away_name FROM ".DT_DB::table('matches')." m JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id WHERE m.id=%d",$id),ARRAY_A);
+        $row=$wpdb->get_row($wpdb->prepare("SELECT m.*,r.season,r.league_key,r.group_key,h.name home_name,a.name away_name FROM ".DT_DB::table('matches')." m JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id WHERE m.id=%d",$id),ARRAY_A);
         return is_array($row)?$row:null;
     }
 
@@ -84,19 +84,12 @@ class DT_Artur_Insights {
     }
 
     private static function preview(int $matchId): string {
-        global $wpdb;$m=self::match($matchId);if(!$m)return self::empty('Nie znaleziono meczu.');
-        $before=(string)$m['starts_at'];$history=(array)$wpdb->get_results($wpdb->prepare("SELECT m.*,h.name home_name,a.name away_name FROM ".DT_DB::table('matches')." m JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id WHERE m.id<>%d AND m.starts_at<%s AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND ((m.home_team_id=%d AND m.away_team_id=%d) OR (m.home_team_id=%d AND m.away_team_id=%d)) ORDER BY m.starts_at DESC LIMIT 20",$matchId,$before,$m['home_team_id'],$m['away_team_id'],$m['away_team_id'],$m['home_team_id']),ARRAY_A);
-        ob_start();echo '<div class="dt-artur-detail-head"><strong>Zapowiedź spotkania</strong><span>Historia wyłącznie z meczów zsynchronizowanych w TypujKosza.pl</span></div>';
-        self::h2h($m,$history);
+        $m=self::match($matchId);if(!$m)return self::empty('Nie znaleziono meczu.');
+        $before=(string)$m['starts_at'];
+        ob_start();echo '<div class="dt-artur-detail-head"><strong>Zapowiedź spotkania</strong><span>Forma, terminarz i średnie z całego dostępnego sezonu</span></div>';
         echo '<div class="dt-artur-form-columns">';
-        foreach(['home','away'] as $side){$teamId=(int)$m[$side.'_team_id'];$name=(string)$m[$side.'_name'];$recent=self::recent($teamId,$before,$matchId);self::form($name,$teamId,$recent);$leaders=self::average_leaders($teamId,$recent);self::leaders($name,$leaders,$recent?'Średnie z '.count($recent).' ostatnich dostępnych protokołów':'Brak wcześniejszych protokołów');}
+        foreach(['home','away'] as $side){$teamId=(int)$m[$side.'_team_id'];$name=(string)$m[$side.'_name'];$recent=self::recent($teamId,$before,$matchId);$next=self::upcoming($teamId,$before,$matchId,$m);[$leaders,$games]=self::season_leaders($teamId,$m);echo '<div class="dt-artur-team-column"><h3>'.esc_html($name).'</h3>';self::form($name,$teamId,$recent);self::next_games($name,$teamId,$next);self::leaders($name,$leaders,$games?'Średnie sezonowe z '.$games.' dostępnych protokołów':'Brak protokołów z bieżącego sezonu');echo '</div>';}
         echo '</div>';return (string)ob_get_clean();
-    }
-
-    private static function h2h(array $m,array $rows): void {
-        $hw=0;$aw=0;foreach($rows as $r){$winner=(int)$r['score_home']>(int)$r['score_away']?(int)$r['home_team_id']:(int)$r['away_team_id'];if($winner===(int)$m['home_team_id'])$hw++;elseif($winner===(int)$m['away_team_id'])$aw++;}
-        echo '<section class="dt-artur-h2h"><h4>Bilans bezpośredni</h4><div><strong>'.esc_html((string)$m['home_name']).' '.$hw.'</strong><span>'.count($rows).' spotkań</span><strong>'.$aw.' '.esc_html((string)$m['away_name']).'</strong></div>';
-        if($rows){echo '<ul>';foreach(array_slice($rows,0,5) as $r)echo '<li><span>'.esc_html(mysql2date('d.m.Y',(string)$r['starts_at'])).'</span><b>'.esc_html($r['home_name'].' '.(int)$r['score_home'].':'.(int)$r['score_away'].' '.$r['away_name']).'</b></li>';echo '</ul>';}else echo '<p>Brak wcześniejszych bezpośrednich spotkań w zsynchronizowanej bazie.</p>';echo '</section>';
     }
 
     private static function recent(int $teamId,string $before,int $exclude): array {
@@ -109,13 +102,30 @@ class DT_Artur_Insights {
         echo '</ol></section>';
     }
 
-    private static function average_leaders(int $teamId,array $matches): array {
-        $players=[];$used=0;
-        foreach($matches as $m){$stats=self::fetch_stats($m);$side=(int)$m['home_team_id']===$teamId?'home':'away';$rows=(array)($stats[$side]['leaders']??[]);if(!$rows)continue;$used++;
+    private static function upcoming(int $teamId,string $after,int $exclude,array $context): array {
+        global $wpdb;return (array)$wpdb->get_results($wpdb->prepare("SELECT m.*,h.name home_name,a.name away_name FROM ".DT_DB::table('matches')." m JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id JOIN ".DT_DB::table('teams')." h ON h.id=m.home_team_id JOIN ".DT_DB::table('teams')." a ON a.id=m.away_team_id WHERE m.id<>%d AND m.starts_at>%s AND m.score_home IS NULL AND m.score_away IS NULL AND r.season=%s AND r.league_key=%s AND r.group_key=%s AND (m.home_team_id=%d OR m.away_team_id=%d) ORDER BY m.starts_at,m.id LIMIT 3",$exclude,$after,$context['season'],$context['league_key'],$context['group_key'],$teamId,$teamId),ARRAY_A);
+    }
+
+    private static function next_games(string $name,int $teamId,array $rows): void {
+        echo '<section class="dt-artur-upcoming"><h4>3 najbliższe mecze · '.esc_html($name).'</h4><ol>';if(!$rows)echo '<li class="is-empty">Brak kolejnych spotkań w terminarzu</li>';
+        foreach($rows as $r){$home=(int)$r['home_team_id']===$teamId;$opponent=(string)$r[$home?'away_name':'home_name'];echo '<li><span class="'.($home?'is-home':'is-away').'">'.($home?'DOM':'WYJAZD').'</span><b>'.esc_html($opponent).'</b><time>'.esc_html(mysql2date('d.m · H:i',(string)$r['starts_at'])).'</time></li>';}
+        echo '</ol></section>';
+    }
+
+    private static function season_matches(int $teamId,array $context): array {
+        global $wpdb;return (array)$wpdb->get_results($wpdb->prepare("SELECT m.* FROM ".DT_DB::table('matches')." m JOIN ".DT_DB::table('rounds')." r ON r.id=m.round_id WHERE m.starts_at<%s AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND m.source_url IS NOT NULL AND m.source_url<>'' AND r.season=%s AND r.league_key=%s AND r.group_key=%s AND (m.home_team_id=%d OR m.away_team_id=%d) ORDER BY m.starts_at",$context['starts_at'],$context['season'],$context['league_key'],$context['group_key'],$teamId,$teamId),ARRAY_A);
+    }
+
+    private static function season_leaders(int $teamId,array $context): array {
+        $players=[];$used=0;$matches=self::season_matches($teamId,$context);
+        foreach($matches as $m){$stats=self::fetch_stats($m);$side=(int)$m['home_team_id']===$teamId?'home':'away';$rows=(array)($stats[$side]['players']??[]);if(!$rows)continue;$used++;
             foreach($rows as $p){$key=self::normalize((string)($p['name']??''));if(!$key)continue;if(!isset($players[$key]))$players[$key]=['name'=>$p['name'],'games'=>0,'points'=>0,'reb'=>0,'ast'=>0,'eval'=>0,'two'=>['made'=>0,'attempted'=>0],'three'=>['made'=>0,'attempted'=>0],'free'=>['made'=>0,'attempted'=>0]];$players[$key]['games']++;foreach(['points','reb','ast','eval'] as $mtr)$players[$key][$mtr]+=(float)($p[$mtr]??0);foreach(['two','three','free'] as $shot){$players[$key][$shot]['made']+=(int)($p[$shot]['made']??0);$players[$key][$shot]['attempted']+=(int)($p[$shot]['attempted']??0);}}
         }
         foreach($players as &$p){$g=max(1,(int)$p['games']);foreach(['points','reb','ast','eval'] as $mtr)$p[$mtr]=$p[$mtr]/$g;}unset($p);
-        uasort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points']]<=>[$a['eval'],$a['points']]);return array_slice(array_values($players),0,3);
+        uasort($players,static fn(array $a,array $b): int=>[$b['eval'],$b['points'],$b['games']]<=>[$a['eval'],$a['points'],$a['games']]);
+        $minimum=max(1,(int)ceil($used/2));$eligible=array_values(array_filter($players,static fn(array $p): bool=>(int)$p['games']>=$minimum));
+        if(count($eligible)<3){foreach($players as $p){if(in_array($p,$eligible,true))continue;$eligible[]=$p;if(count($eligible)>=3)break;}}
+        return [array_slice($eligible,0,3),$used];
     }
 
     private static function normalize(string $value): string {return strtolower(trim(remove_accents($value)));}
