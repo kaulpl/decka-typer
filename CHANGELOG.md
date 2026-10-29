@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.66 — 2026-10-29
+
+- w TOP 3 zamkniętej kolejki oznaczenie double-double/triple-double jest prezentowane bezpośrednio przy zawodniku,
+- pod oznaczeniem wyświetlane są dokładne wartości, które utworzyły osiągnięcie, np. `18 pkt · 12 zb`,
+- zawodnik z osiągnięciem spoza podstawowego TOP 3 nadal jest dopisywany jako pozycja bonusowa,
+- zmiana wersji czyści wcześniejszy cache podsumowań, aby od razu zastosować poprawioną prezentację.
+
 ## 0.6.65 — 2026-10-29
 
 - oznaczenia double-double i triple-double są wyliczane wyłącznie z jednego meczu oraz pięciu kategorii: punktów, zbiórek, asyst, przechwytów i bloków,
