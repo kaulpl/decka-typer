@@ -51,15 +51,12 @@ class DT_Artur_Insights {
     }
 
     private static function fetch_stats(array $match): array {
-        $url=esc_url_raw((string)($match['source_url']??''));
-        if(!$url)return [];
-        $cacheKey='dt_artur_box_'.DT_VERSION.'_'.(int)($match['id']??0).'_'.substr(md5($url),0,10);
-        $cached=get_transient($cacheKey);if(is_array($cached))return $cached;
-        $response=wp_remote_get($url,['timeout'=>18,'redirection'=>4,'headers'=>['User-Agent'=>'TypujKosza.pl/'.DT_VERSION]]);
-        if(is_wp_error($response) || wp_remote_retrieve_response_code($response)!==200)return [];
-        $html=(string)wp_remote_retrieve_body($response);if($html==='')return [];
+        $storedUrl=esc_url_raw((string)($match['source_url']??''));$matchId=(int)($match['id']??0);
+        if($storedUrl && preg_match('~/mecz/\d+~',$storedUrl)){$storedKey='dt_artur_box_'.DT_VERSION.'_'.$matchId.'_'.substr(md5($storedUrl),0,10);$cached=get_transient($storedKey);if(is_array($cached))return $cached;}
+        $protocol=DT_Decka_Stats::official_protocol($match);if(!$protocol)return [];$url=(string)$protocol['url'];$html=(string)$protocol['html'];
+        $cacheKey='dt_artur_box_'.DT_VERSION.'_'.$matchId.'_'.substr(md5($url),0,10);$cached=get_transient($cacheKey);if(is_array($cached))return $cached;
         $stats=['home'=>DT_Decka_Stats::parse_pzkosz_game($html,true),'away'=>DT_Decka_Stats::parse_pzkosz_game($html,false)];
-        if($stats['home'] || $stats['away'])set_transient($cacheKey,$stats,7*DAY_IN_SECONDS);
+        if($stats['home'] || $stats['away']){set_transient($cacheKey,$stats,7*DAY_IN_SECONDS);if($matchId&&$url!==$storedUrl){global $wpdb;$wpdb->update(DT_DB::table('matches'),['source_url'=>$url,'updated_at'=>current_time('mysql')],['id'=>$matchId],['%s','%s'],['%d']);}}
         return $stats;
     }
 

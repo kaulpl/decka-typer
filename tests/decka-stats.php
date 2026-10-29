@@ -86,4 +86,5 @@ check(!str_contains($graphics,'Puls Basketu'), 'Do not print Puls Basketu labels
 check(!str_contains($graphics,'findLiveStatsGame') && !str_contains($graphics,'liveStatsPayload'), 'Remove browser-side FIBA identifier scanning');
 check(str_contains($class,'find_puls_game') && str_contains($class,'parse_puls_game'), 'Find and parse Puls Basketu games on the server');
 check(str_contains($class,'find_pzkosz_game_url') && str_contains($class,'STAT-MECZ-3A') && str_contains($class,'STAT-MECZ-3D'), 'Discover an official PZKosz detail URL and expose precise diagnostic stages');
+check(str_contains($class,'official_protocol') && str_contains($class,'protocol_matches'), 'Resolve a post-game protocol and verify that it belongs to both selected teams');
 echo "Decka match statistics from Puls Basketu: OK\n";
