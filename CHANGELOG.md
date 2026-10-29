@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.67 — 2026-10-29
+
+- TOP 3 zamkniętego meczu w „Kolejce z Arturem” jest odczytywane wyłącznie z oficjalnego protokołu pomeczowego tego spotkania,
+- zapisany adres jest weryfikowany po obu drużynach; terminarz lub błędny adres jest automatycznie zastępowany właściwym protokołem,
+- po odnalezieniu kanoniczny adres protokołu jest zapisywany przy meczu, co przyspiesza następne odczyty,
+- zmiana wersji unieważnia wcześniejszy cache zawodników pochodzący z nieweryfikowanych adresów.
+
 ## 0.6.66 — 2026-10-29
 
 - w TOP 3 zamkniętej kolejki oznaczenie double-double/triple-double jest prezentowane bezpośrednio przy zawodniku,
