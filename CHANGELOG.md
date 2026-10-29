@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.61 — 2026-10-29
+
+- zapowiedź meczu w „Kolejce z Arturem” ma osobną kolumnę dla każdej drużyny: ostatnie mecze, najbliższy terminarz i TOP 3,
+- dodano trzy kolejne spotkania każdej drużyny z oznaczeniem DOM/WYJAZD,
+- TOP 3 korzysta ze średnich ze wszystkich dostępnych oficjalnych protokołów bieżącego sezonu, a nie tylko z trzech ostatnich meczów,
+- usunięto bilans bezpośredni z zapowiedzi.
+
 ## 0.6.60 — 2026-10-29
 
 - w zamkniętej kolejce panelu „Kolejka z Arturem” zwycięzca każdego meczu jest wyróżniony pogrubieniem,
