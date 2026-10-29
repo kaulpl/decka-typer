@@ -12,6 +12,7 @@ class DT_Admin {
             add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
         }
         add_action('wp_ajax_dt_decka_stats',[DT_Decka_Stats::class,'ajax']);
+        add_action('wp_ajax_dt_artur_insights',[DT_Artur_Insights::class,'ajax']);
     }
 
     public static function menu(): void {
@@ -45,7 +46,9 @@ class DT_Admin {
         wp_enqueue_style('dt-admin-verification', DT_URL . 'assets/css/admin-verification.css', ['dt-admin'], DT_VERSION);
         wp_enqueue_script('dt-admin', DT_URL . 'assets/js/admin.js', [], DT_VERSION, true);
         wp_enqueue_script('dt-admin-artur-graphics', DT_URL . 'assets/js/admin-artur-graphics.js', ['dt-admin'], DT_VERSION, true);
+        wp_enqueue_script('dt-admin-artur-insights', DT_URL . 'assets/js/admin-artur-insights.js', ['dt-admin'], DT_VERSION, true);
         wp_localize_script('dt-admin-artur-graphics','DeckaTyperArturGraphics',['logoUrl'=>DT_URL.'assets/img/typujkosza-logo-horizontal.png','ajaxUrl'=>admin_url('admin-ajax.php'),'statsNonce'=>wp_create_nonce('dt_decka_stats')]);
+        wp_localize_script('dt-admin-artur-insights','DeckaTyperArturInsights',['ajaxUrl'=>admin_url('admin-ajax.php'),'nonce'=>wp_create_nonce('dt_artur_insights')]);
     }
 
     private static function guard(string $nonce): void {
@@ -117,7 +120,7 @@ class DT_Admin {
     private static function artur_round_data(int $roundId, int $userId, array $bonusMap): array {
         global $wpdb;
         $matches = (array)$wpdb->get_results($wpdb->prepare(
-            "SELECT m.id,m.home_team_id,m.away_team_id,m.starts_at,m.score_home,m.score_away,
+            "SELECT m.id,m.home_team_id,m.away_team_id,m.starts_at,m.score_home,m.score_away,m.source_url,m.external_key,
              h.name home_name,h.logo_url home_logo,a.name away_name,a.logo_url away_logo,p.selected_team_id
              FROM " . DT_DB::table('matches') . " m
              JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
@@ -194,7 +197,9 @@ class DT_Admin {
             $state = (string)$match['pick_state'];
             $labels = ['hit'=>'TRAFIONY','miss'=>'NIETRAFIONY','pending'=>'OCZEKUJE','missing'=>'BRAK TYPU'];
             $score = $match['score_home'] === null || $match['score_away'] === null ? '—' : (int)$match['score_home'] . ':' . (int)$match['score_away'];
-            echo '<article class="dt-artur-match is-' . esc_attr($state) . '"><div class="dt-artur-game"><strong>' . esc_html($match['home_name']) . '</strong><span>' . esc_html($score) . '</span><strong>' . esc_html($match['away_name']) . '</strong></div><div class="dt-artur-pick"><span>Typ Artura</span><strong>' . esc_html($match['pick_name'] ?: '—') . '</strong></div><div class="dt-artur-match-status">' . (!empty($match['is_bonus']) ? '<b>★ BONUS</b>' : '') . '<span>' . esc_html($labels[$state] ?? '—') . '</span></div></article>';
+            $homeWon=$column==='left' && $match['score_home']!==null && (int)$match['score_home']>(int)$match['score_away'];
+            $awayWon=$column==='left' && $match['score_away']!==null && (int)$match['score_away']>(int)$match['score_home'];
+            echo '<details class="dt-artur-match is-' . esc_attr($state) . '"><summary><div class="dt-artur-game"><strong class="'.($homeWon?'is-winner':'').'">' . esc_html($match['home_name']) . '</strong><span>' . esc_html($score) . '</span><strong class="'.($awayWon?'is-winner':'').'">' . esc_html($match['away_name']) . '</strong></div><div class="dt-artur-pick"><span>Typ Artura</span><strong>' . esc_html($match['pick_name'] ?: '—') . '</strong></div><div class="dt-artur-match-status">' . (!empty($match['is_bonus']) ? '<b>★ BONUS</b>' : '') . '<span>' . esc_html($labels[$state] ?? '—') . '</span></div><i class="dashicons dashicons-arrow-down-alt2" aria-hidden="true"></i></summary><div class="dt-artur-insights" data-match-id="'.esc_attr((string)$match['id']).'" data-mode="'.($column==='left'?'summary':'preview').'"><p>Rozwiń, aby pobrać analizę meczu.</p></div></details>';
         }
         echo '</div><div class="dt-artur-graphic-summary"><span class="dt-eyebrow">PODSUMOWANIE DO GRAFIKI</span><div><article><small>Typy Artura</small><strong>' . esc_html($data['hits'] . '/' . $data['resolved']) . '</strong><p>' . esc_html($data['typed'] . '/' . count($data['matches']) . ' wytypowanych meczów') . '</p></article><article><small>Perfekcyjne 8/8</small><strong>' . esc_html((string)count($data['perfect'])) . '</strong><p>' . self::artur_people($data['perfect']) . '</p></article><article><small>Trafili BONUS</small><strong>' . esc_html((string)count($data['bonus_hits'])) . '</strong><p>' . self::artur_people($data['bonus_hits']) . '</p></article></div></div>';
         $payload = [
