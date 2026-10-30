@@ -29,7 +29,7 @@
   const apiPreseason=async()=>{
     const headers={'Content-Type':'application/json'};
     if(cfg.nonce)headers['X-WP-Nonce']=cfg.nonce;
-    const response=await fetch(cfg.root+'preseason',{credentials:'same-origin',headers});
+    const response=await fetch(cfg.root+'preseason?_dtv='+Date.now(),{credentials:'same-origin',headers,cache:'no-store'});
     if(!response.ok)throw new Error('Nie udało się pobrać typowań PRE.');
     return response.json();
   };
