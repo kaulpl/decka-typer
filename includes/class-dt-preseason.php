@@ -100,12 +100,12 @@ class DT_Preseason {
         $groupSql=$league==='2lm'?$wpdb->prepare(' AND r.group_key=%s',$group):'';
         $sql=$wpdb->prepare("SELECT DISTINCT t.id,t.name,t.logo_url FROM ".DT_DB::table('teams')." t JOIN (SELECT home_team_id team_id,round_id FROM ".DT_DB::table('matches')." UNION SELECT away_team_id team_id,round_id FROM ".DT_DB::table('matches').") x ON x.team_id=t.id JOIN ".DT_DB::table('rounds')." r ON r.id=x.round_id WHERE r.season=%s AND r.league_key=%s $groupSql ORDER BY t.name",$season,$league);
         $rows=$wpdb->get_results($sql,ARRAY_A);
-        $positions=self::current_positions($league,$group,$season);
+        $positions=self::current_positions($league,$group,$season,(array)$rows);
         foreach((array)$rows as &$row){$row['id']=(int)$row['id'];$row['current_position']=$positions[(int)$row['id']]??null;}unset($row);
         return is_array($rows)?$rows:[];
     }
 
-    private static function current_positions(string $league,string $group,string $season): array {
+    private static function current_positions(string $league,string $group,string $season,array $catalogTeams=[]): array {
         global $wpdb;
         $teams=DT_DB::table('teams');$matches=DT_DB::table('matches');$rounds=DT_DB::table('rounds');
         $groupSql=$league==='2lm'?$wpdb->prepare(' AND r.group_key=%s',$group):'';
@@ -130,8 +130,14 @@ class DT_Preseason {
             foreach($known as $needle)if(str_contains($normalized,$needle)){if($needle==='polonia leszno')return 'polonia 1912 leszno';if($needle==='lks coolpack lodz')return 'lks lodz';return $needle;}
             return $normalized;
         };
-        $teamRows=$wpdb->get_results($wpdb->prepare("SELECT DISTINCT t.id,t.name FROM $teams t JOIN (SELECT home_team_id team_id,round_id FROM $matches UNION SELECT away_team_id team_id,round_id FROM $matches) x ON x.team_id=t.id JOIN $rounds r ON r.id=x.round_id WHERE r.season=%s AND r.league_key=%s $groupSql",$season,$league),ARRAY_A);
-        foreach((array)$teamRows as $team){$key=$clubKey((string)$team['name']);if(isset($official[$key]['position']))$positions[(int)$team['id']]=(int)$official[$key]['position'];}
+        foreach($catalogTeams as $team){
+            $key=$clubKey((string)($team['name']??''));$matched=$official[$key]??null;
+            if(!$matched)foreach($official as $officialKey=>$entry){
+                $officialKey=(string)$officialKey;
+                if($key!==''&&($officialKey===$key||str_contains($key,$officialKey)||str_contains($officialKey,$key))){$matched=$entry;break;}
+            }
+            if(isset($matched['position']))$positions[(int)$team['id']]=(int)$matched['position'];
+        }
         return $positions;
     }
 
