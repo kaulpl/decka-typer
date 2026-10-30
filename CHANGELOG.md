@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.70 — 2026-10-30
+
+- w „Moich typach” przy drużynach w PRE FinalRanking i PRE PlayOFF pokazano żółty dopisek z aktualnym miejscem,
+- pozycje 1LM i PLK korzystają z synchronizowanych tabel, a brakujące pozycje, w tym 2LM, są wyliczane z rozstrzygniętych spotkań,
+- ikona BONUS na zwiniętym pasku zamkniętej kolejki świeci na żółto tylko po trafieniu meczu bonusowego,
+- dodano test regresyjny obu oznaczeń.
+
 ## 0.6.69 — 2026-10-30
 
 - obok „Moje konto” dodano przycisk z ikoną informacji „Jak punktujemy?”,

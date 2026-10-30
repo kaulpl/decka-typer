@@ -100,8 +100,39 @@ class DT_Preseason {
         $groupSql=$league==='2lm'?$wpdb->prepare(' AND r.group_key=%s',$group):'';
         $sql=$wpdb->prepare("SELECT DISTINCT t.id,t.name,t.logo_url FROM ".DT_DB::table('teams')." t JOIN (SELECT home_team_id team_id,round_id FROM ".DT_DB::table('matches')." UNION SELECT away_team_id team_id,round_id FROM ".DT_DB::table('matches').") x ON x.team_id=t.id JOIN ".DT_DB::table('rounds')." r ON r.id=x.round_id WHERE r.season=%s AND r.league_key=%s $groupSql ORDER BY t.name",$season,$league);
         $rows=$wpdb->get_results($sql,ARRAY_A);
-        foreach((array)$rows as &$row)$row['id']=(int)$row['id'];unset($row);
+        $positions=self::current_positions($league,$group,$season);
+        foreach((array)$rows as &$row){$row['id']=(int)$row['id'];$row['current_position']=$positions[(int)$row['id']]??null;}unset($row);
         return is_array($rows)?$rows:[];
+    }
+
+    private static function current_positions(string $league,string $group,string $season): array {
+        global $wpdb;
+        $teams=DT_DB::table('teams');$matches=DT_DB::table('matches');$rounds=DT_DB::table('rounds');
+        $groupSql=$league==='2lm'?$wpdb->prepare(' AND r.group_key=%s',$group):'';
+        $rows=$wpdb->get_results($wpdb->prepare("SELECT m.home_team_id,m.away_team_id,m.score_home,m.score_away,ht.name home_name,at.name away_name FROM $matches m JOIN $rounds r ON r.id=m.round_id JOIN $teams ht ON ht.id=m.home_team_id JOIN $teams at ON at.id=m.away_team_id WHERE r.season=%s AND r.league_key=%s $groupSql AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL",$season,$league),ARRAY_A);
+        $table=[];
+        foreach((array)$rows as $match){
+            $home=(int)$match['home_team_id'];$away=(int)$match['away_team_id'];
+            foreach([$home,$away] as $id)if(!isset($table[$id]))$table[$id]=['wins'=>0,'losses'=>0,'for'=>0,'against'=>0,'name'=>''];
+            $hs=(int)$match['score_home'];$as=(int)$match['score_away'];
+            $table[$home]['for']+=$hs;$table[$home]['against']+=$as;$table[$home]['name']=(string)$match['home_name'];
+            $table[$away]['for']+=$as;$table[$away]['against']+=$hs;$table[$away]['name']=(string)$match['away_name'];
+            if($hs>$as){$table[$home]['wins']++;$table[$away]['losses']++;}elseif($as>$hs){$table[$away]['wins']++;$table[$home]['losses']++;}
+        }
+        uasort($table,static fn(array $a,array $b): int=>$b['wins']<=>$a['wins']?:($b['for']-$b['against'])<=>($a['for']-$a['against'])?:$b['for']<=>$a['for']?:strcasecmp($a['name'],$b['name']));
+        $positions=[];$place=0;foreach(array_keys($table) as $id)$positions[(int)$id]=++$place;
+        $cache=(array)get_option('dt_1lm_standings_cache',[]);$byLeague=is_array($cache['positions_by_league']??null)?$cache['positions_by_league']:[];$official=is_array($byLeague[$league]??null)?$byLeague[$league]:[];
+        if(!$official)return $positions;
+        $clubKey=static function(string $name): string {
+            $normalized=strtolower(remove_accents(wp_strip_all_tags($name)));
+            $normalized=trim((string)preg_replace('/\s+/',' ',(string)preg_replace('/[^a-z0-9]+/',' ',$normalized)));
+            $known=['polonia 1912 leszno','polonia leszno','wkk','politechnika opolska','sokol lancut','starogard gdanski','spojnia stargard','resovia rzeszow','miasto szkla krosno','lks lodz','lks coolpack lodz','notec inowroclaw','polonia warszawa','gks tychy','basket poznan','decka pelplin','kotwica','polonia bytom'];
+            foreach($known as $needle)if(str_contains($normalized,$needle)){if($needle==='polonia leszno')return 'polonia 1912 leszno';if($needle==='lks coolpack lodz')return 'lks lodz';return $needle;}
+            return $normalized;
+        };
+        $teamRows=$wpdb->get_results($wpdb->prepare("SELECT DISTINCT t.id,t.name FROM $teams t JOIN (SELECT home_team_id team_id,round_id FROM $matches UNION SELECT away_team_id team_id,round_id FROM $matches) x ON x.team_id=t.id JOIN $rounds r ON r.id=x.round_id WHERE r.season=%s AND r.league_key=%s $groupSql",$season,$league),ARRAY_A);
+        foreach((array)$teamRows as $team){$key=$clubKey((string)$team['name']);if(isset($official[$key]['position']))$positions[(int)$team['id']]=(int)$official[$key]['position'];}
+        return $positions;
     }
 
     private static function deadline(): DateTimeImmutable {
