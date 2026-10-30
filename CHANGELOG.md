@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.69 — 2026-10-30
+
+- obok „Moje konto” dodano przycisk z ikoną informacji „Jak punktujemy?”,
+- nowoczesny modal pokazuje aktualne wartości z ustawień: zwykłe trafienie, nietrafiony typ, łączną wartość meczu BONUS i premię za perfekcyjną kolejkę,
+- popup wyjaśnia, że BONUS sumuje punkty podstawowe i dodatkowe, a perfekcyjna kolejka jest premią ponad punkty meczowe,
+- dodano pełną sekcję punktacji specjalnych prognoz PRE: FinalRanking i PlayOFF,
+- modal jest responsywny, obsługuje kliknięcie tła oraz przycisk zamknięcia.
+
 ## 0.6.68 — 2026-10-29
 
 - poprawiono odczyt indywidualnych statystyk zawodników z protokołu PZKosz w „Kolejce z Arturem”,

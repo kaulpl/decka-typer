@@ -249,6 +249,7 @@
     $('#dt-submit-modal')?.showModal();
   };
   const closeSubmitModal=()=>$('#dt-submit-modal')?.close();
+  const scoringModal=$('#dt-scoring-modal');
   const saveCoupon=async()=>{
     if(state.saving||!state.round?.can_submit)return;
     state.saving=true;closeSubmitModal();updateSaveDock();
@@ -277,6 +278,8 @@
   };
 
   root.addEventListener('click',e=>{
+    if(e.target.closest('[data-scoring-open]')){scoringModal?.showModal();return;}
+    if(e.target.closest('[data-scoring-close]')){scoringModal?.close();return;}
     const tab=e.target.closest('[data-tab]');
     if(tab){$$('[data-tab]').forEach(b=>b.classList.toggle('is-active',b===tab));$$('[data-panel]').forEach(p=>p.classList.toggle('is-active',p.dataset.panel===tab.dataset.tab));state.tab=tab.dataset.tab;if(state.tab==='mine')api('me').then(m=>{if(state.boot)state.boot.me=m;renderUser(m);renderMine(m);}).catch(x=>toast(x.message,true));return;}
     const rank=e.target.closest('[data-rank]');if(rank){loadRanking(rank.dataset.rank);return;}
@@ -293,6 +296,7 @@
   const refreshAchievements=async()=>{try{const q=new URLSearchParams({scope:achievementScope});const me=await api('me?'+q.toString());renderAchievements(me);}catch(e){toast(e.message,true);}};
   $$('.dt-achievement-controls [data-value]').forEach(button=>button.addEventListener('click',()=>{const parent=button.parentElement;parent.querySelectorAll('[data-value]').forEach(x=>x.classList.toggle('is-active',x===button));achievementScope=button.dataset.value||'all';refreshAchievements();}));
   $('#dt-submit-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)closeSubmitModal();});
+  scoringModal?.addEventListener('click',e=>{if(e.target===e.currentTarget)scoringModal.close();});
   $('#dt-avatar-helper .dt-avatar-close')?.addEventListener('click',()=>{clearTimeout(avatarTimer);const h=$('#dt-avatar-helper');h.classList.remove('is-show');setTimeout(()=>h.hidden=true,220);});
   root.addEventListener('dt:avatar',event=>{const key=String(event.detail?.key||'');if(key)avatar(key);});
   window.addEventListener('beforeunload',e=>{if(hasUnsavedPicks()){e.preventDefault();e.returnValue='';}});

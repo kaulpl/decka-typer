@@ -80,6 +80,9 @@ jobs:
       - name: Frontend prediction progress regression tests
         run: node tests/frontend-progress-style.cjs
 
+      - name: Scoring modal regression tests
+        run: php tests/scoring-modal.php
+
       - name: Version consistency
         shell: bash
         run: |
