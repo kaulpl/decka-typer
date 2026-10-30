@@ -83,6 +83,9 @@ jobs:
       - name: Scoring modal regression tests
         run: php tests/scoring-modal.php
 
+      - name: My coupons PRE and BONUS status regression tests
+        run: php tests/my-coupons-pre-status.php
+
       - name: Version consistency
         shell: bash
         run: |
