@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.71 — 2026-10-30
+
+- poprawiono dopasowanie nazw drużyn z typów PRE do nazw w aktualnej tabeli, także przy członach sponsorskich i skrótach,
+- pozycje są teraz przypisywane bezpośrednio do dokładnego katalogu drużyn zwracanego w „Moich typach”,
+- wyłączono pamięć podręczną przeglądarki dla odpowiedzi PRE, aby nowe pozycje pojawiały się od razu po aktualizacji.
+
 ## 0.6.70 — 2026-10-30
 
 - w „Moich typach” przy drużynach w PRE FinalRanking i PRE PlayOFF pokazano żółty dopisek z aktualnym miejscem,
