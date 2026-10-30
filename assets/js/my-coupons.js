@@ -96,16 +96,17 @@
     const hits=known.filter(x=>x.scoring_code==='winner').length;
     const points=items.reduce((sum,x)=>sum+Number(x.points||0),0);
     const bonusMatches=items.filter(x=>x.is_bonus).length;
+    const bonusHit=items.some(x=>x.is_bonus&&x.result_known&&x.scoring_code==='winner');
     const complete=known.length===items.length&&items.length>0;
     const baseMeta=complete?`${hits}/${items.length} trafień · ${points.toFixed(0)} pkt`:`${known.length}/${items.length} rozliczonych`;
-    const meta=bonusMatches?`${baseMeta} · ★ BONUS`:baseMeta;
+    const bonusBadge=bonusMatches?`<span class="dt-coupon-summary-bonus ${bonusHit?'is-hit':''}">★ BONUS</span>`:'';
     return `<details class="dt-coupon is-league-${esc(league)}" ${index===0?'open':''}>
       <summary class="dt-coupon-summary">
         <div class="dt-coupon-title">
           <small>${esc(leagueLabel)}</small>
           <strong>#${roundNo} kolejka</strong>
         </div>
-        <div class="dt-coupon-meta">${esc(meta)}</div>
+        <div class="dt-coupon-meta"><span>${esc(baseMeta)}</span>${bonusBadge}</div>
         <span class="dt-coupon-chevron" aria-hidden="true">⌄</span>
       </summary>
       <div class="dt-coupon-body">${items.map(matchRow).join('')}</div>
@@ -140,15 +141,15 @@
       const teams=new Map((row.scope?.teams||[]).map(team=>[String(team.id),team]));
       const selections=row.submission?.selections||[];
       const entries=row.type==='pre1'
-        ? Object.entries(selections).map(([id,value])=>[teams.get(String(id))?.name||`Drużyna #${id}`,value])
-        : selections.map(id=>[teams.get(String(id))?.name||`Drużyna #${id}`,'PLAY-OFF']);
+        ? Object.entries(selections).map(([id,value])=>{const team=teams.get(String(id));return [team?.name||`Drużyna #${id}`,value,team?.current_position];})
+        : selections.map(id=>{const team=teams.get(String(id));return [team?.name||`Drużyna #${id}`,'PLAY-OFF',team?.current_position];});
       entries.sort((a,b)=>a[0].localeCompare(b[0],'pl'));
       const leagueLabel=row.league==='2lm'?`2LM${row.group?` · GRUPA ${row.group}`:''}`:row.league.toUpperCase();
       const scoring=preseasonData.scoring||{};
       const hitPoints=Number(scoring[`${row.type}_hit`]||0),perfect=Number(scoring[`${row.type}_perfect`]||0);
       const meta=`${entries.length} typów · ${hitPoints} pkt za trafienie${perfect?` · +${perfect} pkt za komplet`:''}`;
       const typeLabel=row.type==='pre1'?'PRE - FinalRanking':'PRE - PlayOFF';
-      return `<details class="dt-coupon dt-pre-coupon is-league-${esc(row.league)}"><summary class="dt-coupon-summary"><div class="dt-coupon-title"><small>${esc(leagueLabel)}</small><strong>${esc(typeLabel)}</strong></div><div class="dt-coupon-meta">${esc(meta)}</div><span class="dt-coupon-chevron" aria-hidden="true">⌄</span></summary><div class="dt-coupon-body">${entries.map(([name,value])=>`<div class="dt-pre-coupon-row"><strong>${esc(name)}</strong><span>${esc(value)}</span></div>`).join('')}</div></details>`;
+      return `<details class="dt-coupon dt-pre-coupon is-league-${esc(row.league)}"><summary class="dt-coupon-summary"><div class="dt-coupon-title"><small>${esc(leagueLabel)}</small><strong>${esc(typeLabel)}</strong></div><div class="dt-coupon-meta">${esc(meta)}</div><span class="dt-coupon-chevron" aria-hidden="true">⌄</span></summary><div class="dt-coupon-body">${entries.map(([name,value,position])=>`<div class="dt-pre-coupon-row"><strong>${esc(name)}${Number(position)>0?` <em>(Aktualnie: ${esc(position)}. miejsce)</em>`:''}</strong><span>${esc(value)}</span></div>`).join('')}</div></details>`;
     }).join('');
     return `<section class="dt-coupon-section is-pre"><h2>TYPOWANIA SPECJALNE PRE</h2><div class="dt-coupon-section-list">${cards}</div></section>`;
   };
