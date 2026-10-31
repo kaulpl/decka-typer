@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 32945)
+Total output lines: 1408
+
 <?php
 if (!defined('ABSPATH')) exit;
 
@@ -7,7 +10,7 @@ class DT_Admin {
         add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
         foreach ([
             'sync_now','save_settings','save_match','add_match','add_round','adjust_points',
-            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert','update_feedback','test_notifications','save_notification_templates','cancel_late_prediction'
+            'open_round','close_round','reset_typer_data','save_avatar','toggle_expert','add_trophy','update_feedback','test_notifications','save_notification_templates','cancel_late_prediction'
         ] as $action) {
             add_action('admin_post_dt_' . $action, [__CLASS__, $action]);
         }
@@ -52,6 +55,7 @@ class DT_Admin {
         wp_enqueue_script('dt-admin-artur-insights', DT_URL . 'assets/js/admin-artur-insights.js', ['dt-admin'], DT_VERSION, true);
         wp_localize_script('dt-admin-artur-graphics','DeckaTyperArturGraphics',['logoUrl'=>DT_URL.'assets/img/typujkosza-logo-horizontal.png','ajaxUrl'=>admin_url('admin-ajax.php'),'statsNonce'=>wp_create_nonce('dt_decka_stats')]);
         wp_localize_script('dt-admin-artur-insights','DeckaTyperArturInsights',['ajaxUrl'=>admin_url('admin-ajax.php'),'nonce'=>wp_create_nonce('dt_artur_insights')]);
+        wp_localize_script('dt-admin','DeckaTyperAdmin',['searchDelay'=>300]);
     }
 
     private static function guard(string $nonce): void {
@@ -715,148 +719,7 @@ class DT_Admin {
         foreach ($groups as $key) {
             $label='Grupa '.$key;
             $url=add_query_arg(['page'=>$page,'league'=>'2lm','group'=>$key],admin_url('admin.php'));
-            echo '<a class="dt-group-tab '.($active===$key?'is-active':'').'" href="'.esc_url($url).'">'.esc_html($label).'</a>';
-        }
-        echo '</nav>';
-    }
-
-    private static function pagination(int $total, int $perPage, int $current, array $args): void {
-        $pages=(int)ceil($total/$perPage);
-        if ($pages<2) return;
-        echo '<nav class="dt-pagination" aria-label="Stronicowanie">';
-        for ($page=1;$page<=$pages;$page++) {
-            $url=add_query_arg(array_merge($args,['dt_paged'=>$page]),admin_url('admin.php'));
-            echo '<a class="'.($page===$current?'is-active':'').'" href="'.esc_url($url).'">'.(int)$page.'</a>';
-        }
-        echo '</nav>';
-    }
-
-    public static function predictions(): void {
-        global $wpdb;
-        $type = sanitize_key((string)($_GET['prediction_type'] ?? 'all'));
-        if (!in_array($type, ['all','match','pre1','pre2'], true)) $type = 'all';
-        $statusFilter = sanitize_key((string)($_GET['prediction_status'] ?? 'all'));
-        if (!in_array($statusFilter, ['all','pending','winner','miss'], true)) $statusFilter = 'all';
-        $season = sanitize_text_field(wp_unslash((string)($_GET['season'] ?? 'all')));
-        $league = sanitize_key((string)($_GET['league'] ?? 'all'));
-        if (!in_array($league, ['all','1lm','plk','2lm'], true)) $league = 'all';
-        $group = $league === '2lm' ? strtoupper(sanitize_text_field(wp_unslash((string)($_GET['group'] ?? '')))) : '';
-        $roundId = max(0, (int)($_GET['round_id'] ?? 0));
-        if (in_array($type, ['pre1','pre2'], true)) $roundId = 0;
-        $search = trim(sanitize_text_field(wp_unslash((string)($_GET['s'] ?? ''))));
-        $dtPage = max(1, (int)($_GET['dt_paged'] ?? 1));
-        $perPage = 40;
-
-        $roundsTable = DT_DB::table('rounds');
-        $matchesTable = DT_DB::table('matches');
-        $predictionsTable = DT_DB::table('predictions');
-        $preseasonTable = DT_DB::table('preseason_predictions');
-        $teamsTable = DT_DB::table('teams');
-
-        $seasons = array_values(array_unique(array_filter(array_map('strval', (array)$wpdb->get_col(
-            "SELECT season FROM $roundsTable WHERE season<>'' UNION SELECT season FROM $preseasonTable WHERE season<>'' ORDER BY season DESC"
-        )))));
-        if ($season !== 'all' && !in_array($season, $seasons, true)) $season = 'all';
-
-        $roundFilter = '';
-        if ($season !== 'all') $roundFilter .= $wpdb->prepare(' AND season=%s', $season);
-        if ($league !== 'all') $roundFilter .= $wpdb->prepare(' AND league_key=%s', $league);
-        if ($group !== '') $roundFilter .= $wpdb->prepare(' AND UPPER(group_key)=%s', $group);
-        $rounds = $wpdb->get_results("SELECT id,title,season,league_key,group_key,round_no FROM $roundsTable WHERE 1=1 $roundFilter ORDER BY season DESC,league_key,group_key,round_no,id");
-        $validRoundIds = array_map('intval', wp_list_pluck((array)$rounds, 'id'));
-        if ($roundId && !in_array($roundId, $validRoundIds, true)) $roundId = 0;
-
-        $regularWhere = ' WHERE p.selected_team_id IS NOT NULL';
-        $preWhere = ' WHERE 1=1';
-        if ($season !== 'all') {
-            $regularWhere .= $wpdb->prepare(' AND r.season=%s', $season);
-            $preWhere .= $wpdb->prepare(' AND pp.season=%s', $season);
-        }
-        if ($league !== 'all') {
-            $regularWhere .= $wpdb->prepare(' AND r.league_key=%s', $league);
-            $preWhere .= $wpdb->prepare(' AND pp.league_key=%s', $league);
-        }
-        if ($group !== '') {
-            $regularWhere .= $wpdb->prepare(' AND UPPER(r.group_key)=%s', $group);
-            $preWhere .= $wpdb->prepare(' AND UPPER(pp.group_key)=%s', $group);
-        }
-        if ($roundId) $regularWhere .= $wpdb->prepare(' AND r.id=%d', $roundId);
-        if ($statusFilter === 'pending') $regularWhere .= ' AND (m.score_home IS NULL OR m.score_away IS NULL)';
-        elseif ($statusFilter === 'winner') $regularWhere .= " AND p.scoring_code='winner'";
-        elseif ($statusFilter === 'miss') $regularWhere .= " AND m.score_home IS NOT NULL AND m.score_away IS NOT NULL AND (p.scoring_code<>'winner' OR p.scoring_code IS NULL)";
-
-        if ($search !== '') {
-            $like = '%' . $wpdb->esc_like($search) . '%';
-            $regularWhere .= $wpdb->prepare(
-                ' AND (u.display_name LIKE %s OR u.user_email LIKE %s OR h.name LIKE %s OR a.name LIKE %s OR sel.name LIKE %s OR r.title LIKE %s OR r.league_key LIKE %s OR p.scoring_code LIKE %s)',
-                $like, $like, $like, $like, $like, $like, $like, $like
-            );
-            $preTeamSearch='';
-            foreach ((array)$wpdb->get_col($wpdb->prepare("SELECT id FROM $teamsTable WHERE name LIKE %s LIMIT 30",$like)) as $teamId) {
-                $preTeamSearch .= $wpdb->prepare(' OR pp.selections REGEXP %s','(^|[^0-9])'.(int)$teamId.'([^0-9]|$)');
-            }
-            $preWhere .= $wpdb->prepare(
-                ' AND (u.display_name LIKE %s OR u.user_email LIKE %s OR pp.prediction_type LIKE %s OR pp.league_key LIKE %s OR pp.group_key LIKE %s OR pp.selections LIKE %s'.$preTeamSearch.')',
-                $like, $like, $like, $like, $like, $like
-            );
-        }
-
-        $parts = [];
-        if (in_array($type, ['all','match'], true)) {
-            $parts[] = "SELECT p.id source_id,'match' prediction_type,p.user_id,u.display_name,u.user_email,
-                        r.season,r.league_key,r.group_key,r.id round_id,r.round_no,r.title round_title,
-                        CONCAT(h.name,' – ',a.name) context_label,sel.name selection_data,
-                        p.points,p.scoring_code,m.score_home,m.score_away,p.submitted_at
-                 FROM $predictionsTable p
-                 JOIN {$wpdb->users} u ON u.ID=p.user_id
-                 JOIN $matchesTable m ON m.id=p.match_id
-                 JOIN $roundsTable r ON r.id=m.round_id
-                 JOIN $teamsTable h ON h.id=m.home_team_id
-                 JOIN $teamsTable a ON a.id=m.away_team_id
-                 LEFT JOIN $teamsTable sel ON sel.id=p.selected_team_id
-                 $regularWhere";
-        }
-        if (!$roundId && in_array($type, ['all','pre1','pre2'], true) && in_array($statusFilter,['all','pending'],true)) {
-            if ($type !== 'all') $preWhere .= $wpdb->prepare(' AND pp.prediction_type=%s', $type);
-            $parts[] = "SELECT pp.id source_id,pp.prediction_type,pp.user_id,u.display_name,u.user_email,
-                        pp.season,pp.league_key,pp.group_key,0 round_id,0 round_no,UPPER(pp.prediction_type) round_title,
-                        'Typowanie przedsezonowe' context_label,pp.selections selection_data,
-                        pp.points,'pending' scoring_code,NULL score_home,NULL score_away,pp.submitted_at
-                 FROM $preseasonTable pp
-                 JOIN {$wpdb->users} u ON u.ID=pp.user_id
-                 $preWhere";
-        }
-
-        $union = $parts ? implode(' UNION ALL ', $parts) : '';
-        $total = $union !== '' ? (int)$wpdb->get_var("SELECT COUNT(*) FROM ($union) dt_all_types") : 0;
-        $pages = max(1, (int)ceil($total / $perPage));
-        if ($dtPage > $pages) $dtPage = $pages;
-        $offset = ($dtPage - 1) * $perPage;
-        $rows = $union !== '' ? $wpdb->get_results("SELECT * FROM ($union) dt_all_types ORDER BY submitted_at DESC,prediction_type,source_id DESC LIMIT ".(int)$perPage.' OFFSET '.(int)$offset) : [];
-
-        $teamNames = [];
-        foreach ((array)$wpdb->get_results("SELECT id,name FROM $teamsTable") as $team) $teamNames[(int)$team->id] = (string)$team->name;
-
-        self::shell('Typy','Wszystkie zapisane typy meczowe oraz prognozy PRE - FinalRanking i PRE - PlayOFF. Łącznie: '.number_format_i18n($total).'.');
-        echo '<form method="get" class="dt-card dt-prediction-filters"><input type="hidden" name="page" value="decka-typer-predictions"><div class="dt-form-3">';
-        echo '<label>Rodzaj<select name="prediction_type"><option value="all" '.selected($type,'all',false).'>Wszystkie typy</option><option value="match" '.selected($type,'match',false).'>Typy meczowe</option><option value="pre1" '.selected($type,'pre1',false).'>PRE - FinalRanking</option><option value="pre2" '.selected($type,'pre2',false).'>PRE - PlayOFF</option></select></label>';
-        echo '<label>Status<select name="prediction_status"><option value="all" '.selected($statusFilter,'all',false).'>Wszystkie statusy</option><option value="pending" '.selected($statusFilter,'pending',false).'>Oczekujące</option><option value="winner" '.selected($statusFilter,'winner',false).'>Trafione</option><option value="miss" '.selected($statusFilter,'miss',false).'>Nietrafione</option></select></label>';
-        echo '<label>Sezon<select name="season"><option value="all">Wszystkie sezony</option>'; foreach ($seasons as $item) echo '<option value="'.esc_attr($item).'" '.selected($season,$item,false).'>'.esc_html($item).'</option>'; echo '</select></label>';
-        echo '<label>Liga<select name="league"><option value="all" '.selected($league,'all',false).'>Wszystkie ligi</option><option value="1lm" '.selected($league,'1lm',false).'>1LM</option><option value="plk" '.selected($league,'plk',false).'>PLK</option><option value="2lm" '.selected($league,'2lm',false).'>2LM</option></select></label>';
-        echo '<label>Grupa 2LM<input name="group" value="'.esc_attr($group).'" placeholder="A, B, C lub D"></label>';
-        echo '<label>Kolejka<select name="round_id"><option value="0">Wszystkie kolejki</option>'; foreach ((array)$rounds as $round) { $label=strtoupper((string)$round->league_key).($round->group_key?' · grupa '.strtoupper((string)$round->group_key):'').' · '.$round->title.' · '.$round->season; echo '<option value="'.(int)$round->id.'" '.selected($roundId,(int)$round->id,false).'>'.esc_html($label).'</option>'; } echo '</select></label>';
-        echo '<label>Wyszukaj<input type="search" name="s" value="'.esc_attr($search).'" placeholder="Użytkownik, e-mail, drużyna, status…"></label></div><div class="dt-prediction-filter-actions"><button class="button button-primary">Filtruj i wyszukaj</button><a class="button" href="'.esc_url(admin_url('admin.php?page=decka-typer-predictions')).'">Wyczyść filtry</a></div></form>';
-
-        echo '<section class="dt-card dt-predictions-table"><div class="dt-table-scroll"><table class="widefat dt-table"><thead><tr><th>Rodzaj</th><th>Użytkownik</th><th>Liga</th><th>Kolejka / mecz</th><th>Oddany typ</th><th>Status</th><th>Punkty</th><th>Zapisano</th></tr></thead><tbody>';
-        foreach ((array)$rows as $row) {
-            $uid=(int)$row->user_id;
-            $displayName=class_exists('DT_User_Settings')?DT_User_Settings::ranking_name($uid,(string)$row->display_name):(string)$row->display_name;
-            $isPre=in_array((string)$row->prediction_type,['pre1','pre2'],true);
-            $typeLabel=$isPre?((string)$row->prediction_type==='pre1'?'PRE - FinalRanking':'PRE - PlayOFF'):'MECZ';
-            $leagueLabel=strtoupper((string)$row->league_key).($row->group_key?' · '.$row->group_key:'').' · '.$row->season;
-            $context=$isPre?$typeLabel:((string)$row->round_title.' · '.(string)$row->context_label);
-            $selection=$isPre?self::preseason_selection_label((string)$row->prediction_type,(string)$row->selection_data,$teamNames):(string)($row->selection_data?:'—');
-            if ($isPre) $status=self::badge('Oczekuje na rozliczenie','orange');
+            echo '<a class="dt-group-tab '.($active===$key?'is-active':'').'" href="'.esc_url($url).'">'.es…2945 tokens truncated…($isPre) $status=self::badge('Oczekuje na rozliczenie','orange');
             elseif ($row->score_home === null || $row->score_away === null) $status=self::badge('Oczekuje','neutral');
             elseif ($row->scoring_code === 'winner') $status=self::badge('Trafiony','green');
             else $status=self::badge('Nietrafiony','red');
@@ -870,6 +733,7 @@ class DT_Admin {
             $base=add_query_arg(array_merge($paginationArgs,['dt_paged'=>'%#%']),admin_url('admin.php'));
             echo '<nav class="dt-pagination" aria-label="Stronicowanie">'.wp_kses_post(paginate_links(['base'=>$base,'format'=>'','current'=>$dtPage,'total'=>$pages,'mid_size'=>2,'end_size'=>1,'prev_text'=>'←','next_text'=>'→'])).'</nav>';
         }
+        echo '</div>';
         self::end_shell();
     }
 
@@ -906,26 +770,33 @@ class DT_Admin {
         global $wpdb;
         $s = DT_DB::settings();
         $seasonSql = $wpdb->prepare('%s', $s['season']);
+        $search=trim(sanitize_text_field(wp_unslash((string)($_GET['s']??''))));
+        $where='';
+        if($search!==''){$like='%'.$wpdb->esc_like($search).'%';$where=$wpdb->prepare(" WHERE u.display_name LIKE %s OR u.user_login LIKE %s OR u.user_email LIKE %s OR EXISTS(SELECT 1 FROM {$wpdb->usermeta} us WHERE us.user_id=u.ID AND us.meta_key='dt_ranking_name' AND us.meta_value LIKE %s)",$like,$like,$like,$like);}
         $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
-        $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}");
+        $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users} u$where");
         $users = $wpdb->get_results(
-            "SELECT u.ID,u.display_name,u.user_email,
+            "SELECT u.ID,u.user_login,u.display_name,u.user_email,
+                (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name,
+                COALESCE((SELECT CAST(um.meta_value AS UNSIGNED) FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_trophies' LIMIT 1),0) trophies,
                 (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss JOIN " . DT_DB::table('rounds') . " rr ON rr.id=ss.round_id WHERE ss.user_id=u.ID AND rr.season=$seasonSql) submissions,
                 (SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.selected_team_id IS NOT NULL) predictions,
                 (SELECT COALESCE(SUM(pp.points),0) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.selected_team_id IS NOT NULL) points,
                 (SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " pp JOIN " . DT_DB::table('matches') . " mm ON mm.id=pp.match_id JOIN " . DT_DB::table('rounds') . " rr2 ON rr2.id=mm.round_id WHERE pp.user_id=u.ID AND rr2.season=$seasonSql AND pp.scoring_code='winner') winner_hits
-             FROM {$wpdb->users} u
+             FROM {$wpdb->users} u $where
              ORDER BY points DESC,u.display_name LIMIT ".(int)$perPage." OFFSET ".(int)(($dtPage-1)*$perPage)
         );
         self::shell('Użytkownicy','Wszystkie zarejestrowane konta i ręczne korekty punktów');
-        echo '<section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Użytkownik</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Ekspert</th><th>Korekta</th></tr></thead><tbody>';
+        echo '<form method="get" class="dt-card dt-admin-search dt-admin-live-filter" data-dt-live-target=".dt-users-results"><input type="hidden" name="page" value="decka-typer-users"><label>Wyszukaj użytkownika<input type="search" name="s" value="'.esc_attr($search).'" placeholder="Nick, login lub e-mail" autocomplete="off"></label><button class="button button-primary">Szukaj</button><span class="spinner" aria-hidden="true"></span></form>';
+        echo '<div class="dt-users-results" data-dt-live-results><section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Użytkownik</th><th>Nick</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Pucharki</th><th>Ekspert</th><th>Korekta</th></tr></thead><tbody>';
         foreach ($users as $u) {
             $expert = DT_User_Settings::is_expert((int)$u->ID);
-            echo '<tr class="'.($expert?'dt-expert-row':'').'"><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($u->display_name) . ($expert?' <span class="dt-expert-badge">EKSPERT!</span>':'') . '</strong><small class="dt-muted">' . esc_html($u->user_email) . '</small></span></div></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_toggle_expert"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_toggle_expert'); echo '<button class="button '.($expert?'dt-unmark-expert':'dt-mark-expert').'">'.($expert?'Odznacz jako ekspert':'Oznacz jako ekspert').'</button></form></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="± pkt" required><input name="reason" placeholder="Powód" required><button class="button">Dodaj</button></form></td></tr>';
+            $nick=trim((string)$u->ranking_name);if($nick==='')$nick=(string)($u->display_name?:$u->user_login);
+            echo '<tr class="'.($expert?'dt-expert-row':'').'"><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($u->display_name) . ($expert?' <span class="dt-expert-badge">EKSPERT!</span>':'') . '</strong><small class="dt-muted">' . esc_html($u->user_email) . '</small></span></div></td><td><strong>'.esc_html($nick).'</strong><small class="dt-muted">@'.esc_html((string)$u->user_login).'</small></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_add_trophy"><input type="hidden" name="user_id" value="'.(int)$u->ID.'"><input type="hidden" name="s" value="'.esc_attr($search).'">';wp_nonce_field('dt_add_trophy');echo '<span class="dt-admin-trophies">🏆 <strong>'.(int)$u->trophies.'</strong></span><button class="button">Dodaj pucharek</button></form></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_toggle_expert"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_toggle_expert'); echo '<button class="button '.($expert?'dt-unmark-expert':'dt-mark-expert').'">'.($expert?'Odznacz jako ekspert':'Oznacz jako ekspert').'</button></form></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="± pkt" required><input name="reason" placeholder="Powód" required><button class="button">Dodaj</button></form></td></tr>';
         }
-        if (!$users) echo '<tr><td colspan="7" class="dt-empty">Brak zarejestrowanych użytkowników.</td></tr>';
+        if (!$users) echo '<tr><td colspan="9" class="dt-empty">Brak użytkowników pasujących do wyszukiwania.</td></tr>';
         echo '</tbody></table></section>';
-        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-users']);
+        self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-users','s'=>$search]);echo '</div>';
         self::end_shell();
     }
 
@@ -1250,6 +1121,16 @@ class DT_Admin {
         else update_user_meta($uid, 'dt_typer_expert', 1);
         DT_Logger::log('expert_status_changed',$wasExpert?'Odebrano oznaczenie eksperta.':'Nadano oznaczenie eksperta.',['target_user'=>$uid,'is_expert'=>$wasExpert?0:1],'notice',get_current_user_id());
         self::redirect('decka-typer-users',$wasExpert?'Użytkownik nie jest już oznaczony jako ekspert.':'Użytkownik został oznaczony jako ekspert.');
+    }
+
+    public static function add_trophy(): void {
+        self::guard('dt_add_trophy');
+        $uid=(int)($_POST['user_id']??0);$user=get_userdata($uid);
+        if(!$user)self::redirect('decka-typer-users','Nie znaleziono użytkownika.','error');
+        $count=max(0,(int)get_user_meta($uid,'dt_trophies',true))+1;
+        update_user_meta($uid,'dt_trophies',$count);
+        DT_Logger::log('trophy_added','Administrator przyznał pucharek.',['target_user'=>$uid,'trophies'=>$count],'notice',get_current_user_id());
+        self::redirect('decka-typer-users','Pucharek został dodany.','success',['s'=>sanitize_text_field(wp_unslash((string)($_POST['s']??'')))]);
     }
 
     public static function update_feedback(): void {
