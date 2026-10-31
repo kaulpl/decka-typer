@@ -267,7 +267,7 @@ class DT_Ranking_View {
         unset($row);
 
         if (class_exists('DT_User_Settings')) $rows = DT_User_Settings::apply_ranking_names($rows);
-        foreach($rows as &$row)$row['trophies']=max(0,(int)get_user_meta((int)$row['user_id'],'dt_trophies',true));unset($row);
+        foreach($rows as &$row)$row['trophies']=function_exists('get_user_meta')?max(0,(int)get_user_meta((int)$row['user_id'],'dt_trophies',true)):0;unset($row);
 
         usort($rows, static function(array $a,array $b): int {
             if ((float)$a['points'] !== (float)$b['points']) return (float)$a['points'] < (float)$b['points'] ? 1 : -1;
