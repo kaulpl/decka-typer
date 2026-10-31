@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.73 — 2026-10-31
+
+- emotikony są usuwane z nicków wyświetlanych w rankingu bez zmieniania nicku zapisanego na koncie,
+- w panelu „Użytkownicy” rozdzielono imię i nazwisko, adres e-mail oraz nick na osobne kolumny,
+- usunięto wyświetlanie technicznego loginu z prefiksem „@” przy nicku,
+- przy liczniku pucharków dodano kompaktowe przyciski „+1” i „−1”; licznik nie może spaść poniżej zera.
+
 ## 0.6.72 — 2026-10-31
 
 - w panelu „Użytkownicy” dodano kolumnę Nick oraz częściowe wyszukiwanie AJAX po nicku, loginie i e-mailu,
