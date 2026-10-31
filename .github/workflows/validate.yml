@@ -74,6 +74,9 @@ jobs:
       - name: Complete admin user list regression tests
         run: php tests/admin-users.php
 
+      - name: Admin AJAX search and trophies regression tests
+        run: php tests/admin-ajax-trophies.php
+
       - name: Push lifecycle regression tests
         run: node --test tests/push-lifecycle.cjs
 

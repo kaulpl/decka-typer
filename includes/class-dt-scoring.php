@@ -118,6 +118,7 @@ class DT_Scoring {
         if (class_exists('DT_User_Settings')) {
             $rows = DT_User_Settings::apply_ranking_names($rows);
         }
+        foreach($rows as &$row)$row['trophies']=function_exists('get_user_meta')?max(0,(int)get_user_meta((int)$row['user_id'],'dt_trophies',true)):0;unset($row);
 
         usort($rows, static function(array $a, array $b): int {
             if ($a['points'] != $b['points']) return $a['points'] < $b['points'] ? 1 : -1;

@@ -26,4 +26,27 @@
     }
   });
   qa('dialog.dt-modal').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)close(d)}));
+
+  let liveTimer=0,liveController=null;
+  const liveLoad=async(form,url=null)=>{
+    const selector=form.dataset.dtLiveTarget;if(!selector)return;
+    const target=q(selector);if(!target)return;
+    const params=new URLSearchParams(new FormData(form));params.delete('dt_paged');
+    const endpoint=new URL(form.action||location.href,location.href);endpoint.search='';
+    const requestUrl=url||`${endpoint.toString()}?${params.toString()}`;
+    if(liveController)liveController.abort();liveController=new AbortController();
+    form.classList.add('is-loading');q('.spinner',form)?.classList.add('is-active');target.setAttribute('aria-busy','true');
+    try{
+      const response=await fetch(requestUrl,{credentials:'same-origin',signal:liveController.signal,headers:{'X-Requested-With':'XMLHttpRequest'}});
+      if(!response.ok)throw new Error('Nie udało się pobrać wyników.');
+      const html=await response.text(),doc=new DOMParser().parseFromString(html,'text/html'),fresh=doc.querySelector(selector);
+      if(!fresh)throw new Error('Brak wyników w odpowiedzi.');
+      target.innerHTML=fresh.innerHTML;history.replaceState({},'',requestUrl);
+    }catch(error){if(error.name!=='AbortError')target.innerHTML='<div class="notice notice-error"><p>Nie udało się odświeżyć wyników.</p></div>';}
+    finally{form.classList.remove('is-loading');q('.spinner',form)?.classList.remove('is-active');target.removeAttribute('aria-busy');}
+  };
+  document.addEventListener('submit',e=>{const form=e.target.closest('.dt-admin-live-filter');if(!form)return;e.preventDefault();liveLoad(form);});
+  document.addEventListener('input',e=>{const input=e.target.closest('.dt-admin-live-filter input[type="search"]');if(!input)return;clearTimeout(liveTimer);liveTimer=setTimeout(()=>liveLoad(input.form),Number(window.DeckaTyperAdmin?.searchDelay||300));});
+  document.addEventListener('change',e=>{const field=e.target.closest('.dt-prediction-filters select,.dt-prediction-filters input:not([type="search"])');if(field)liveLoad(field.form);});
+  document.addEventListener('click',e=>{const link=e.target.closest('[data-dt-live-results] .dt-pagination a');if(!link)return;const form=q('.dt-admin-live-filter[data-dt-live-target=".'+link.closest('[data-dt-live-results]').classList[0]+'"]')||q('.dt-admin-live-filter');if(form){e.preventDefault();liveLoad(form,link.href);}});
 })();
