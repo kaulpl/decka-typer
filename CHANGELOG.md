@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.72 — 2026-10-31
+
+- w panelu „Użytkownicy” dodano kolumnę Nick oraz częściowe wyszukiwanie AJAX po nicku, loginie i e-mailu,
+- wyszukiwanie i filtry w panelu „Typy” odświeżają pasujące rekordy oraz paginację dynamicznie, bez przeładowania strony,
+- administrator może przyznać użytkownikowi pucharek, a panel zlicza wszystkie pucharki konta,
+- pucharki są wyświetlane pod nickiem użytkownika w rankingu,
+- spod nicku w rankingu usunięto informację o liczbie oddanych typów.
+
 ## 0.6.71 — 2026-10-30
 
 - poprawiono dopasowanie nazw drużyn z typów PRE do nazw w aktualnej tabeli, także przy członach sponsorskich i skrótach,
