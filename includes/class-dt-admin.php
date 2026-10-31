@@ -915,6 +915,8 @@ class DT_Admin {
         $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users} u$where");
         $users = $wpdb->get_results(
             "SELECT u.ID,u.user_login,u.display_name,u.user_email,
+                (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='first_name' LIMIT 1) first_name,
+                (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='last_name' LIMIT 1) last_name,
                 (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name,
                 COALESCE((SELECT CAST(um.meta_value AS UNSIGNED) FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_trophies' LIMIT 1),0) trophies,
                 (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss JOIN " . DT_DB::table('rounds') . " rr ON rr.id=ss.round_id WHERE ss.user_id=u.ID AND rr.season=$seasonSql) submissions,
@@ -926,13 +928,14 @@ class DT_Admin {
         );
         self::shell('Użytkownicy','Wszystkie zarejestrowane konta i ręczne korekty punktów');
         echo '<form method="get" class="dt-card dt-admin-search dt-admin-live-filter" data-dt-live-target=".dt-users-results"><input type="hidden" name="page" value="decka-typer-users"><label>Wyszukaj użytkownika<input type="search" name="s" value="'.esc_attr($search).'" placeholder="Nick, login lub e-mail" autocomplete="off"></label><button class="button button-primary">Szukaj</button><span class="spinner" aria-hidden="true"></span></form>';
-        echo '<div class="dt-users-results" data-dt-live-results><section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Użytkownik</th><th>Nick</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Pucharki</th><th>Ekspert</th><th>Korekta</th></tr></thead><tbody>';
+        echo '<div class="dt-users-results" data-dt-live-results><section class="dt-card"><table class="widefat dt-table"><thead><tr><th>Imię i nazwisko</th><th>E-mail</th><th>Nick</th><th>Kupony</th><th>Typy</th><th>Trafienia</th><th>Punkty</th><th>Pucharki</th><th>Ekspert</th><th>Korekta</th></tr></thead><tbody>';
         foreach ($users as $u) {
             $expert = DT_User_Settings::is_expert((int)$u->ID);
             $nick=trim((string)$u->ranking_name);if($nick==='')$nick=(string)($u->display_name?:$u->user_login);
-            echo '<tr class="'.($expert?'dt-expert-row':'').'"><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($u->display_name) . ($expert?' <span class="dt-expert-badge">EKSPERT!</span>':'') . '</strong><small class="dt-muted">' . esc_html($u->user_email) . '</small></span></div></td><td><strong>'.esc_html($nick).'</strong><small class="dt-muted">@'.esc_html((string)$u->user_login).'</small></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_add_trophy"><input type="hidden" name="user_id" value="'.(int)$u->ID.'"><input type="hidden" name="s" value="'.esc_attr($search).'">';wp_nonce_field('dt_add_trophy');echo '<span class="dt-admin-trophies">🏆 <strong>'.(int)$u->trophies.'</strong></span><button class="button">Dodaj pucharek</button></form></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_toggle_expert"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_toggle_expert'); echo '<button class="button '.($expert?'dt-unmark-expert':'dt-mark-expert').'">'.($expert?'Odznacz jako ekspert':'Oznacz jako ekspert').'</button></form></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="± pkt" required><input name="reason" placeholder="Powód" required><button class="button">Dodaj</button></form></td></tr>';
+            $fullName=trim((string)$u->first_name.' '.(string)$u->last_name);if($fullName==='')$fullName=(string)$u->display_name;
+            echo '<tr class="'.($expert?'dt-expert-row':'').'"><td><div class="dt-user">' . get_avatar((int)$u->ID,34) . '<span><strong>' . esc_html($fullName) . ($expert?' <span class="dt-expert-badge">EKSPERT!</span>':'') . '</strong></span></div></td><td><a href="mailto:'.esc_attr((string)$u->user_email).'">'.esc_html((string)$u->user_email).'</a></td><td><strong>'.esc_html($nick).'</strong></td><td>' . (int)$u->submissions . '</td><td>' . (int)$u->predictions . '</td><td>' . (int)$u->winner_hits . '</td><td><strong>' . (int)$u->points . '</strong></td><td><form class="dt-trophy-controls" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_add_trophy"><input type="hidden" name="user_id" value="'.(int)$u->ID.'"><input type="hidden" name="s" value="'.esc_attr($search).'">';wp_nonce_field('dt_add_trophy');echo '<span class="dt-admin-trophies">🏆 <strong>'.(int)$u->trophies.'</strong></span><button class="button" name="delta" value="1" aria-label="Dodaj pucharek">+1</button><button class="button" name="delta" value="-1" aria-label="Odejmij pucharek" '.((int)$u->trophies<1?'disabled':'').'>−1</button></form></td><td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_toggle_expert"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_toggle_expert'); echo '<button class="button '.($expert?'dt-unmark-expert':'dt-mark-expert').'">'.($expert?'Odznacz jako ekspert':'Oznacz jako ekspert').'</button></form></td><td><form class="dt-inline-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="dt_adjust_points"><input type="hidden" name="user_id" value="' . (int)$u->ID . '">'; wp_nonce_field('dt_adjust_points'); echo '<input type="number" step="1" name="points" placeholder="± pkt" required><input name="reason" placeholder="Powód" required><button class="button">Dodaj</button></form></td></tr>';
         }
-        if (!$users) echo '<tr><td colspan="9" class="dt-empty">Brak użytkowników pasujących do wyszukiwania.</td></tr>';
+        if (!$users) echo '<tr><td colspan="10" class="dt-empty">Brak użytkowników pasujących do wyszukiwania.</td></tr>';
         echo '</tbody></table></section>';
         self::pagination($total,$perPage,$dtPage,['page'=>'decka-typer-users','s'=>$search]);echo '</div>';
         self::end_shell();
@@ -1265,10 +1268,11 @@ class DT_Admin {
         self::guard('dt_add_trophy');
         $uid=(int)($_POST['user_id']??0);$user=get_userdata($uid);
         if(!$user)self::redirect('decka-typer-users','Nie znaleziono użytkownika.','error');
-        $count=max(0,(int)get_user_meta($uid,'dt_trophies',true))+1;
+        $delta=(int)($_POST['delta']??1);$delta=$delta<0?-1:1;
+        $count=max(0,(int)get_user_meta($uid,'dt_trophies',true)+$delta);
         update_user_meta($uid,'dt_trophies',$count);
-        DT_Logger::log('trophy_added','Administrator przyznał pucharek.',['target_user'=>$uid,'trophies'=>$count],'notice',get_current_user_id());
-        self::redirect('decka-typer-users','Pucharek został dodany.','success',['s'=>sanitize_text_field(wp_unslash((string)($_POST['s']??'')))]);
+        DT_Logger::log('trophy_changed',$delta>0?'Administrator przyznał pucharek.':'Administrator odjął pucharek.',['target_user'=>$uid,'delta'=>$delta,'trophies'=>$count],'notice',get_current_user_id());
+        self::redirect('decka-typer-users',$delta>0?'Pucharek został dodany.':'Pucharek został odjęty.','success',['s'=>sanitize_text_field(wp_unslash((string)($_POST['s']??'')))]);
     }
 
     public static function update_feedback(): void {
