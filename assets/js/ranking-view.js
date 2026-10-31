@@ -21,6 +21,7 @@
   const n=v=>Number(v||0);
   const fmtPoints=v=>Number.isInteger(n(v))?String(n(v)):n(v).toFixed(1).replace('.',',');
   const medal=rank=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'';
+  const cleanNick=value=>String(value||'').replace(/(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*|[0-9#*]\uFE0F?\u20E3)/gu,'').replace(/[\uFE0F\u200D]/g,'').replace(/\s{2,}/g,' ').trim()||'Kibic';
   const trophyIcons=count=>{count=Math.max(0,Number(count||0));if(!count)return '';const shown=Math.min(5,count);return `<span class="dt-rank-trophies" aria-label="Pucharki: ${count}">${'🏆'.repeat(shown)}${count>shown?` <b>×${count}</b>`:''}</span>`;};
   const normalizeGroup=value=>String(value||'').trim().toUpperCase().replace(/^GRUPA\s+/,'');
   const monthLabel=value=>{const parts=String(value||'').split('-');if(parts.length!==2)return String(value||'');const date=new Date(Number(parts[0]),Number(parts[1])-1,1);const label=new Intl.DateTimeFormat('pl-PL',{month:'long',year:'numeric'}).format(date);return label.charAt(0).toUpperCase()+label.slice(1);};
@@ -128,7 +129,7 @@
         const icon=medal(rank);
         return `<div class="dt-rank-row dt-ranking-grid ${rank<=3?'is-podium':''} ${r.is_expert?'is-expert':''}">
           <div class="dt-rank-pos">${rank}</div>
-          <div class="dt-rank-person dt-rank-person-clean"><span class="dt-rank-user-copy"><strong>${icon?`<span class="dt-rank-medal" aria-label="Miejsce ${rank}">${icon}</span>`:''}<span class="dt-rank-name">${esc(r.display_name||'Kibic')}</span>${r.is_expert?'<span class="dt-expert-badge">EKSPERT!</span>':''}</strong>${trophyIcons(r.trophies)}</span></div>
+          <div class="dt-rank-person dt-rank-person-clean"><span class="dt-rank-user-copy"><strong>${icon?`<span class="dt-rank-medal" aria-label="Miejsce ${rank}">${icon}</span>`:''}<span class="dt-rank-name">${esc(cleanNick(r.display_name))}</span>${r.is_expert?'<span class="dt-expert-badge">EKSPERT!</span>':''}</strong>${trophyIcons(r.trophies)}</span></div>
           <div class="dt-rank-points" data-label="Punkty">${fmtPoints(r.points)} pkt</div>
           <div class="dt-rank-hit-rate" data-label="Trafienia"><strong>${Number(r.winner_hits||0)}/${Number(r.predictions||0)}</strong><small>trafione / typowane</small></div>
           <div class="dt-rank-efficiency" data-label="Skuteczność"><strong>${n(r.efficiency).toFixed(1).replace('.',',')}%</strong><small>skuteczność</small></div>
