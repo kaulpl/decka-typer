@@ -18,6 +18,7 @@ check(str_contains($source,'Pobierz podsumowanie 16:9') && str_contains($source,
 check(str_contains($source,'Pobierz TOP 10 ·') && str_contains($source,"'09','10'") && str_contains($source,'Wrzesień + październik'), 'Monthly TOP 10 combines September and October and exposes a download action');
 check(str_contains($source,'Pobierz perfekcyjne trafienia ·') && str_contains($source,'$latestResolved'), 'Perfect-picks graphic uses the latest fully resolved round');
 check(str_contains($source,'artur_monthly_top10') && str_contains($source,"r.league_key='1lm'") && str_contains($source,"perfect_round_bonus"), 'Monthly graphic follows the 1LM ranking and perfect-round scoring');
+check(str_contains($source,"'trophies'=>(int)\$row['trophies']"), 'Monthly TOP 10 payload includes user trophies');
 check(str_contains($graphics,'1920') && str_contains($graphics,'1080') && str_contains($graphics,'logoUrl'), 'Infographics are 16:9 and include the TypujKosza logo');
 check(str_contains($graphics,'monthlyTop10') && str_contains($graphics,"type==='monthly-top10'") && str_contains($graphics,'trophy(ctx'), 'TOP 10 graphic contains ranking rows and trophy decoration');
 check(str_contains($graphics,'const perfect=async') && str_contains($graphics,'PERFEKCYJNE TRAFIENIA • KOMPLET 8/8'), 'Perfect-picks graphic has a dedicated 8/8 layout');
