@@ -192,6 +192,87 @@ class DT_Admin {
         return '<span class="dt-artur-people">' . esc_html(implode(', ',array_filter($names))) . '</span>';
     }
 
+    private static function artur_ranking_periods(string $season): array {
+        global $wpdb;
+        $months = array_values(array_filter(array_map('strval',(array)$wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT DATE_FORMAT(m.starts_at,'%%Y-%%m') month_key
+             FROM " . DT_DB::table('matches') . " m
+             JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
+             WHERE r.season=%s AND r.league_key='1lm' AND m.starts_at IS NOT NULL
+               AND EXISTS (SELECT 1 FROM " . DT_DB::table('predictions') . " p WHERE p.match_id=m.id AND p.selected_team_id IS NOT NULL)
+             ORDER BY month_key",
+            $season
+        ))),static fn(string $month): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month))));
+        $periods = [];
+        $autumn = [];
+        foreach ($months as $month) {
+            $number = substr($month,5,2);
+            if (in_array($number,['09','10'],true)) $autumn[]=$month;
+            else $periods[]=['key'=>$month,'months'=>[$month],'label'=>self::artur_month_label($month)];
+        }
+        if ($autumn) {
+            $years=array_values(array_unique(array_map(static fn(string $month): string=>substr($month,0,4),$autumn)));
+            array_unshift($periods,['key'=>implode('_',$autumn),'months'=>$autumn,'label'=>'Wrzesień + październik ' . implode('/',$years)]);
+        }
+        usort($periods,static fn(array $a,array $b): int=>strcmp($a['months'][0],$b['months'][0]));
+        return $periods;
+    }
+
+    private static function artur_month_label(string $month): string {
+        $names=['01'=>'Styczeń','02'=>'Luty','03'=>'Marzec','04'=>'Kwiecień','05'=>'Maj','06'=>'Czerwiec','07'=>'Lipiec','08'=>'Sierpień','09'=>'Wrzesień','10'=>'Październik','11'=>'Listopad','12'=>'Grudzień'];
+        return ($names[substr($month,5,2)] ?? $month) . ' ' . substr($month,0,4);
+    }
+
+    private static function artur_monthly_top10(string $season, array $months): array {
+        global $wpdb;
+        $months=array_values(array_filter(array_map('strval',$months),static fn(string $month): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month))));
+        if (!$months) return [];
+        $pred=DT_DB::table('predictions');$mat=DT_DB::table('matches');$rnd=DT_DB::table('rounds');
+        $placeholders=implode(',',array_fill(0,count($months),'%s'));
+        $monthIn=$wpdb->prepare($placeholders,...$months);
+        $filter=$wpdb->prepare(" AND r.season=%s AND r.league_key='1lm' ",$season)." AND DATE_FORMAT(m.starts_at,'%Y-%m') IN ($monthIn) ";
+        $rows=(array)$wpdb->get_results(
+            "SELECT u.ID user_id,u.display_name,
+                    (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_ranking_name' LIMIT 1) ranking_name,
+                    (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id=u.ID AND um.meta_key='dt_trophies' LIMIT 1) trophies,
+                    COUNT(p.id) predictions,COALESCE(SUM(p.points),0) points,
+                    SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) winner_hits
+             FROM {$wpdb->users} u
+             JOIN $pred p ON p.user_id=u.ID JOIN $mat m ON m.id=p.match_id JOIN $rnd r ON r.id=m.round_id
+             WHERE p.selected_team_id IS NOT NULL $filter
+             GROUP BY u.ID,u.display_name",
+            ARRAY_A
+        );
+        $perfect=[];
+        $perfectSql="SELECT x.user_id,COUNT(*) perfect_rounds FROM (
+            SELECT p.user_id,r.id round_id,COUNT(p.id) pred_count,
+                   SUM(CASE WHEN p.scoring_code='winner' THEN 1 ELSE 0 END) good_count,
+                   (SELECT COUNT(*) FROM $mat mm WHERE mm.round_id=r.id) match_count
+            FROM $pred p JOIN $mat m ON m.id=p.match_id JOIN $rnd r ON r.id=m.round_id
+            WHERE p.selected_team_id IS NOT NULL $filter
+            GROUP BY p.user_id,r.id HAVING pred_count=match_count AND good_count=match_count AND match_count>0
+        ) x GROUP BY x.user_id";
+        foreach ((array)$wpdb->get_results($perfectSql,ARRAY_A) as $row) $perfect[(int)$row['user_id']]=(int)$row['perfect_rounds'];
+        $perfectPoints=(float)(DT_DB::settings()['perfect_round_bonus'] ?? 0);
+        foreach ($rows as &$row) {
+            $uid=(int)$row['user_id'];$row['predictions']=(int)$row['predictions'];$row['winner_hits']=(int)$row['winner_hits'];
+            $row['points']=(float)$row['points']+(($perfect[$uid] ?? 0)*$perfectPoints);
+            $row['efficiency']=$row['predictions']>0?round(($row['winner_hits']/$row['predictions'])*100,1):0;
+            $row['trophies']=max(0,(int)($row['trophies'] ?? 0));
+            $row['name']=trim((string)($row['ranking_name'] ?: $row['display_name']));
+        }
+        unset($row);
+        usort($rows,static function(array $a,array $b): int {
+            if ((float)$a['points'] !== (float)$b['points']) return (float)$a['points'] < (float)$b['points'] ? 1 : -1;
+            if ((int)$a['winner_hits'] !== (int)$b['winner_hits']) return (int)$b['winner_hits'] <=> (int)$a['winner_hits'];
+            return strcasecmp((string)$a['name'],(string)$b['name']);
+        });
+        $last=null;$rank=0;
+        foreach ($rows as $index=>&$row) {$key=$row['points'].'|'.$row['winner_hits'];if($key!==$last)$rank=$index+1;$row['rank']=$rank;$last=$key;}
+        unset($row);
+        return array_slice($rows,0,10);
+    }
+
     private static function artur_round_panel(object $round, int $userId, array $bonusMap, string $column, string $arturName): void {
         $data = self::artur_round_data((int)$round->id,$userId,$bonusMap);
         echo '<section class="dt-card dt-artur-round-card"><header><div><span class="dt-eyebrow">' . esc_html((int)$round->round_no . '. KOLEJKA 1LM') . '</span><h2>' . esc_html($round->title) . '</h2></div><span class="dt-artur-record">' . esc_html($data['hits'] . '/' . $data['resolved']) . '<small>trafione</small></span></header>';
@@ -666,6 +747,25 @@ class DT_Admin {
             if (isset($roundLookup[$rightId])) self::artur_round_panel($roundLookup[$rightId],$userId,$bonusMap,'right',$arturName);
             echo '</div>';
         }
+        $rankingPeriods=self::artur_ranking_periods($season);
+        $latestResolved=null;
+        foreach($rounds as $round){if((int)$round->match_count>0&&(int)$round->resolved_count>=(int)$round->match_count){$latestResolved=$round;break;}}
+        echo '<section class="dt-card dt-section dt-artur-ranking-graphics"><span class="dt-eyebrow">PLANSZE RANKINGOWE 16:9</span><h2>Ranking miesiąca i perfekcyjne kolejki</h2><p class="dt-muted">TOP 10 jest liczone identycznie jak ranking 1LM. Wrzesień i październik tworzą wspólną klasyfikację, a następne miesiące są prezentowane osobno.</p><div class="dt-artur-ranking-actions">';
+        foreach($rankingPeriods as $period){
+            $topRows=self::artur_monthly_top10($season,$period['months']);
+            $payload=['period_key'=>$period['key'],'period_label'=>$period['label'],'season'=>$season,'rows'=>array_map(static fn(array $row): array=>[
+                'rank'=>(int)$row['rank'],'name'=>(string)$row['name'],'points'=>(float)$row['points'],'hits'=>(int)$row['winner_hits'],
+                'predictions'=>(int)$row['predictions'],'efficiency'=>(float)$row['efficiency'],'trophies'=>(int)$row['trophies'],
+            ],$topRows)];
+            echo '<button type="button" class="button button-primary dt-button" data-dt-artur-graphic="monthly-top10" data-payload="'.esc_attr(wp_json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-awards"></span>Pobierz TOP 10 · '.esc_html($period['label']).'</button>';
+        }
+        if(!$rankingPeriods)echo '<span class="dt-empty">Brak miesięcy z zapisanymi typami 1LM.</span>';
+        if($latestResolved){
+            $perfectData=self::artur_round_data((int)$latestResolved->id,$userId,$bonusMap);
+            $perfectPayload=['round_no'=>(int)$latestResolved->round_no,'title'=>(string)$latestResolved->title,'perfect_names'=>array_values(array_filter(array_map(static fn(array $row): string=>trim((string)($row['ranking_name'] ?: $row['display_name'])),$perfectData['perfect'])))];
+            echo '<button type="button" class="button dt-button dt-artur-perfect-button" data-dt-artur-graphic="perfect" data-payload="'.esc_attr(wp_json_encode($perfectPayload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'"><span class="dashicons dashicons-yes-alt"></span>Pobierz perfekcyjne trafienia · '.(int)$latestResolved->round_no.'. kolejka</button>';
+        }
+        echo '<span class="dt-artur-export-status" aria-live="polite"></span></div></section>';
         $deckaMatches=(array)$wpdb->get_results($wpdb->prepare(
             "SELECT m.id,m.starts_at,m.score_home,m.score_away,m.external_key,h.name home_name,a.name away_name,r.round_no
              FROM ".DT_DB::table('matches')." m
