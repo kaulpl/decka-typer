@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.74 — 2026-11-04
+
+- w panelu „Kolejka z Arturem” dodano generator plansz 16:9 z TOP 10 rankingu miesiąca 1LM,
+- klasyfikacja września i października jest łączona, a kolejne miesiące mają osobne plansze,
+- TOP 10 korzysta z tej samej punktacji co ranking, uwzględnia skuteczność, liczbę trafień i pucharki oraz ma motyw pucharowy,
+- dodano osobną planszę 16:9 z listą użytkowników, którzy uzyskali komplet 8/8 w ostatniej rozstrzygniętej kolejce 1LM.
+
 ## 0.6.73 — 2026-10-31
 
 - emotikony są usuwane z nicków wyświetlanych w rankingu bez zmieniania nicku zapisanego na koncie,
