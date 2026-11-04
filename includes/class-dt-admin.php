@@ -194,7 +194,7 @@ class DT_Admin {
 
     private static function artur_ranking_periods(string $season): array {
         global $wpdb;
-        $months = array_values(array_filter(array_map('strval',(array)$wpdb->get_col($wpdb->prepare(
+        $monthRows = (array)$wpdb->get_col($wpdb->prepare(
             "SELECT DISTINCT DATE_FORMAT(m.starts_at,'%%Y-%%m') month_key
              FROM " . DT_DB::table('matches') . " m
              JOIN " . DT_DB::table('rounds') . " r ON r.id=m.round_id
@@ -202,7 +202,8 @@ class DT_Admin {
                AND EXISTS (SELECT 1 FROM " . DT_DB::table('predictions') . " p WHERE p.match_id=m.id AND p.selected_team_id IS NOT NULL)
              ORDER BY month_key",
             $season
-        ))),static fn(string $month): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month))));
+        ));
+        $months = array_values(array_filter(array_map('strval',$monthRows),static fn(string $month): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)));
         $periods = [];
         $autumn = [];
         foreach ($months as $month) {
