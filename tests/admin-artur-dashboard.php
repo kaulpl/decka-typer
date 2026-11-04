@@ -15,7 +15,13 @@ $insights=file_get_contents(dirname(__DIR__).'/includes/class-dt-artur-insights.
 $insightsJs=file_get_contents(dirname(__DIR__).'/assets/js/admin-artur-insights.js');
 check(str_contains($source,'resolved_count') && str_contains($source,'$nextRounds'), 'Default columns use latest resolved and next round');
 check(str_contains($source,'Pobierz podsumowanie 16:9') && str_contains($source,'Pobierz zapowiedź 16:9') && str_contains($source,'Pobierz trafienia BONUS 16:9'), 'All infographic actions are available');
+check(str_contains($source,'Pobierz TOP 10 ·') && str_contains($source,"'09','10'") && str_contains($source,'Wrzesień + październik'), 'Monthly TOP 10 combines September and October and exposes a download action');
+check(str_contains($source,'Pobierz perfekcyjne trafienia ·') && str_contains($source,'$latestResolved'), 'Perfect-picks graphic uses the latest fully resolved round');
+check(str_contains($source,'artur_monthly_top10') && str_contains($source,"r.league_key='1lm'") && str_contains($source,"perfect_round_bonus"), 'Monthly graphic follows the 1LM ranking and perfect-round scoring');
+check(str_contains($source,"'trophies'=>(int)\$row['trophies']"), 'Monthly TOP 10 payload includes user trophies');
 check(str_contains($graphics,'1920') && str_contains($graphics,'1080') && str_contains($graphics,'logoUrl'), 'Infographics are 16:9 and include the TypujKosza logo');
+check(str_contains($graphics,'monthlyTop10') && str_contains($graphics,"type==='monthly-top10'") && str_contains($graphics,'trophy(ctx'), 'TOP 10 graphic contains ranking rows and trophy decoration');
+check(str_contains($graphics,'const perfect=async') && str_contains($graphics,'PERFEKCYJNE TRAFIENIA • KOMPLET 8/8'), 'Perfect-picks graphic has a dedicated 8/8 layout');
 check(str_contains($graphics,"rr(ctx,1360,48,500,118,24,C.white)"), 'TypujKosza logo has a white backing panel');
 check(!str_contains($graphics,'Typuje:') && !str_contains($graphics,'1920 × 1080  •'), 'Generated graphics do not contain the old footer');
 check(str_contains($graphics,"text(ctx,'WYNIK'") && str_contains($graphics,'homeWon?900:650') && str_contains($graphics,'awayWon?900:650'), 'Summary graphic has a score column and emphasizes the winning team');
