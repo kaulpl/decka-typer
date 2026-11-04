@@ -226,7 +226,8 @@ class DT_Admin {
 
     private static function artur_monthly_top10(string $season, array $months): array {
         global $wpdb;
-        $months=array_values(array_filter(array_map('strval',$months),static fn(string $month): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month))));
+        $months=array_map('strval',$months);
+        $months=array_values(array_filter($months,static fn(string $month): bool=>(bool)preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)));
         if (!$months) return [];
         $pred=DT_DB::table('predictions');$mat=DT_DB::table('matches');$rnd=DT_DB::table('rounds');
         $placeholders=implode(',',array_fill(0,count($months),'%s'));
