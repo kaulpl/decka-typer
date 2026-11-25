@@ -398,9 +398,9 @@ class DT_DB {
     }
 
     /**
-     * Open seven days before the earliest confirmed tip-off and close the whole
-     * round when that first match starts. The dates are recalculated from the live
-     * match schedule on every request and after every synchronization.
+     * Automatic rounds open seven days before the earliest confirmed tip-off.
+     * A manually reopened round keeps the administrator-selected future deadline;
+     * individual matches are still locked by their own tip-off time.
      */
     public static function sync_round_availability(): int {
         global $wpdb;
@@ -416,9 +416,9 @@ class DT_DB {
                  GROUP BY round_id
              ) schedule ON schedule.round_id=r.id
              SET r.opens_at=CASE WHEN r.manual_availability=1 THEN r.opens_at ELSE DATE_SUB(schedule.first_match, INTERVAL 7 DAY) END,
-                 r.closes_at=CASE WHEN r.manual_availability=1 THEN LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) ELSE schedule.first_match END,
+                 r.closes_at=CASE WHEN r.manual_availability=1 THEN COALESCE(r.closes_at,schedule.first_match) ELSE schedule.first_match END,
                  r.status=CASE
-                     WHEN %s>=CASE WHEN r.manual_availability=1 THEN LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) ELSE schedule.first_match END THEN 'closed'
+                     WHEN %s>=CASE WHEN r.manual_availability=1 THEN COALESCE(r.closes_at,schedule.first_match) ELSE schedule.first_match END THEN 'closed'
                      WHEN r.manual_availability=1 THEN 'open'
                      WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
                      ELSE 'draft'
@@ -426,9 +426,9 @@ class DT_DB {
                  r.updated_at=%s
              WHERE (r.manual_availability=0 AND COALESCE(r.opens_at,'')<>DATE_SUB(schedule.first_match, INTERVAL 7 DAY))
                 OR (r.manual_availability=0 AND COALESCE(r.closes_at,'')<>schedule.first_match)
-                OR (r.manual_availability=1 AND (r.closes_at IS NULL OR r.closes_at>schedule.first_match))
+                OR (r.manual_availability=1 AND r.closes_at IS NULL)
                 OR r.status<>CASE
-                    WHEN %s>=CASE WHEN r.manual_availability=1 THEN LEAST(COALESCE(r.closes_at,schedule.first_match),schedule.first_match) ELSE schedule.first_match END THEN 'closed'
+                    WHEN %s>=CASE WHEN r.manual_availability=1 THEN COALESCE(r.closes_at,schedule.first_match) ELSE schedule.first_match END THEN 'closed'
                     WHEN r.manual_availability=1 THEN 'open'
                     WHEN %s>=DATE_SUB(schedule.first_match, INTERVAL 7 DAY) THEN 'open'
                     ELSE 'draft'
