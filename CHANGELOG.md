@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.76 — 2026-11-25
+
+- w „Kolejce z Arturem” procentowy rozkład typów jest stale widoczny bez rozwijania meczu,
+- pasek znajduje się bezpośrednio pod zestawieniem obu drużyn, niezależnie od pola „Typ Artura”,
+- uproszczono prezentację rozkładu do dwóch wartości procentowych i paska, bez powtarzania nazw drużyn.
+
 ## 0.6.75 — 2026-11-25
 
 - ręczne otwarcie zamkniętej kolejki działa również po rozpoczęciu przełożonego, wcześniejszego spotkania,

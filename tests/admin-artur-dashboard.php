@@ -30,7 +30,8 @@ check(str_contains($source,"'home_logo'=>") && str_contains($source,"'away_logo'
 check(str_contains($graphics,'preloadMatchLogos') && str_contains($graphics,'teamLogo(ctx'), 'Infographics preload and render club logos');
 check(!str_contains($graphics,'TYPOWANIE ZAPISANE'), 'Upcoming-round graphic does not show the saved-prediction label');
 check(str_contains($source,'<details class="dt-artur-match') && str_contains($source,'is-winner'), 'Matches are expandable and completed winner is emphasized');
-check(str_contains($source,'home_pick_count') && str_contains($source,'away_pick_count') && str_contains($source,'dt-artur-community-bar'), 'Every Artur match shows the percentage split of user picks');
+check(str_contains($source,'home_pick_count') && str_contains($source,'away_pick_count') && str_contains($source,'dt-artur-game-block') && str_contains($source,'dt-artur-community-bar'), 'Every Artur match shows its always-visible percentage split directly below both teams');
+check(!str_contains($source,'<small>\'.(int)$match[\'all_pick_count\'].'), 'The compact split does not repeat team names or the number of picks');
 check(!str_contains($insights,'Bilans bezpośredni') && str_contains($insights,'Ostatnie mecze') && str_contains($insights,'3 najbliższe mecze') && str_contains($insights,'Ciekawostki do programu'), 'Preview uses recent and upcoming games without head-to-head');
 check(str_contains($insights,'DT_Decka_Stats::parse_pzkosz_game') && str_contains($insights,'season_leaders') && str_contains($insights,"['players']"), 'Official full-season box scores feed player averages');
 check(str_contains($insights,'team_record') && str_contains($insights,"return \$wins.'-'.max(0,\$games-\$wins)"), 'Preview team heading includes current W-L record');
