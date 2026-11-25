@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.75 — 2026-11-25
+
+- ręczne otwarcie zamkniętej kolejki działa również po rozpoczęciu przełożonego, wcześniejszego spotkania,
+- kolejka jest ponownie otwierana wyłącznie do startu najbliższego przyszłego nierozstrzygniętego meczu i wtedy automatycznie się zamyka,
+- rozpoczętych spotkań oraz wcześniej zapisanych typów nie można zmieniać, ale użytkownik może uzupełnić brakujące typy przyszłych meczów,
+- zapis częściowego kuponu ponownie sprawdza termin kolejki bezpośrednio przed zapisem,
+- w „Kolejce z Arturem” pod każdym meczem dodano pasek z procentowym rozkładem typów użytkowników oraz liczbą oddanych typów.
+
 ## 0.6.74 — 2026-11-04
 
 - w panelu „Kolejka z Arturem” dodano generator plansz 16:9 z TOP 10 rankingu miesiąca 1LM,

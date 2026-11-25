@@ -125,6 +125,8 @@ class DT_Admin {
         global $wpdb;
         $matches = (array)$wpdb->get_results($wpdb->prepare(
             "SELECT m.id,m.home_team_id,m.away_team_id,m.starts_at,m.score_home,m.score_away,m.source_url,m.external_key,
+             (SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " ph WHERE ph.match_id=m.id AND ph.selected_team_id=m.home_team_id) home_pick_count,
+             (SELECT COUNT(*) FROM " . DT_DB::table('predictions') . " pa WHERE pa.match_id=m.id AND pa.selected_team_id=m.away_team_id) away_pick_count,
              h.name home_name,h.logo_url home_logo,a.name away_name,a.logo_url away_logo,p.selected_team_id
              FROM " . DT_DB::table('matches') . " m
              JOIN " . DT_DB::table('teams') . " h ON h.id=m.home_team_id
@@ -144,6 +146,10 @@ class DT_Admin {
             $match['pick_state'] = $state;
             $match['pick_name'] = $selected === (int)$match['home_team_id'] ? $match['home_name'] : ($selected === (int)$match['away_team_id'] ? $match['away_name'] : '');
             $match['is_bonus'] = isset($bonusMap[$roundId]) && (int)$bonusMap[$roundId] === (int)$match['id'];
+            $homePicks=(int)($match['home_pick_count'] ?? 0);$awayPicks=(int)($match['away_pick_count'] ?? 0);$allPicks=$homePicks+$awayPicks;
+            $match['home_pick_percent']=$allPicks>0?round(($homePicks/$allPicks)*100,1):0.0;
+            $match['away_pick_percent']=$allPicks>0?round(($awayPicks/$allPicks)*100,1):0.0;
+            $match['all_pick_count']=$allPicks;
             if ($selected > 0) $typed++;
             if ($homeScore !== null && $awayScore !== null && $homeScore !== $awayScore) $resolved++;
             if ($state === 'hit') $hits++;
@@ -286,7 +292,8 @@ class DT_Admin {
             $score = $match['score_home'] === null || $match['score_away'] === null ? '—' : (int)$match['score_home'] . ':' . (int)$match['score_away'];
             $homeWon=$column==='left' && $match['score_home']!==null && (int)$match['score_home']>(int)$match['score_away'];
             $awayWon=$column==='left' && $match['score_away']!==null && (int)$match['score_away']>(int)$match['score_home'];
-            echo '<details class="dt-artur-match is-' . esc_attr($state) . '"><summary><div class="dt-artur-game"><strong class="'.($homeWon?'is-winner':'').'">' . esc_html($match['home_name']) . '</strong><span>' . esc_html($score) . '</span><strong class="'.($awayWon?'is-winner':'').'">' . esc_html($match['away_name']) . '</strong></div><div class="dt-artur-pick"><span>Typ Artura</span><strong>' . esc_html($match['pick_name'] ?: '—') . '</strong></div><div class="dt-artur-match-status">' . (!empty($match['is_bonus']) ? '<b>★ BONUS</b>' : '') . '<span>' . esc_html($labels[$state] ?? '—') . '</span></div><i class="dashicons dashicons-arrow-down-alt2" aria-hidden="true"></i></summary><div class="dt-artur-insights" data-match-id="'.esc_attr((string)$match['id']).'" data-mode="'.($column==='left'?'summary':'preview').'"><p>Rozwiń, aby pobrać analizę meczu.</p></div></details>';
+            $homePercent=(float)($match['home_pick_percent']??0);$awayPercent=(float)($match['away_pick_percent']??0);
+            echo '<details class="dt-artur-match is-' . esc_attr($state) . '"><summary><div class="dt-artur-game"><strong class="'.($homeWon?'is-winner':'').'">' . esc_html($match['home_name']) . '</strong><span>' . esc_html($score) . '</span><strong class="'.($awayWon?'is-winner':'').'">' . esc_html($match['away_name']) . '</strong></div><div class="dt-artur-pick"><span>Typ Artura</span><strong>' . esc_html($match['pick_name'] ?: '—') . '</strong></div><div class="dt-artur-match-status">' . (!empty($match['is_bonus']) ? '<b>★ BONUS</b>' : '') . '<span>' . esc_html($labels[$state] ?? '—') . '</span></div><i class="dashicons dashicons-arrow-down-alt2" aria-hidden="true"></i></summary><div class="dt-artur-community-picks"><div><strong>'.esc_html($match['home_name']).'</strong><span>'.esc_html(number_format_i18n($homePercent,1)).'%</span></div><div class="dt-artur-community-bar" aria-label="Rozkład typów użytkowników"><i style="width:'.esc_attr((string)$homePercent).'%"></i></div><div><span>'.esc_html(number_format_i18n($awayPercent,1)).'%</span><strong>'.esc_html($match['away_name']).'</strong></div><small>'.(int)$match['all_pick_count'].' oddanych typów</small></div><div class="dt-artur-insights" data-match-id="'.esc_attr((string)$match['id']).'" data-mode="'.($column==='left'?'summary':'preview').'"><p>Rozwiń, aby pobrać analizę meczu.</p></div></details>';
         }
         echo '</div><div class="dt-artur-graphic-summary"><span class="dt-eyebrow">PODSUMOWANIE DO GRAFIKI</span><div><article><small>Typy Artura</small><strong>' . esc_html($data['hits'] . '/' . $data['resolved']) . '</strong><p>' . esc_html($data['typed'] . '/' . count($data['matches']) . ' wytypowanych meczów') . '</p></article><article><small>Perfekcyjne 8/8</small><strong>' . esc_html((string)count($data['perfect'])) . '</strong><p>' . self::artur_people($data['perfect']) . '</p></article><article><small>Trafili BONUS</small><strong>' . esc_html((string)count($data['bonus_hits'])) . '</strong><p>' . self::artur_people($data['bonus_hits']) . '</p></article></div></div>';
         $payload = [
@@ -518,13 +525,15 @@ class DT_Admin {
         $groupSql = $group !== '' ? $wpdb->prepare(' AND r.group_key=%s ', $group) : '';
         $dtPage=max(1,(int)($_GET['dt_paged']??1));$perPage=25;
         $total=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM ".DT_DB::table('rounds')." r WHERE r.season=%s $leagueSql $groupSql",$s['season']));
+        $nowSql=current_time('mysql');
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT r.*,COUNT(m.id) matches,
              MIN(CASE WHEN m.start_time_known=1 THEN m.starts_at END) first_known_match,
              MAX(CASE WHEN m.start_time_known=1 THEN m.starts_at END) last_known_match,
+             MIN(CASE WHEN m.start_time_known=1 AND m.starts_at>%s AND m.score_home IS NULL AND m.score_away IS NULL THEN m.starts_at END) next_pickable_match,
              (SELECT COUNT(*) FROM " . DT_DB::table('round_submissions') . " ss WHERE ss.round_id=r.id) submissions
              FROM " . DT_DB::table('rounds') . " r LEFT JOIN " . DT_DB::table('matches') . " m ON m.round_id=r.id
-             WHERE r.season=%s $leagueSql $groupSql GROUP BY r.id ORDER BY r.league_key,r.group_key,r.round_no LIMIT %d OFFSET %d", $s['season'],$perPage,($dtPage-1)*$perPage
+             WHERE r.season=%s $leagueSql $groupSql GROUP BY r.id ORDER BY r.league_key,r.group_key,r.round_no LIMIT %d OFFSET %d", $nowSql,$s['season'],$perPage,($dtPage-1)*$perPage
         ));
         self::shell('Kolejki','Tylko kolejka otwarta przez administratora jest dostępna do nowych typów.');
         echo '<div class="dt-toolbar">';
@@ -537,8 +546,8 @@ class DT_Admin {
             $openData = [
                 'id'=>(int)$r->id,
                 'title'=>$r->title,
-                'default_close'=>self::html_datetime($r->first_known_match),
-                'first_match'=>self::date_pl($r->first_known_match),
+                'default_close'=>self::html_datetime($r->next_pickable_match),
+                'next_match'=>self::date_pl($r->next_pickable_match),
             ];
             $leagueLabel = strtoupper((string)$r->league_key) . ($r->group_key ? ' · grupa '.(string)$r->group_key : '');
             echo '<tr><td><small class="dt-muted">'.esc_html($leagueLabel).'</small><br><strong>' . esc_html($r->title) . '</strong></td><td>' . esc_html($range) . '</td><td>' . (int)$r->matches . '</td><td>' . (int)$r->submissions . '</td><td>' . self::round_badge((string)$r->status) . '</td><td><strong>' . esc_html(self::date_pl($r->closes_at)) . '</strong></td><td>' . self::badge($r->source === 'manual' ? 'Ręcznie' : 'Auto PZKosz', $r->source === 'manual' ? 'orange' : 'blue') . '</td><td>';
@@ -548,7 +557,7 @@ class DT_Admin {
                 wp_nonce_field('dt_close_round');
                 echo '<button class="button" onclick="return confirm(\'Zamknąć typowanie tej kolejki?\')">Zamknij</button></form>';
             } else {
-                echo '<button type="button" class="button dt-open-round" data-round="' . esc_attr(wp_json_encode($openData)) . '">Otwórz typowanie</button>';
+                echo '<button type="button" class="button dt-open-round" data-round="' . esc_attr(wp_json_encode($openData)) . '" '.(!$r->next_pickable_match?'disabled title="Brak przyszłego nierozstrzygniętego meczu"':'').'>Otwórz typowanie</button>';
             }
             $matchesUrl = add_query_arg(['page'=>'decka-typer-matches','league'=>$r->league_key,'group'=>$r->group_key,'round_id'=>(int)$r->id],admin_url('admin.php'));
             echo ' <a class="button" href="'.esc_url($matchesUrl).'">Przejdź do kolejki</a>';
@@ -564,7 +573,7 @@ class DT_Admin {
 
         echo '<dialog id="dt-open-round-modal" class="dt-modal"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><button type="button" class="dt-modal-x" data-dt-close>×</button><span class="dt-eyebrow">OTWARCIE TYPOWANIA</span><h2 id="dt-open-round-title">Otwórz kolejkę</h2><input type="hidden" name="action" value="dt_open_round"><input type="hidden" name="round_id" id="dt-open-round-id">';
         wp_nonce_field('dt_open_round');
-        echo '<label>Zamknięcie możliwości typowania<input type="datetime-local" name="closes_at" id="dt-open-round-close" required></label><div class="dt-inline-warning">Po zapisaniu kuponu użytkownik nie będzie mógł go zmienić. Termin zamknięcia nie może być późniejszy niż start pierwszego meczu ze znaną godziną.</div><button class="button button-primary dt-button">Otwórz typowanie</button></form></dialog>';
+        echo '<label>Automatyczne zamknięcie przy najbliższym meczu<input type="datetime-local" name="closes_at" id="dt-open-round-close" readonly required></label><div class="dt-inline-warning">Kolejka zostanie otwarta tylko dla przyszłych spotkań i automatycznie zamknie się wraz ze startem najbliższego nierozstrzygniętego meczu. Rozpoczętych spotkań ani zapisanych wcześniej typów nie można zmienić.</div><button class="button button-primary dt-button">Otwórz typowanie</button></form></dialog>';
         echo '<script>document.addEventListener("click",function(e){var b=e.target.closest(".dt-open-round");if(!b)return;var d={};try{d=JSON.parse(b.dataset.round||"{}");}catch(_){return;}document.getElementById("dt-open-round-id").value=d.id||"";document.getElementById("dt-open-round-title").textContent="Otwórz: "+(d.title||"kolejkę");document.getElementById("dt-open-round-close").value=d.default_close||"";document.getElementById("dt-open-round-modal").showModal();});</script>';
         self::end_shell();
     }
@@ -1280,20 +1289,20 @@ class DT_Admin {
         self::guard('dt_open_round');
         global $wpdb;
         $id = (int)($_POST['round_id'] ?? 0);
-        $close = self::mysql_datetime($_POST['closes_at'] ?? '');
         $round = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . DT_DB::table('rounds') . ' WHERE id=%d',$id));
-        if (!$round || !$close) self::redirect('decka-typer-rounds','Nieprawidłowe dane kolejki lub terminu zamknięcia.','error');
+        if (!$round) self::redirect('decka-typer-rounds','Nieprawidłowe dane kolejki.','error');
+        $nowSql=current_time('mysql');
+        $close=$wpdb->get_var($wpdb->prepare(
+            'SELECT MIN(starts_at) FROM '.DT_DB::table('matches').' WHERE round_id=%d AND start_time_known=1 AND starts_at>%s AND score_home IS NULL AND score_away IS NULL',
+            $id,$nowSql
+        ));
+        if (!$close) self::redirect('decka-typer-rounds','Nie ma już przyszłego nierozstrzygniętego meczu, do którego można otworzyć typowanie.','error');
         $closeDt = self::local_dt($close);
         $now = new DateTimeImmutable('now', wp_timezone());
         if (!$closeDt || $closeDt <= $now) self::redirect('decka-typer-rounds','Termin zamknięcia musi być w przyszłości.','error');
-        $firstKnown = $wpdb->get_var($wpdb->prepare('SELECT MIN(starts_at) FROM ' . DT_DB::table('matches') . ' WHERE round_id=%d AND start_time_known=1 AND starts_at IS NOT NULL',$id));
-        $firstDt = self::local_dt($firstKnown ?: null);
-        if ($firstDt && $closeDt > $firstDt) self::redirect('decka-typer-rounds','Typowanie musi zostać zamknięte najpóźniej o rozpoczęciu pierwszego meczu (' . self::date_pl($firstKnown) . ').','error');
-        if ($firstDt && $firstDt <= $now) self::redirect('decka-typer-rounds','Nie można otworzyć kolejki po rozpoczęciu pierwszego meczu.','error');
 
-        $nowSql = current_time('mysql');
         $wpdb->update(DT_DB::table('rounds'),['status'=>'open','manual_availability'=>1,'opens_at'=>$nowSql,'closes_at'=>$close,'updated_at'=>$nowSql],['id'=>$id],['%s','%d','%s','%s','%s'],['%d']);
-        DT_Logger::log('round_opened','Administrator otworzył kolejkę do typowania.',['round_id'=>$id,'closes_at'=>$close], 'notice', get_current_user_id());
+        DT_Logger::log('round_reopened','Administrator otworzył kolejkę do najbliższego nierozstrzygniętego meczu.',['round_id'=>$id,'closes_at'=>$close], 'notice', get_current_user_id());
         self::redirect('decka-typer-rounds','Typowanie kolejki zostało otwarte do ' . self::date_pl($close) . '.');
     }
 

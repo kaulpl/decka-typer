@@ -66,6 +66,9 @@ class DT_REST {
     }
 
     public static function save_submission(WP_REST_Request $request): WP_REST_Response|WP_Error {
+        // Keep the legacy route compatible with the match-by-match submission
+        // service used by the frontend (partial coupons and immutable old picks).
+        if (class_exists('DT_Submission')) return DT_Submission::save($request);
         global $wpdb;
         $uid = get_current_user_id();
         $body = $request->get_json_params();

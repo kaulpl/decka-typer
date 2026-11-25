@@ -146,7 +146,7 @@ class DT_Submission {
 
         $round = $wpdb->get_row($wpdb->prepare("SELECT * FROM $roundTable WHERE id=%d", $roundId), ARRAY_A);
         if (!$round) return new WP_Error('not_found', 'Nie znaleziono kolejki.', ['status'=>404]);
-        if (($round['status'] ?? '') !== 'open') return new WP_Error('round_closed', 'Typowanie tej kolejki jest zamknięte.', ['status'=>409]);
+        if (!self::round_open($round)) return new WP_Error('round_closed', 'Typowanie tej kolejki jest zamknięte.', ['status'=>409]);
 
         $matches = $wpdb->get_results($wpdb->prepare(
             "SELECT id,home_team_id,away_team_id,starts_at,start_time_known FROM $matchTable WHERE round_id=%d ORDER BY id", $roundId
@@ -180,6 +180,14 @@ class DT_Submission {
         if (!$clean) return new WP_Error('empty_picks', 'Wybierz co najmniej jeden mecz do zapisania.', ['status'=>422]);
 
         $now = current_time('mysql');
+
+        // Re-check the round deadline immediately before writing. A manually
+        // reopened round closes at the next future game, while already started
+        // matches remain immutable through the per-match checks above.
+        $freshRound=$wpdb->get_row($wpdb->prepare("SELECT * FROM $roundTable WHERE id=%d",$roundId),ARRAY_A);
+        if (!$freshRound || !self::round_open($freshRound)) {
+            return new WP_Error('round_closed', 'Czas na typowanie właśnie się zakończył.', ['status'=>409]);
+        }
 
         // Winner-only persistence. No predicted score fields exist in this model.
         foreach ($clean as $matchId => $teamId) {
